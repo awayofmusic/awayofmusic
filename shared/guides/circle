@@ -1,0 +1,48 @@
+#load "c_load/Library";
+/*
+A 2d op space contains any 2d geometry.
+It is created and setup directly through the language.
+
+Here we create a circle as an example.
+Other geometries can be found in guides/chord_s2
+
+"ctrl+alt+d" for debug mode.
+"ctrl+alt+c" to compile.
+"F5" to run the code.
+Put "open_op s2d" in the terminal and press "Enter"
+to see the circle in the 2d op space.
+
+"WASD" can be used to move the 2d op space camera.
+*/
+main :: () {
+	csd : AsmOpSpaceData;
+	csd.op_space_type = AsmOpSpaceType.space_2d;
+	csd.op_space_name = "s2d";
+	#asm{ get_or_create_op_space csd; }
+	clear : AsmClearOpData;
+	clear.op_space_id = csd.ret_op_space_id;
+	#asm{ clear_op_space clear; }
+
+	cs : AsmCircleData;
+	cs.op_space_id = csd.ret_op_space_id;
+	cs.radius = 9.0;
+	cs.world_center = Vector2.{0,0};
+	cs.rotate_theta = 1.570796;
+	cs.point_dim = Vector2.{0.6,0.6};
+	cs.is_clockwise = true;
+	cs.repeating_interval_ratio = 2.0;
+	cs.tuning_system_id = 0;
+	cs.non_repeating = false;
+	cs.start_note = 0;
+	cs.is_sound_float = false;
+	cs.inner_circle_mute = 0.;
+	cs.no_base_points = false;
+	#asm{ create_circle cs; }
+
+	mc : AsmMapCircle;
+	mc.dspace_id = cs.ret_dspace_id;
+	mc.op_space_id = csd.ret_op_space_id;
+	mc.pitches = float64.[0,4.5,7];
+	mc.draw_vl_type = DrawVLType.VL_LINE;
+	#asm{ map_circle mc; }
+}

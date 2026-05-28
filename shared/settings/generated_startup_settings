@@ -1,0 +1,10 @@
+{
+	"use_startup_screen_dim": false,
+	"startup_screen_width": 3840,
+	"startup_screen_height": 2160,
+	"use_startup_window_dim": false,
+	"startup_window_width": 3168,
+	"startup_window_height": 1782,
+	"startup_window_pos_x_screen_fraction": 0.15,
+	"startup_window_pos_y_screen_fraction": 0.075
+}

@@ -1,5 +1,7 @@
-## Hi there 👋
+## A Way of Music
+Created by Tristano Tenaglia.
 
+Copyright © 2026-Present Tristano Tenaglia. All rights reserved. License conditions apply.
 <!--
 **awayofmusic/awayofmusic** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
 

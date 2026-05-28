@@ -1,0 +1,80 @@
+#load "c_load/Library";
+/*
+The chord_s3 (3-dimension chord space) is a per-octave repeating space for 3-note chords.
+Traditionally a piano (or midi roll) contains all possible unordered 1-note sets in each octave.
+Similarly, a chord_s3 contains all possible unordered 3-note sets in each octave.
+We then apply this idea to any dimension.
+All dimensions higher than 3 are mapped onto the 3 dimensional visual plane.
+
+It is recommended to read through the code and think about it.
+Feelings should also be recognized and acknowledged.
+
+"ctrl+alt+d" for debug mode.
+"ctrl+alt+c" to compile.
+"F5" to run the code.
+Put "open_op cs3" in the terminal and press "Enter"
+to see the chord_s3 in the 3d op space.
+
+This space was created/discovered by Dimitri Tymoczko.
+"Mathematicians would describe our quotient space as “the n-torus modulo the symmetric group that acts
+on n elements”—symbolically, Tn/Sn. Here, Tn is the mathematical symbol for the
+n-torus, the space of ordered pitch-class sequences; Sn refers to the collection of oper-
+ations that reorder n elements; and the division symbol instructs us to glue together
+points related by the operations that follow. Thus the mathematical symbol “Tn/Sn”
+means “the space that results when you start with ordered pitch-class sequences and
+disregard order.”" - Dimitry Tymoczko
+
+Developer Remarks :
+At 6+ dimensions with the ALL filter, the program will crash due to lack of rendering memory.
+This is done intentionally to keep each op space at < 5Mb of memory.
+A filter is recommended to be used for 6+ dimensions.
+If requested, a runtime setting can be added to adjust the rendering memory size.
+At 5+ dimensions the program will halt momentarily while generating.
+On the developer's machine, the 5d space takes around 0.3 seconds to generate.
+The 6d space takes around 7 seconds to generate.
+The 7d space takes over 2 minutes to generate.
+At 4+ dimensions, the ALL space tends to be somewhat incomprehensible.
+Filters are generally recommended.
+It is the developer's opinion that exploring this space is best done
+through custom code written by you for your particular use case through a dynamic library.
+This will be added by request but currently requires a private compiler to do so.
+For more information, please ask on discord.
+*/
+main :: () {
+	csd : AsmOpSpaceData;
+	csd.op_space_type = AsmOpSpaceType.space_3d;
+	csd.op_space_name = "cs3";
+	#asm{ get_or_create_op_space csd; }
+	clear : AsmClearOpData;
+	clear.op_space_id = csd.ret_op_space_id;
+	#asm{ clear_op_space clear; }
+
+	//"WASD" and "IJKL" can be used to move around the 3d space.
+	cs3 : AsmSpace3Data;
+	cs3.op_space_id = csd.ret_op_space_id;
+	cs3.tuning_system_id = 0;
+	cs3.higher_dim = 3;
+	cs3.s3_cam_start_type = S3CamStartType.USER_SET;
+	// cs3.cam_start_pos = Vector3.{0.,0.,0.};
+	cs3.osc_wave_type = OscWaveType.SINE;
+	cs3.set_3d_perspective = false;
+	cs3.depth = 24.0;
+	cs3.n = 1.0; 
+	cs3.f = 240.0;
+	csf_array : [1] AsmCSFilter;
+	csf_array[0].filter_type = ChordSpaceFilterType.ALL;
+	//csf_array[0].filter_type = ChordSpaceFilterType.CHROMATIC;
+	//"O" and "U" can be used to dynamically change the sum value of the SUM filter.
+	//csf_array[0].filter_type = ChordSpaceFilterType.SUM;
+	cs3.asm_cs_filters = csf_array;
+	#asm{ create_cs3 cs3; }
+
+	mc : MapChordS3Data;
+	mc.op_space_id = cs3.op_space_id;
+	mc.vl_start_chord = float.[0,4,7];
+	mc.vl_deltas = float.[
+		0,-1,0,
+		8,9,8
+	];
+	#asm{ map_cs3 mc; }
+}
