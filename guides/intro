@@ -1,0 +1,115 @@
+#load "c_load/Library";
+
+/*
+This is a text op space.
+The terminal op space is behind this text op space.
+The top bar can be used to move it around.
+Buttons appear when hovering the top bar.
+The rectangle will fix this op space to the background (mspace).
+By default it is fixed to the camera.
+The size can be adjusted from the bottom right corner.
+Other settings can be adjusted from startup_settings,
+runtime_settings and input_mappings.
+These can be copied from the "generated_" files and renamed
+by removing the "generated_" and then modified as needed.
+
+The programming language below can be compiled to 
+assembly instructions with "ctrl+alt+c".
+The assembly instructions can be viewed with "ctrl+alt+i".
+Compilation information can be viewed with "ctrl+alt+o".
+
+Debug mode is toggled with "ctrl+alt+d".
+The assembly instructions can be run with "F5".
+Running can only happen in debug mode.
+Compilation can be done without debug mode.
+
+It is recommended to read through the code and think about it.
+Feelings should also be recognized and acknowledged.
+
+Music is played/paused with "ctrl+p".
+Music is stopped with "ctrl+shift+p".
+
+Text status bar is toggled with "ctrl+F7".
+Text file tabs are toggled with "ctrl+F8".
+More details can be found in guides/text_op.
+New tabs can be opened with "ctrl+o".
+
+If there are any issues, "ctrl+alt+F12" will refresh the text op space.
+
+If we click off the op space, then we are in the mspace (music space).
+"WASD" can be used to move the camera.
+"ctrl+mouse_right_click" can be used to move instantly.
+"ctrl+mouse_scroll" is global zoom in and out.
+"ctrl+shift+]" is global zoom in.
+"ctrl+shift+[" is global zoom out.
+
+"load_op name file_path" in the terminal will load a text op space called name
+and open a text tab file to the given file_path.
+"load_op name" in the terminal will allow file selection with the explorer.
+"open_op name" and "close_op name" will open and close that named op.
+"ctrl+s" can be used on a file to save it and saving success can be seen in the status bar.
+*/
+main :: () {
+	//This will clear all the data in this mspace which allows 
+	//us to recreate everything every time we run this code.
+	clear_m0 : AsmClearMSpaceData;
+	#asm{ clear_mspace clear_m0; }
+
+	//Library structs and functions are in c_load/Library.
+	//This can be opened in an external text editor for convenience.
+	synth : AsmGetOrCreateSimpleSynthData;
+	synth.synth_name = "s0";
+	#asm{ get_or_create_simple_synth synth; }
+	update_synth : AsmUpdateSimpleSynthData;
+	update_synth.update_wave_type = true;
+	update_synth.wave_type = OscWaveType.SINE;
+	//Volume is between 0-1 and is set for each neume
+	//so 0.1 for 3 values will be 0.3 overall
+	//anything above 1 will be clipped and likely cause audible distortion
+	update_synth.update_volume = true;
+	update_synth.volume = 0.1;
+	#asm{ update_simple_synth update_synth; }
+
+	ts : AsmGetTuningSystemData;
+	//"et19" and "et24" are available. More will be available.
+	ts.short_name = "et12";
+	#asm{ get_tuning_system ts; };
+	rs : RowSectionData;
+	rs.tuning_system_id = ts.ret_tuning_system_id;
+	rs.x_length = 24;
+	rd : AsmCreateRowData;
+	rd.octave_height = 12.0;
+	rd.row_height = 12.0;
+	rd.muted_row = false;
+	rd.row_sections = RowSectionData.[rs];
+	rd.row_system_type = RowSystemType.internal_pitch;
+	rd.row_system_id = synth.ret_synth_id;
+	// rd.row_system_type = RowSystemType.midi_pitch;
+	// rd.row_midi_data.midi_channel = 0;
+	// rd.row_midi_data.midi_velocity = 100;
+	#asm{ create_row rd; }
+
+	//Details can be found in guides/tano
+	tano(0,0..2) ~= int.[0,4,7];
+	tano(0,2..4) ~= int.[0,3,7];
+	
+	//Opening other op spaces can be found in guides/space_2d.
+
+	/*
+	rd.row_system_id = synth.ret_synth_id;
+	rd.row_sub_system_id = cast(int) SimpleSynthMessageType.VOLUME;
+	//Can use right click knob and press link controller in fl studio 
+	//to set midi channel and cc messages.
+	//cc messages may not map directly to the neume values
+	//rd.row_system_type = RowSystemType.midi_control_change;
+	//rd.row_midi_data.midi_channel = 0;
+	//rd.row_midi_data.midi_control_change = 0;
+	#asm{ create_row rd; }
+
+	for x : 0..11 {
+		tano(1,x) ~= 0.15 * cast(float) x;
+		//For midi cc message
+		// tano(1,x) ~= 10*x;
+	}
+	*/
+}

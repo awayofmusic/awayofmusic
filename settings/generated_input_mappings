@@ -1,0 +1,382 @@
+{
+	"input_mappings": [
+		{
+			"command": "TERMINAL_TOGGLE",
+			"description": "Open/close terminal op space",
+			"keyboard_keys": [
+				"ctrl+alt+t"
+			]
+		},
+		{
+			"command": "TEXT_DEBUG_TOGGLE",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+alt+d"
+			]
+		},
+		{
+			"command": "TEXT_CONSOLE_TOGGLE",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+alt+o"
+			]
+		},
+		{
+			"command": "TEXT_DISASM_TOGGLE",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+alt+i"
+			]
+		},
+		{
+			"command": "TEXT_COMPILE",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+alt+c"
+			]
+		},
+		{
+			"command": "TEXT_SET_FIXED_MAIN_COMPILE",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+alt+m"
+			]
+		},
+		{
+			"command": "TEXT_RUN_CONTINUE",
+			"description": "",
+			"keyboard_keys": [
+				"f5"
+			]
+		},
+		{
+			"command": "TEXT_STOP",
+			"description": "",
+			"keyboard_keys": [
+				"shift+f5"
+			]
+		},
+		{
+			"command": "TEXT_RESTART",
+			"description": "",
+			"keyboard_keys": [
+				"shift+ctrl+f5"
+			]
+		},
+		{
+			"command": "TEXT_PANE",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+alt+1"
+			]
+		},
+		{
+			"command": "TEXT_WATCH_PANE",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+alt+2"
+			]
+		},
+		{
+			"command": "TEXT_BOTTOM_LEFT_PANE",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+alt+3"
+			]
+		},
+		{
+			"command": "TEXT_BOTTOM_RIGHT_PANE",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+alt+4"
+			]
+		},
+		{
+			"command": "TEXT_CALL_STACK",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+alt+s"
+			]
+		},
+		{
+			"command": "TEXT_SPACE_REFRESH",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+alt+f12"
+			]
+		},
+		{
+			"command": "TEXT_FILE_TAB_RIGHT",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+alt+l"
+			]
+		},
+		{
+			"command": "TEXT_FILE_TAB_LEFT",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+alt+j"
+			]
+		},
+		{
+			"command": "TEXT_FILE_TAB_BAR",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+f8"
+			]
+		},
+		{
+			"command": "TEXT_FILE_TAB_CLOSE",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+w"
+			]
+		},
+		{
+			"command": "TEXT_FILE_TAB_OPEN",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+o"
+			]
+		},
+		{
+			"command": "TEXT_FILE_TAB_SWAP_LEFT",
+			"description": "",
+			"keyboard_keys": [
+				"shift+ctrl+alt+j"
+			]
+		},
+		{
+			"command": "TEXT_FILE_TAB_SWAP_RIGHT",
+			"description": "",
+			"keyboard_keys": [
+				"shift+ctrl+alt+l"
+			]
+		},
+		{
+			"command": "TEXT_FILE_RIGHT_CHAR_BOUND",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+8"
+			]
+		},
+		{
+			"command": "TEXT_FILE_LEFT_CHAR_BOUND",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+7"
+			]
+		},
+		{
+			"command": "TEXT_FILE_FIND_TEXT_BAR",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+f"
+			]
+		},
+		{
+			"command": "TEXT_FILE_BACK_FIND",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+backspace"
+			]
+		},
+		{
+			"command": "TEXT_FILE_REPLACE_TEXT_BAR",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+h"
+			]
+		},
+		{
+			"command": "TEXT_FILE_GOTO_LINE_BAR",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+g"
+			]
+		},
+		{
+			"command": "TEXT_FILE_SINGLE_REPLACE",
+			"description": "",
+			"keyboard_keys": [
+				"shift+ctrl+h"
+			]
+		},
+		{
+			"command": "TEXT_FILE_REPLACE_ALL",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+alt+enter"
+			]
+		},
+		{
+			"command": "TEXT_FILE_SAVE",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+s"
+			]
+		},
+		{
+			"command": "TEXT_FILE_UPDATE_DATA",
+			"description": "",
+			"keyboard_keys": [
+				"shift+ctrl+u"
+			]
+		},
+		{
+			"command": "TEXT_SELECT_ALL",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+a"
+			]
+		},
+		{
+			"command": "TEXT_COPY",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+c"
+			]
+		},
+		{
+			"command": "TEXT_SHOW_STATUS_BAR",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+f7"
+			]
+		},
+		{
+			"command": "DEBUG_SET_BREAKPOINT",
+			"description": "",
+			"keyboard_keys": [
+				"f9"
+			]
+		},
+		{
+			"command": "DEBUG_STEP_OVER",
+			"description": "",
+			"keyboard_keys": [
+				"f10"
+			]
+		},
+		{
+			"command": "DEBUG_STEP_INTO",
+			"description": "",
+			"keyboard_keys": [
+				"f11"
+			]
+		},
+		{
+			"command": "DEBUG_STEP_OUT",
+			"description": "",
+			"keyboard_keys": [
+				"shift+f11"
+			]
+		},
+		{
+			"command": "DEBUG_WATCH_EDIT",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+e"
+			]
+		},
+		{
+			"command": "NEXT_MUSIC_SPACE",
+			"description": "",
+			"keyboard_keys": [
+				"shift+ctrl+."
+			]
+		},
+		{
+			"command": "PREVIOUS_MUSIC_SPACE",
+			"description": "",
+			"keyboard_keys": [
+				"shift+ctrl+,"
+			]
+		},
+		{
+			"command": "GLOBAL_ZOOM_IN",
+			"description": "",
+			"keyboard_keys": [
+				"shift+ctrl+]"
+			]
+		},
+		{
+			"command": "GLOBAL_ZOOM_OUT",
+			"description": "",
+			"keyboard_keys": [
+				"shift+ctrl+["
+			]
+		},
+		{
+			"command": "GLOBAL_ZOOM_RESET",
+			"description": "",
+			"keyboard_keys": [
+				"shift+ctrl+r"
+			]
+		},
+		{
+			"command": "GLOBAL_MOVE_INSTANTLY",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+mouse_button_right"
+			]
+		},
+		{
+			"command": "OP_SPACE_MOVE_INSTANTLY",
+			"description": "",
+			"keyboard_keys": [
+				"alt+mouse_button_right"
+			]
+		},
+		{
+			"command": "OP_SPACE_ZOOM_IN",
+			"description": "",
+			"keyboard_keys": [
+				"alt+]"
+			]
+		},
+		{
+			"command": "OP_SPACE_ZOOM_OUT",
+			"description": "",
+			"keyboard_keys": [
+				"alt+["
+			]
+		},
+		{
+			"command": "OP_SPACE_ZOOM_RESET",
+			"description": "",
+			"keyboard_keys": [
+				"shift+alt+r"
+			]
+		},
+		{
+			"command": "PLAY_PAUSE_MUSIC",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+p"
+			]
+		},
+		{
+			"command": "STOP_MUSIC",
+			"description": "",
+			"keyboard_keys": [
+				"shift+ctrl+p"
+			]
+		},
+		{
+			"command": "RUN_EXTERNAL_UPDATE",
+			"description": "",
+			"keyboard_keys": [
+				"ctrl+alt+e"
+			]
+		},
+		{
+			"command": "DEV_TEST_MODE",
+			"description": "",
+			"keyboard_keys": [
+				"shift+ctrl+t"
+			]
+		}
+	]
+}

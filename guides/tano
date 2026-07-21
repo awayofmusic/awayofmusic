@@ -1,0 +1,90 @@
+#load "c_load/Library";
+/*
+The tano can represent any computable aspect of music in any tuning system.
+It's generalized textual representation is as follows :
+
+tano(row_start..row_end, x_start..x_end)
+
+where row_end is inclusive and x_end is not inclusive
+ie [row_start,row_end] and [x_start,x_end[
+
+For examples, scroll down to the main function.
+
+
+A more mathematical description :
+The tano can be thought of as a k-cell (hyperbox/hyperrectangle/orthotope) made up of rows of tuning systems.
+It is defined by pairs of values (integer or real) which represent the start and end of each of the edges of the k-cell 
+so therefore, the number of elements in a tano is always even.
+Due to the current use of computers where rectangles are the natural way (ie memory is linear, screens are rectangular...), 
+we use a k-cell here BUT if there are currently unknown advances in human mind experiential systems,
+a tano can also be generalized to a parallelohedron/polyhedron/parallelotope/zonotope/polytope
+if rectangles are not the only natural way in these new systems.
+
+Operations defined on a tano are well defined for "~=", "+", "-", "/", "*", "<<", "<<<" and we can do more later like 
+"~+" and "~-" and "||" and "&", and "~&" etc... Which should all be mathematically sound defaults which I think
+are best determined from experience and communication.
+
+Each edge range can be ordered low->high or high->low which determines the order in which they are traversed
+when the mov operation is performed. So eg [x_start, x_end] where x_start <= x_end || x_start >= x_end
+which differs from a k-cell definition where x_start < x_end is part of the definition.
+So doing tano(0) ~= tano(3..2); would copy row 3 to row 0 and row 2 to row 1.
+(The reason is to make reverse/retrograde a normal movement.)
+*/
+main :: () {
+	//Scroll down for the tanos.
+	clear_m0 : AsmClearMSpaceData;
+	#asm{ clear_mspace clear_m0; }
+	synth : AsmGetOrCreateSimpleSynthData;
+	synth.synth_name = "s0";
+	#asm{ get_or_create_simple_synth synth; }
+	update_synth : AsmUpdateSimpleSynthData;
+	update_synth.update_wave_type = true;
+	update_synth.wave_type = OscWaveType.SINE;
+	update_synth.update_volume = true;
+	update_synth.volume = 0.1;
+	#asm{ update_simple_synth update_synth; }
+	ts : AsmGetTuningSystemData;
+	ts.short_name = "et12";
+	#asm{ get_tuning_system ts; };
+	rs : RowSectionData;
+	rs.tuning_system_id = ts.ret_tuning_system_id;
+	rs.x_length = 12;
+	rd : AsmCreateRowData;
+	rd.octave_height = 12.0;
+	rd.row_height = 12.0;
+	rd.muted_row = false;
+	rd.row_sections = RowSectionData.[rs];
+	rd.row_system_type = RowSystemType.internal_pitch;
+	rd.row_system_id = synth.ret_synth_id;
+	#asm{ create_row rd; }
+	#asm{ create_row rd; }
+	#asm{ create_row rd; }
+
+	/*The trivial default case of tano(0,0) is a piano in 12-et.
+	Both integer and float values and arrays 
+	can be set to the tano using the ~= operator.
+	*/
+	tano(0,0) ~= 0;
+	tano(0,1) ~= int.[0,4];
+	tano(0,1) ~= 7.5;
+	tano(0,2) ~= float.[0.2, 4.2, 7.2, 11.2];
+
+	//tano(0,x_start..x_end)
+	tano(0,3..5) ~= int.[1,2,3];
+	//tano(0,x_start:x_length)
+	tano(0,5:3) ~= int.[0,7];
+
+	//tano struct type is built into the programming language
+	t : tano = tano(0, 0..4);
+	//tano struct members
+	//t.row_start, t.row_end, t.x_start, t.x_end
+
+	//transposition
+	//t1 ~= t0 + 1;
+
+	//retrograde
+	//tano(to_row) ~= tano(from_row, x_end..x_start)
+
+	//inverse
+	//t1 ~= 12 - t0
+}

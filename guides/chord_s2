@@ -1,0 +1,54 @@
+#load "c_load/Library";
+/*
+The chord_s2 (2-dimension chord space) is a per-octave repeating space for 2-note chords.
+Traditionally a piano (or midi roll) contains all possible unordered 1-note sets in each octave.
+Similarly, a chord_s2 contains all possible unordered 2-note sets in each octave.
+
+It is recommended to read through the code and think about it.
+Feelings should also be recognized and acknowledged.
+
+"ctrl+alt+d" for debug mode.
+"ctrl+alt+c" to compile.
+"F5" to run the code.
+Put "open_op cs2" in the terminal and press "Enter"
+to see the chord_s2 in the 2d op space.
+
+This space was created/discovered by Dimitri Tymoczko.
+Details for 3+ dimensions of this space can be found in guides/chord_s3.
+*/
+main :: () {
+	csd : AsmOpSpaceData;
+	csd.op_space_type = AsmOpSpaceType.space_2d;
+	csd.op_space_name = "cs2";
+	#asm{ get_or_create_op_space csd; }
+	clear : AsmClearOpData;
+	clear.op_space_id = csd.ret_op_space_id;
+	#asm{ clear_op_space clear; }
+
+	cs2 : AsmChordS2Data;
+	cs2.op_space_id = csd.ret_op_space_id;
+	cs2.world_pos = Vector2.{0,0};
+	cs2.scale_world_unit = 2.0;
+   cs2.point_dim = Vector2.{0.7,0.7};
+   cs2.lp_count = 12;
+	cs2.tuning_system_id = 0;
+	cs2.is_sound_float = false;
+	cs2.vl_order_text = true;
+	cs2.vl_order_color = true;
+	cs2.osc_wave_type = OscWaveType.SAW;
+	csf_array : [1] AsmCSFilter;
+	csf_array[0].filter_type = ChordSpaceFilterType.ALL;
+	cs2.asm_cs_filters = csf_array;
+	#asm{ create_cs2 cs2; }
+
+	mc : MapChordS2Data;
+	mc.dspace_id = cs2.ret_dspace_id;
+	mc.op_space_id = cs2.op_space_id;
+	mc.vl_start_chord = float.[6,9];
+	mc.vl_deltas = float.[
+		-4,-3,
+		+2,+2,
+		+2,+2
+	];
+	#asm{ map_cs2 mc; }
+}

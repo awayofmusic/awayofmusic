@@ -1,0 +1,18 @@
+//TODO IMPORTANT REMINDER we could move the structs out and have that overlap in jai and then have functions in here and just #load one from the other and then we can also make sure we can load from a loaded file. Can maybe wait till we have enums and then do that and might just have to adjust some names.
+//Note : Calling this library for now but maybe we can split it up later if needed although I kind of like the word library for generalized code.
+//This file is generated so the order of some values may change between releases.
+Vector2 :: struct {
+  x : float;
+  y : float;
+}
+Vector3 :: struct {
+	x : float;
+	y : float;
+	z : float;
+}
+Vector4 :: struct {
+	x : float;
+	y : float;
+	z : float;
+	w : float;
+}
