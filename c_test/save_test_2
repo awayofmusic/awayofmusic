@@ -1,0 +1,24 @@
+OTHERSAVE :: struct {
+  x : float;
+  y : float;
+}
+main :: () {
+	//Comment for the left and right char bound diff test over here
+
+
+
+
+
+
+
+
+	//Comment for the left and right char bound diff test over here more
+}
+
+
+
+
+Foo :: (x : int) -> int {
+  y := x + 1;
+  return y;
+}
