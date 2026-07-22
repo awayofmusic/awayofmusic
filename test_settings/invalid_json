@@ -1,0 +1,11 @@
+{
+	"input_mappings": [
+		{
+			"invalid": "TERMINAL_TOGGLE"
+			"description": "Open/close terminal op space",
+			"keyboard_keys": [
+				"alt+t"
+			]
+		}
+	]
+}

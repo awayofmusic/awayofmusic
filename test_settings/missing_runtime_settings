@@ -1,0 +1,10 @@
+{
+	"default_input_mappings_file": "settings/input_mappings",
+	"default_font_size": 20,
+	"default_font_color": {
+		"r": 2,
+		"g": 3,
+		"b": 4,
+		"a": 0.6
+	}
+}
