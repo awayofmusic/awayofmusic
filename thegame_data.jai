@@ -2845,9 +2845,9 @@ AllData :: struct #type_info_no_size_complaint {
 	for being able to change between music spaces.
 	If we can remove some later or pass them into the functions that need them, I think that might be better but let's see.
 	*/
-	renderer_data : *RendererData;
-	audio_data : *AudioData;
-	game_input : *GameInput;
+	// renderer_data : *RendererData;
+	// audio_data : *AudioData;
+	// game_input : *GameInput;
 
 	global_rules : GlobalRules;
 	//TODO Should this be in AllCodeData since we reset
@@ -5555,181 +5555,6 @@ MakeRatioProportionalPoints :: inline (
 }
 }
 
-//TODO Where should we put these color compile-time arrays?
-//TODO Can make default for other default implemented tuning systems as well like PYTHAGORUS and other eq temps.
-//Maybe one for 19 and 24 and 48 and 53 or anything thats used more.
-EQ_12_POINT_COLORS :: Vector4F.[
-	GREY_DARKER_V, 
-	GREY_BLACK_V, 
-	GREY_DARKER_V,
-	GREY_BLACK_V,
-	GREY_DARKER_V,
-	GREY_DARKER_V,
-	GREY_BLACK_V,
-	GREY_DARKER_V, 
-	GREY_BLACK_V, 
-	GREY_DARKER_V,
-	GREY_BLACK_V,
-	GREY_DARKER_V
-];
-//TODO How do we use this and the above for 12 system? Could pass in a default shape type for example
-//or an extra int value as a type to differentiate between default.
-EQ_12_POINT_COLORS_CIRCLE :: Vector4F.[
-	LIGHT_BROWN, 
-	GREY_DARKER_V, 
-	LIGHT_BROWN,
-	GREY_DARKER_V,
-	LIGHT_BROWN,
-	LIGHT_BROWN,
-	GREY_DARKER_V,
-	LIGHT_BROWN, 
-	GREY_DARKER_V, 
-	LIGHT_BROWN,
-	GREY_DARKER_V,
-	LIGHT_BROWN
-];
-PointColorType :: enum u8 {
-	DEFAULT;
-	CUSTOM;
-}
-PointColorShape :: enum u8 {
-	LINEAR;
-	CIRCLE;
-}
-PointColorData :: struct {
-	type : PointColorType;
-	shape : PointColorShape;
-	white_color : Vector4F = GREY_DARKER_V;
-	black_color : Vector4F = GREY_BLACK_V;
-	point_colors : [] Vector4F;
-}
-
-CIRCLE_COLOR_DEFAULT :: PointColorData.{shape=.CIRCLE,white_color=LIGHT_BROWN,black_color=GREY_BLACK_V};
-
-GetPointColor :: inline (
-	p_index : int, 
-	tuning_system : TuningSystem,
-	color_data : PointColorData)
--> Vector4F 
-{
-	color : Vector4F;
-	if color_data.type == {
-	case PointColorType.DEFAULT;
-		//TODO CAn we make default PointColorData so we can just
-		//have it all be the same below by default and only 
-		//alternate in cases which we don't have specific colors for.
-		if tuning_system.music_pt_count == 12 {
-			if color_data.shape == {
-			case .LINEAR; color = EQ_12_POINT_COLORS[p_index];
-			case .CIRCLE; color = EQ_12_POINT_COLORS_CIRCLE[p_index];
-			}
-		} else {
-			if p_index % 2 == 1 color = color_data.black_color;
-			else color = color_data.white_color;
-		}
-	case PointColorType.CUSTOM;
-		assert(p_index < color_data.point_colors.count);
-		color = color_data.point_colors[p_index];
-	}
-	return color;
-}
-
-MakeRatioProportionalPoints :: inline (
-	num_of_points : int,
-	linear : LinearPitchSpace,
-	//TODO Can have a generalized version of this with just linear_diff data between points
-	//and then call that function with a tuning_system.
-	tuning_system : TuningSystem,
-	all_tuning_pitches : [] TuningPitch,
-	color_data : PointColorData = .{})
--> [] SpacePoint
-{
-	array_tuning_pitches : [] TuningPitch;
-	if linear.view != LinearPitchSpaceView.FORCE_EQUAL {
-		array_tuning_pitches = 
-			ArrayFindAllVarName(all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
-		assert(tuning_system.music_pt_count == array_tuning_pitches.count);
-	}
-
-	total_height : float;
-	equal_point_height : float = linear.octave_dim.y / tuning_system.music_pt_count;
-	points_in_space : [] SpacePoint = NewArray(num_of_points, SpacePoint, false,, temp);
-	for p_index : 0..num_of_points-1 {
-		point : *SpacePoint = *points_in_space[p_index];
-		point.id = ALL_NEXT_IDS.POINT_ID;
-		ALL_NEXT_IDS.POINT_ID += 1;
-		point.dspace_id = linear.dspace_id;
-		point.color = GetPointColor(p_index, tuning_system, color_data);
-		point.int_pos.x = p_index;
-
-		/*TODO We only use dspace_pos anymore for relative rendering so maybe that's the only thing we should set now
-		for linear scissor and have separate points for that.
-		Will leave it for now but we can definitely do that and separate from the old function here.
-		Will keep the same for consistency for now.
-		*/
-		//Forcing equal is needed for unequal temperaments where we want them to look equal.
-		//TODO We may not need this at all if we force in rendering instead.
-		//Although I guess this allows it to work here without any changes in rendering code.
-		if linear.view == LinearPitchSpaceView.FORCE_EQUAL {
-			//NOTE : ONLY THE dspace_pos is actually being used here
-			//Everything else is left for convenience but does not do anything
-			//We need to make it proportional here so we can multiple by octave_height at runtime.
-			//This makes it consistent with ratio points and also allows octave adjustments more easily.
-			//TODO This is all we use now so we could use TuningPitch directly for the base world linear scissor space.
-			//Would just need to separate out color and then we could us it instead.
-			//Just use TuningPitch and color then.
-			point.dspace_pos = Vector2F.{
-				p_index/cast(float)tuning_system.music_pt_count,
-				1.0/tuning_system.music_pt_count};
-			//NOTE : This does not do anything. Maybe I should comment out for clarity.
-			point.world_pos = linear.base_world_pos;
-			point.world_pos.y += p_index * equal_point_height;
-			point.rect_dim = MakeV2F(linear.octave_dim.x, equal_point_height);
-			point.rect_mesh = RectMinCenterDim(point.world_pos, point.rect_dim);
-			point.rel_pos.y = point.world_pos.y - linear.base_world_pos.y;
-		} else {
-			octave_index, mod_index := ComputeQuotientAndRemainder2(p_index, tuning_system.music_pt_count);
-			tuning_pitch : TuningPitch = array_tuning_pitches[mod_index];
-
-			//TODO This is all we use now so we could use TuningPitch directly for the base world linear scissor space.
-			//Would just need to separate out color and then we could us it instead.
-			//Just use TuningPitch and color then.
-			point.dspace_pos = Vector2F.{tuning_pitch.linear_from_start, tuning_pitch.linear_to_next};
-			// point.dspace_pos = Vector2F.{total_height, length_ratio};
-			// print("total_height = %\n, linear = %\n", total_height, tuning_pitch.linear_from_start);
-
-			//TODO NONE OF THIS IS USED ANYMORE We can remove eventually or maybe we will reuse for op_space linear spaces
-			//NOTE : We can do everything from length_ratio with accumulation. Leaving here for reference.
-			// ratio_with_octave : float = RatioWithOctaveBase(tuning_pitch.ratio_from_start, octave_index, tuning_system.compass_interval);
-			// start_ratio : float = LogRatioToLinear(ratio_with_octave, tuning_system.compass_interval);
-			// length_ratio : float = LogRatioToLinear(tuning_pitch.ratio_to_next_music_pt, tuning_system.compass_interval);
-			length_ratio : float = tuning_pitch.linear_to_next;
-
-			//TODO We don't use any of these for linear scissor, only dspace_pos and color. So maybe that is worth optimizing
-			//for to no longer use SpacePoint since we only need 6 floats now for each point.
-			point.world_pos = linear.base_world_pos;
-			// point.world_pos.y += start_ratio * linear.octave_dim.y;
-			point.world_pos.y += total_height * linear.octave_dim.y;
-			point.rect_dim = MakeV2F(linear.octave_dim.x, linear.octave_dim.y * length_ratio);
-			//NOTE : From min_center so we only have to adjust the height on the top
-			point.rect_mesh = RectMinCenterDim(point.world_pos, point.rect_dim);
-
-			// if p_index == 0 {
-			// 	linear.dspace_world_pos.y = linear.base_world_pos.y + 0.5*point.rect_dim.y;
-			// }
-			// point.rel_pos.y = point.world_pos.y + (0.5*point.rect_dim.y) - linear.dspace_world_pos.y;
-			point.rel_pos.y = point.world_pos.y - linear.base_world_pos.y;
-			// point.dspace_pos = Vector2F.{tuning_pitch.linear_from_start, length_ratio};
-			// point.fun_region_float[0] = total_height;
-			// point.fun_region_float[1] = length_ratio;
-
-			total_height += length_ratio;
-		}
-	}
-
-	return points_in_space;
-}
-
 MakeEqualLinearPoints :: inline (
 	linear : LinearPitchSpace,
 	tuning_system : TuningSystem,
@@ -8183,70 +8008,6 @@ Chord :: struct($size : int, $note_pos_type : Type) {
 }
 }
 
-//NOTE : This is 64-bit because we use it in asm which requires all 64-bit values right now.
-LinearPitchSpaceView :: enum {
-	RATIO_PROPORTIONAL; //default
-	FORCE_EQUAL;
-
-	//TODO I think we can remove the other options here now since we only use the 2 above. Keeping just in case for now.
-	// EQUAL;
-	// LOG_RATIO;
-
-	// //TODO could be interesting for experimentation later
-	// OVERLAY;
-	// SIDE_BY_SIDE;
-
-	// //TODO could have this as a view so we render out and select
-	// //grouped music_pts and points properly
-	// DSPACE_GROUP;
-} @LibraryAsmGen
-LinearPitchSpaceOrientation :: enum {
-	VERTICAL;
-	HORIZONTAL;
-}
-DEFAULT_LINEAR_SPACE_SIZE :: Vector2F.{2,12};
-DEFAULT_LINEAR_POINT_SIZE :: Vector2F.{2,1};
-/*TODO
-	should we store music_pt_set_id directly in here?
-	yes if we continue to only have 1 music_pt_set per dspace
-
-	TODO should we have a separate LinearSpace for music_lanes and for op_spaces?
-	this way we can optimize for each case. eg music_lanes are systematically
-	associated to rhythm by their op_grid_pos so we would not need PitchDSpaceToRhythmSection
-	for music_lanes and could use them only for op_space
-
-	***TODO Yes should have separate structs for each since
-	they will likely be very different. Likely for rows we will
-	have dspaces just to cache values and dimensions but
-	otherwise things will be stored in the rows or x_index.***
-*/
-LinearPitchSpace :: struct {
-	#as using linear_space : Space2D;
-	//music_pt_set_id : int;
-	base_world_pos : Vector2F;
-	octave_dim : Vector2F;
-	orientation : LinearPitchSpaceOrientation;
-	/*TODO not sure how we should go about doing the different views
-		for example what if we want it to be overlayed 
-		could set view to both since we'd have to manage rendering differences
-		such as color and opacity
-	*/
-	view : LinearPitchSpaceView;
-	//TODO make a separate LinearPitchSpace struct and move this in?
-	//TODO octave can be less bits of course, probably an s8 is fine
-	current_octave : int;
-	//TODO maybe we can just draw which octave we're at somehow
-	octave_text : string;
-
-	/*Note : can potentially split out LinearPitchSpace
-	in music_lane from the ones in op_space so will separate
-	the data internally for now until we actually do it
-	*/
-	//TODO can use this for music_lane offset
-	// grid_rel_pos : Vector2F;
-	// grid_pos : Vector2I;
-}
-
 CircleSpace :: struct {
 	//Note : In case we have 2 sets of SpacePoints with same tuning_system_id
 	//we put tuning_system_id in here. This way we allow flexibility.
@@ -8711,114 +8472,10 @@ CreateCircleInOpSpace :: inline (
 	return circle;
 }
 
-//TODO should we separate music_pts/OscWave out for multi-beat music_pts and more efficient use of space
-//TODO then we would also only have to loop through music_pts instead of all values
-Space2D :: struct {
-	#as using space : DimensionalSpace;
-	transform : Matrix2F;
-	//TODO move this back into LinearPitchSpace and CircularPitchClassSpace
-	hover_point_index : int;
-	//TODO could put start_index and end_index to know exact positions in all_space_points array
-}
-
-/*TODO
-	these should be spatially partitioned in a separate table that is acessed through an optimized spatial hash
-	stack overflow hash - hashing 2D, 3D and...
-
-	should we have entities or elements in general?
-	seems like DimensionalSpace may just be an Entity struct
-	with basic dimensions and positions and other variables
-	that are needed by all entities (eg mesh_id...)
-*/
-//TODO how should we generate ids?
-DimensionalSpace :: struct {
-	//TODO could maybe use a dspace id to type table
-	//TODO update dspace data to work with indexed by id model
-	dspace_id : int;
-	// dpsace_type : Type;
-	//TODO should we eventually do Matrix3x2F for efficiency?
-	//TODO do we really need both of these world vectors?
-	dspace_world_center : Vector2F;
-	dspace_world_pos : Vector2F;
-	dspace_dim : Vector2F; //TODO should this be an int vector?
-	dspace_dim_int : Vector2I;
-	dspace_point_dim : Vector2F;
-	//TODO keep index in here for point locations of this dspace
-
-	//TODO dspace might also have a invariant_id
-	//TODO dspace might be related to one scale
-}
-
 OpGridPosToStartPulseCoord :: inline (op_grid_pos_x : int, dspace_set_count : int) -> int
 {
 	pulse_coord : int = round_to_int(0.5 * op_grid_pos_x * dspace_set_count);
 	return pulse_coord;
-}
-
-/*TODO
-	for clarity and efficiency, we can likely separate linear_space_points
-	from higher_space_points
-
-TODO We could store op_space_id in here and then index and sort by op_space_id
-and then we could also remove by op_space_id more easily.
-*/
-//TODO CAN CHANGE NAME TO SpacePoint2D
-//TODO CHANGE NAME TO COORDINATE
-//TODO do we make points dspace specific (different dimensions)
-//TODO currently this is for chord_s2 and works for linear and circular
-//TODO 1D version would have only int for int_pos and no text and maybe no color
-SpacePoint :: struct {
-	//MusicPt : dspace_id and rel_pos are enough for a unique space_point_id
-	id : int;
-	dspace_id : int;
-	//TODO We could have OpDSpaceType in here now or EntityType.
-
-	//MusicPt : These are the original positions of the music_pt (maybe we can remove later)
-	//Leaving here now for convenience
-	/*TODO should probably remove this and only have rel_pos and dspace_pos
-		this unnecessarily complicates updating
-
-		also may be worth keeping since we may not move dspaces very often
-		space vs speed argument
-
-		TODO Should this be float64 for world_pos?
-	*/
-	world_pos : Vector2F;
-	//TODO could store a mesh_id in here at some point to have different meshes
-	//TODO this is only being used for linear spaces now for alternative views
-	//such as log and linear and overlay and for pitch class profiles
-	rect_mesh : Rectangle2;
-	//TODO Can likely re
-	rect_dim : Vector2F;
-	//TODO eventually need to have a separate collider rect instead 
-
-	//TODO Can likely remove 1 or both of these and just use world_pos (which should probably be float64)
-	//TODO can probably remove one of these, or rename to
-	//original_rel_pos and transformed_rel_pos
-	rel_pos : Vector2F; //MusicPt : can derive octave, tritave, etc... from static rel_pos and scale data
-	//MusicPt : These are both the dimensional space and cam space we actually use for rendering and checks
-	dspace_pos : Vector2F;
-
-
-	//MusicPt : int_pos used for chord space 2 fundamental region points values
-	//and also used for linear pitch space to cache music_pt values with octave
-	//TODO should we move it out if not used by anything else?
-	//TODO this is probably just a cached version of the tuning_pitch music_pt_pos
-	//TODO should we remove it then?
-	int_pos : Vector2I;
-	fun_region_float : [2] float64;
-
-	//Can use this on a filter if needed to not draw
-	//It looked weird on 2D as an outline though...
-	//Maybe I can draw something else to show points off access
-	//TODO Not really using this anymore so we can remove if we don't need
-	//but am leaving here for now in case we want to separate
-	not_base_point : bool;
-
-	color : Vector4F;
-	text : string;
-	//TODO should we cache beat in here? or beat in separate table to dspace
-	//TODO if point data is completely separated by dimension, then we can cache tuning music_pts in here
 }
 
 CirclePoint :: struct {
@@ -9154,102 +8811,16 @@ RowViewType :: enum {
 //TODO FROM HERE ADd mspace_id to this and then also get_or_create_mspace by name so it's unique to the string
 //and we can recreate when recompiling and then either do clear or not
 CreateMusicRow :: inline (create_row_data : CreateRowData, all_data : *AllData) -> MusicLaneRow {
-	mspace_data, found_mspace := ArrayFindFirstByNameId(all_data.all_mspace_data,
-		create_row_data.mspace_id, "mspace_id");
-	//TODO We should either check this externally or return this as an error.
-	//Probably an error is best for dynamic libraries eventually.
-	assert(found_mspace);
-
-	//TODO Should we push this halfway down row_height here or leave it to the player to decide and just 
-	//have the lowest point be what the player inputs be default?
-	//TODO Maybe we don't need this and we just compute it directly if/else.
-	//ALSO if we don't allow adding a row by index directly here and the player has to do it, then we can just have this 1 way.
-	// next_lane_world_base_pos : Vector2F = ComputeNextMusicLaneWorldPos(all_data.all_mspace_data[0].all_music_lane_rows);
-	//Center the first dspace to the middle of screen. Can remove this if unnecessary
-	next_row_world_base_pos : Vector2F = Vector2F.{0,-0.25 * create_row_data.row_height};
-	//TODO This has to be allowed to grow up or down depending on a global setting so people can adjust either way.
-	// If we don't have any rows, then we use the default world_pos for the row.
-	if mspace_data.all_music_lane_rows.count > 0 {
-		//TODO This should be += if we have the opposite directions and add rows upwards if we want to allow that.
-		last_row_y : float = peek(mspace_data.all_music_lane_rows).row_world_base_start.y;
-		//TODO We can just allow adjusting the gap here instead
-		next_row_world_base_pos.y = last_row_y - create_row_data.row_height - MUSIC_ROW_GAP;
-	}
-
-	//TODO How should we compute this?
-	next_row_index : int = mspace_data.all_music_lane_rows.count;
-
-	DEFAULT_MUSIC_LANE_ID : int = 0;
-	//TODO Leaving here for now just in case but we can remove it if everything is fine.
-	#if 0 {
-	row : MusicLaneRow = MakeMusicLaneRow(DEFAULT_MUSIC_LANE_ID, RowSystemType.internal_pitch, MusicLaneType.MEMORY, 
-		next_row_world_base_pos, next_row_index, create_row_data.row_height, use_create_row_data = true, create_row_data);
-	array_add(*mspace_data.all_music_lane_rows, row);
-	} else {
-	row : *MusicLaneRow = array_add(*mspace_data.all_music_lane_rows);
-	//We are using negative row_ids/row_indices now for hidden rows
-	assert(ALL_NEXT_IDS.NEXT_MUSIC_LANE_ROW_ID >= 0);
-	row.id = ALL_NEXT_IDS.NEXT_MUSIC_LANE_ROW_ID;
-	ALL_NEXT_IDS.NEXT_MUSIC_LANE_ROW_ID += 1;
-	// row.music_lane_id = DEFAULT_MUSIC_LANE_ID;
-	row.row_world_base_start = next_row_world_base_pos;
-	row.total_row_index = next_row_index;
-	row.octave_height = create_row_data.octave_height;
-	row.row_height = create_row_data.row_height;
-	row.row_midi_data = create_row_data.row_midi_data;
-	row.row_system_type = create_row_data.row_system_type;
-	// row.sound_on = create_row_data.sound_on;
-	row.is_muted_row = create_row_data.muted_row;
-	// row.num_of_points = GetRowNumOfPoints(create_row_data.tuning_system_count, create_row_data);
-	}
-
-	last_section_x : int = 0;
-	for row_section : create_row_data.row_section_data {
-		linear_tuning : LinearToTuningSystem = 
-			GetOrCreateLinearTuning(row_section.tuning_system_id, row_section.linear_view, all_data);
-
-		section : *SectionToRow = array_add(*mspace_data.all_section_to_row);
-		//TODO Should this be index or id? Id would allow row movement without having to update this section.
-		section.row_id = row.id;
-		section.dspace_id = linear_tuning.dspace_id;
-		section.start_x = last_section_x;
-		section.end_x = last_section_x + row_section.x_length;
-		section.tuning_system_id = linear_tuning.tuning_system_id;
-
-		//TODO Should check that last_section_x == global row_size after this loop i think.
-		//So we would have to set the row_size beforehand OR take the first row or something like that.
-		//We could force all rows to be row_size OR we just take max row here and set that to global row size.
-		//Maybe force is better first for consistency and later we can see if it makes sense to allow shorter rows.
-		//Different row sizes can be allowed across different musical spaces eventually.
-		last_section_x = section.end_x;
-	}
-
-	row.row_size = last_section_x;
-	if !mspace_data.is_fixed_audio_row_size {
-		mspace_data.mspace_audio_row_size = max(row.row_size, mspace_data.mspace_audio_row_size);
-	}
-
-
-	linear_grid_dim : Vector2F = ---;
-	linear_grid_dim.x = all_data.global_rules.memory_unit_width * last_section_x;
-	linear_grid_dim.y = create_row_data.row_height;
-	//TODO We could store this rectangle in a separate linear space for op space struct with grid_size etc...
-	// world_min_pos : Vector2F = points_in_space[0].rect_mesh.min + row.row_world_base_start;
-	//row.row_world_base_start is the min_center so we subtract half the width the get the bottom left
-	//without having to use the space_points so we can compute this anywhere instead.
-	world_min_pos : Vector2F = row.row_world_base_start - Vector2F.{0.5*all_data.global_rules.memory_unit_width,0};
-	linear_grid_rect : Rectangle2 = RectMinDim(world_min_pos, linear_grid_dim);
-	linear_world_center : Vector2F = GetCenter(linear_grid_rect);
-
-	coll : *CollisionEntity = array_add(*mspace_data.all_base_collision_entities);
-	coll.entity_id = row.id;
-	coll.entity_type = EntityType.LANE_ROW_WITH_SECTIONS;
-	coll.shape = CollisionShape.RECTANGLE;
-	coll.rect = RectCenterDim(linear_world_center, linear_grid_dim);
-
-	return row;
+	return CreateMusicRow(
+		create_row_data,
+		all_data.all_mspace_data,
+		all_data.global_rules,
+		all_data.all_tuning_systems,
+		all_data.all_tuning_pitches,
+		*all_data.all_linear_to_tuning_system,
+		*all_data.all_linear_pitch_spaces,
+		*all_data.all_space_points); 
 }
-
 
 CreateOpLinearRow :: inline (create_row_data : CreateRowData, all_data : *AllData) -> MusicLaneRow {
 	//TODO Remove this once the new way is working.
@@ -9289,8 +8860,16 @@ CreateOpLinearRow :: inline (create_row_data : CreateRowData, all_data : *AllDat
 		}
 	} else {
 		for row_section : create_row_data.row_section_data {
-			linear_tuning : LinearToTuningSystem = 
-				GetOrCreateLinearTuning(row_section.tuning_system_id, row_section.linear_view, all_data);
+			// linear_tuning : LinearToTuningSystem = 
+			// 	GetOrCreateLinearTuning(row_section.tuning_system_id, row_section.linear_view, all_data);
+			linear_tuning : LinearToTuningSystem = GetOrCreateLinearTuning(
+				row_section.tuning_system_id, 
+				row_section.linear_view, 
+				all_data.all_tuning_systems, 
+				all_data.all_tuning_pitches,
+				*all_data.all_linear_to_tuning_system,
+				*all_data.all_linear_pitch_spaces,
+				*all_data.all_space_points);
 
 			section : *SectionToRow = array_add(*all_data.all_op_section_to_row);
 			//TODO Should this be index or id? Id would allow row movement without having to update this section.
@@ -9385,7 +8964,6 @@ ComputeNextPitchRowWorldStart :: inline (
 //This could be store in the MusicLaneRow then.
 row_world_height : float = 12.5;
 MUSIC_LANE_GAP : float = 5;
-MUSIC_ROW_GAP : float = 1;
 DEFAULT_START_POS :: Vector2F.{0,0};
 ComputeNextMusicLaneWorldPos :: inline (
 	all_music_lane_rows : [] MusicLaneRow)
@@ -10042,58 +9620,6 @@ AsmOpRowData :: struct {
 	copy_music_row_id : int;
 }
 
-CreateRowData :: struct {
-	mspace_id : int;
-	// lane_start_row_index : int;
-	// relative_row_index : int;
-	// row_name : string;
-	//TODO Could replace this with tuning_system_id
-	//TODO Can remove this if we remove old precise linear way
-	//since we have info in row_section_data.
-	tuning_system_type : TuningSystemType;
-	tuning_system_count : int;
-
-	base_note : int;
-
-	//TODO Can we remove this if we are using tuning system only now? I think so yes but maybe
-	//need to remove some old code before it'll compile out.
-	use_num_of_points : bool = false;
-	num_of_points : int;
-
-	//TODO Pass this in from the code
-	//TODO Should these be float64 so we dont lose info from asm?
-	octave_height : float = 12;
-	row_height : float = 12;
-
-	sound_on : bool = true;
-	muted_row : bool;
-
-	row_system_type : RowSystemType;
-	row_system_id : int;
-	row_sub_system_id : int;
-
-	music_lane_row_point_type : MusicLaneRowPointType;
-	row_midi_data : RowMidiData;
-
-	//TODO This can be used for modulo spaces
-	//So maybe we can replace with row_type
-	// is_octave_view : int;
-	// num_of_octaves : int;
-	// row_view_type : RowViewType;
-
-	// compass_interval : int;
-
-	row_section_data : [] RowSectionData;
-
-
-	//op_row specific data
-	//TODO We can separate this if needed but keeping in here for convenience for now.
-	op_world_pos : Vector2F;
-	x_point_width : float;
-	op_row_type : OpRowType;
-	copy_music_row_id : int;
-}
-
 //TODO Could do a version with input params for non-default
 MakeDefaultCreateRowData :: inline (all_data : AllData) -> CreateRowData
 {
@@ -10103,34 +9629,6 @@ MakeDefaultCreateRowData :: inline (all_data : AllData) -> CreateRowData
 	create_row_data.tuning_system_count = all_data.global_rules.tuning_system.music_pt_count;
 	return create_row_data;
 }
-//Asm specific create row data
-AsmCreateRowData :: struct {
-	octave_height : float64;
-	row_height : float64;
-	muted_row : AsmBool;
-	//TODO Should we make this it's own struct?
-	row_system_type : RowSystemType;
-	row_system_id : int;
-	row_sub_system_id : int;
-	row_sections : AsmArray(RowSectionData);
-	row_midi_data : AsmRowMidiData;
-} @LibraryAsmGen
-RowSectionData :: struct {
-	linear_view : LinearPitchSpaceView;
-	tuning_system_id : int;
-	//TODO Should this be length or x_start and x_end for convenience?
-	//This way eliminates the possibility of overlapping errors.
-	x_length : int;
-} @LibraryAsmGen
-
-MakeRowSectionData :: inline (tuning_system_id : int, x_length : int, linear_view : LinearPitchSpaceView = .RATIO_PROPORTIONAL) -> RowSectionData {
-	section_data : RowSectionData = ---;
-	section_data.linear_view = linear_view;
-	section_data.tuning_system_id = tuning_system_id;
-	section_data.x_length = x_length;
-	return section_data;
-}
-
 
 /*Setting up music data with a struct so we can easily add
 members if we need to add more music data setup.
@@ -11066,36 +10564,6 @@ MapGeometryType :: enum {
 	// memory_range;
 }
 
-ArrayData :: struct {
-	count : int;
-	data_address : int;
-}
-AsmArray :: struct($array_type : Type) {
-	count : int;
-	data_address : int;
-}
-AsmPointer :: struct($p_type : Type) {
-	data_address : int;
-}
-
-CreateLaneData :: struct {
-	row_count : int;
-	tuning_system_count : int;
-}
-//DOC bool in language is 64-bits so we just use an int
-//and then use functions to convert here to bool type
-AsmBool :: struct {
-	value : int;
-}
-ToAsmBool :: inline (b : bool) -> AsmBool {
-	if b return .{1};
-	else return .{0};
-}
-AsmBoolToBool :: inline (ab: AsmBool) -> bool {
-	//This is the same as cast(bool) int but more explicit for clarity and remembering.
-	if ab.value == 0 return false;
-	else return true;
-}
 AsmGeom3D :: struct {
 	group_id : int;
 	op_space_id : int;
@@ -13633,113 +13101,6 @@ PointRectInLinearSpace :: inline (point : SpacePoint, linear : Space2D) -> Recta
 	return rect;
 }
 
-/*TODO Should we rename this to GlobalDefaults
-since they are not really used as rules anymore?
-*/
-GlobalRules :: struct {
-	check_max_voice_leading : bool;
-	max_voice_leading_size : int;
-
-	check_max_chord : bool;
-	max_chord_size : int;
-
-	tuning_system_id : int;
-	//TODO Caching here for now until i think more about it
-	tuning_system : TuningSystem; 
-
-	//TODO Should likely change name of struct
-	//or move these to a more appropriate place
-	//for overall lane and row dimensions.
-	row_size : int;
-	memory_unit_width : float;
-
-	//TODO should we have a global scale as well?
-}
-
-/*TODO We can differentiate here between linear and non-linear with the same
-tuning_system but technically these are different points so maybe the dspace should
-be different. For now we only have 1 anyways. The rationale here is that each tuning
-system should have 1 representation. Otherwise we cant really tell which is which.
-We can add 2 separate point sets later if needed or just force equal rendering
-at the rendering loop. I am not sure if it is needed right now so let's see until later if we do.
-Making 2 sets of points keep everything the same and we just add that.
-
-TODO Should we put this in LinearPitchSpace like we did for CircleSpace?
-Right now we don't have a LinearPitchSpace since we just create the SpacePoint
-but maybe it would make sense since we sort of need it for op_spaces as well.
-Let's see how we do op_space and then we can homogenize.
-
-IF WE WANT DIFFERENT COLORS for the same tuning_system then we could create that
-in separate data so that it does not need to overlap.
-*/
-LinearToTuningSystem :: struct {
-	// view : LinearPitchSpaceView;
-	dspace_id : int;
-	tuning_system_id : int;
-}
-
-GetOrCreateLinearTuning :: inline (
-	tuning_system_id : int, 
-	linear_view : LinearPitchSpaceView, 
-	all_data : *AllData) 
--> LinearToTuningSystem
-{
-	tuning_system, found_tuning_system := 
-		ArrayFindFirstConstByNameId(all_data.all_tuning_systems, tuning_system_id, "id");
-	//We just return default tuning_system for now to avoid error checking everywhere.
-	if !found_tuning_system {
-		//TODO Could generalize this to print to inner console.
-		print("Invalid tuning_system_id : %\n", tuning_system_id);
-		tuning_system = all_data.all_tuning_systems[0];
-	}
-	// if !found_tuning_system {
-	// 	//TODO Can likely log this error or send back to player. Maybe better to check input before running it instead of everywhere.
-	// 	//Unless of course we allow an api and then we would have to consider other things.
-	// 	print("Invalid tuning_system_id : %\n", tuning_system_id);
-	// 	return linear_to_tuning_system, false;
-	// }
-
-	linear_to_tuning_system, found_linear_to_tuning_system := 
-		ArrayFindFirstConstByNameId(all_data.all_linear_to_tuning_system, 
-			tuning_system.id, "tuning_system_id");
-
-	/*TODO We could NOT create SpacePoints for equal sized and just draw them at rendering. That seems beneficial
-	actually so maybe do that and only get points if we have proportional. But the proportional, we could
-	also just compute it directly from the tuning_pitches.
-	COULD Not create SpacePoint at all and store the log length ratio in TuningPitch but then we have no visual
-	abstraction and so SpacePoint allows us to make these linear spaces without a TuningSystem.
-
-	TODO Should we be creating here or create when we create the TuningSystem?
-	*/
-	if !found_linear_to_tuning_system {
-		//NOTE : We no longer store it but use to to create the points for now since we still have the old
-		//precise linear rendering method.
-		//TODO Can we remove this altogether and just use the row for MakeLinearSpacePoints?
-		//TODO Maybe we can create LinearPitchSpace from row for convenience and then remove it later if it's unnecessary.
-		//NOTE : It is good to keep this for now so that the SpacePoints remain consistent
-		//with differen dspace_ids
-		linear : *LinearPitchSpace = array_add(*all_data.all_linear_pitch_spaces);
-		linear.dspace_id = ALL_NEXT_IDS.DSPACE_ID;
-		defer ALL_NEXT_IDS.DSPACE_ID += 1;
-		//TODO We have this here in case we want to force an unequal temperament to be equal.
-		//We can remove later if we do the forcing in the rendering directly for efficiency.
-		linear.view = linear_view;
-
-		//TODO Should we call this here or check the FORCE_EQUAL type here and separate here directly.
-		//Let's see once generalize and use the same SpacePoints everywhere
-		//TODO CAN WE JUST CREATE FROM ROW DIRECTLY? Does the linear allow more generalized?
-		space_points : [] SpacePoint = MakeRatioProportionalPoints(tuning_system.music_pt_count, linear,
-			tuning_system, all_data.all_tuning_pitches);
-		ArrayAddAll(space_points, *all_data.all_space_points);
-
-		linear_to_tuning_system.dspace_id = linear.dspace_id;
-		linear_to_tuning_system.tuning_system_id = tuning_system.id;
-		array_add(*all_data.all_linear_to_tuning_system, linear_to_tuning_system);
-	}
-
-	return linear_to_tuning_system;
-}
-
 //TODO Maybe we should make everything in TuningSystem and TuningPitch
 //be float64 to reduce any kind of float errors down the road. Although
 //we have to reduce to float32 for frequency anyways since the audio buffer
@@ -13893,17 +13254,6 @@ ArrayCopy :: (array: [] $T, allocator : Allocator = temp) -> [] T {
     return dest;
 }
 
-//TODO should we separate this general data array code from the
-//more game-specific data code
-/*Probably can replace with an array_resize and memcpy
-*/
-ArrayAddAll :: inline (array : [] $T, add_to : *[..] T) {
-	//TODO probably a faster way to do this with memcpy
-	//if we have enough space in the resizable array,
-	//otherwise we need to reserve more space
-	//array_resize and then memcpy
-	for array array_add(add_to, it);
-}
 
 ArraySubtract :: (a : [] $T, b : [] T) -> [] T {
 	assert(a.count == b.count);
@@ -14071,49 +13421,10 @@ ArrayFindMinValueByNameId :: (
 }
 
 DSPACE_ID_NAME :: "dspace_id";
-default_builder : String_Builder;
-builder_string :: (format_string : string, args : .. string) -> string {
-	print_to_builder(*default_builder, format_string, args[0]);
-	return builder_to_string(*default_builder);
-}
-
-builder_string_2 :: (format_string : string, args : .. string) -> string {
-	print_to_builder(*default_builder, format_string, args[0], args[1]);
-	return builder_to_string(*default_builder);
-}
-
-ArrayFindFirstConstByNameId :: (
-	array: [] $T, 
-	id: $S, $name_id : string) 
--> T, bool 
-{
-    for array {
-    	equal_ids := #insert -> string {
-    		return builder_string("it.% == id;", name_id);
-    	}
-    	if equal_ids return it, true;
-    }
-    return T.{}, false;  // Not found.
-    //TODO could assert in here and add a compiler flag
-}
 
 //TODO could have a query builder for &&, ||, ==, !=, multiple values, etc...
 //TODO for multiple values .. string at the end and then loop add && == name
 //TODO Should this return an index or just the value?
-ArrayFindFirstByNameId :: (
-	array: [] $T, 
-	id: $S, $name_id : string)
--> *T, bool 
-{
-    for * array {
-    	equal_ids := #insert -> string {
-    		return builder_string("(<<it).% == id;", name_id);
-    	}
-    	if equal_ids return it, true;
-    }
-    return null, false;  // Not found.
-    //TODO could assert in here and add a compiler flag
-}
 
 ArrayFindFirstIndexByNameId :: (
 	array: [] $T, 
@@ -14269,30 +13580,6 @@ ArrayFindAllVarNameByIndex :: (
 since this is the new convention and is more clear and consisten than the function parameter
 passing method.
 */
-//TODO Can replace with context allocator once we update jai
-//TODO should we make temp the default allocator for these?
-//TODO could make a version where allocator is passed in at compile-time
-ArrayFindAllVarName :: (
-	array: [] $T, 
-	id: $S, 
-	$name_id : string,
-	allocator : Allocator = .{})
--> [] T 
-{
-    a := ifx allocator.proc then allocator else context.allocator;
-	result : [..] T;
-	result.allocator = a;
-    for array {
-    	equal_ids := #insert -> string {
-    		return builder_string("it.% == id;", name_id);
-    	}
-    	if equal_ids {
-    		array_add(*result, it);
-    	}
-    }
-    return result;
-}
-
 ArrayFindAllMultiArrayByNameId :: (id: $S, $name_id : string, $type : Type, arrays : .. $T) -> [] type {
 	#assert type_info(T).type == Type_Info_Tag.ARRAY;
 	result : [..] type;

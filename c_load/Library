@@ -22,32 +22,16 @@ AsmClearMSpaceData :: struct {
 AsmDeleteMSpaceData :: struct {
 	mspace_id : int;
 }
-AsmDeleteSimpleSynthData :: struct {
-	synth_id : int;
-}
 AsmGetOrCreateSimpleSynthData :: struct {
 	ret_synth_id : int;
 	synth_name : string;
 }
+AsmDeleteSimpleSynthData :: struct {
+	synth_id : int;
+}
 AsmGetTuningSystemData :: struct {
 	ret_tuning_system_id : int;
 	short_name : string;
-}
-AsmUpdateMSpaceData :: struct {
-	mspace_id : int;
-	update_mspace_index : bool;
-	mspace_index : int;
-	update_mspace_name : bool;
-	mspace_name : string;
-	update_tano_x_unit_width : bool;
-	tano_x_unit_width : float64;
-	update_mspace_audio_row_size : bool;
-	set_fixed_audio_row_size : bool;
-	mspace_audio_row_size : int;
-}
-AsmClearOpData :: struct {
-	op_space_id : int;
-	clear_not_filter_3D : bool;
 }
 CreateTuningType :: enum {
 	EQUAL_TEMPERAMENT;
@@ -76,10 +60,6 @@ DrawVLType :: enum {
 	VL_LINE;
 	VL_ARROW;
 }
-LinearPitchSpaceView :: enum {
-	RATIO_PROPORTIONAL;
-	FORCE_EQUAL;
-}
 SpiralType :: enum {
 	PROPER;
 	CONCENTRIC_CIRCLE;
@@ -99,6 +79,30 @@ AsmRowMidiData :: struct {
 	midi_velocity : int;
 	midi_control_change : int;
 }
+AsmUpdateMSpaceData :: struct {
+	mspace_id : int;
+	update_mspace_index : bool;
+	mspace_index : int;
+	update_mspace_name : bool;
+	mspace_name : string;
+	update_tano_x_unit_width : bool;
+	tano_x_unit_width : float64;
+	update_mspace_audio_row_size : bool;
+	set_fixed_audio_row_size : bool;
+	mspace_audio_row_size : int;
+}
+AsmClearOpData :: struct {
+	op_space_id : int;
+	clear_not_filter_3D : bool;
+}
+RowSystemType :: enum {
+	none;
+	internal_message;
+	internal_pitch;
+	midi_control_change;
+	midi_velocity;
+	midi_pitch;
+}
 OscWaveType :: enum {
 	SINE;
 	SQUARE;
@@ -114,13 +118,13 @@ OscWaveType :: enum {
 	PIANO_3;
 	NONE;
 }
-RowSystemType :: enum {
-	none;
-	internal_message;
-	internal_pitch;
-	midi_control_change;
-	midi_velocity;
-	midi_pitch;
+LinearPitchSpaceView :: enum {
+	RATIO_PROPORTIONAL;
+	FORCE_EQUAL;
+}
+ChordSpaceFilterAggregate :: enum {
+	INTERSECTION;
+	UNION;
 }
 S3CamStartType :: enum {
 	MIN_ZY;
@@ -144,10 +148,6 @@ ChordSpaceFilterType :: enum {
 	CHROMATIC_SUM;
 	EQUALS_AND_ONE_VL_SUM;
 }
-ChordSpaceFilterAggregate :: enum {
-	INTERSECTION;
-	UNION;
-}
 AsmGetOrCreateMSpaceData :: struct {
 	ret_mspace_id : int;
 	gc_type : GetOrCreateMSpaceType;
@@ -159,11 +159,6 @@ AsmOpSpaceData :: struct {
 	ret_op_space_id : int;
 	op_space_type : AsmOpSpaceType;
 	op_space_name : string;
-}
-RowSectionData :: struct {
-	linear_view : LinearPitchSpaceView;
-	tuning_system_id : int;
-	x_length : int;
 }
 AsmText3D :: struct {
 	op_space_id : int;
@@ -195,6 +190,75 @@ AsmUpdateSimpleSynthData :: struct {
 	update_release_curve : bool;
 	release_curve : float64;
 }
+RowSectionData :: struct {
+	linear_view : LinearPitchSpaceView;
+	tuning_system_id : int;
+	x_length : int;
+}
+AsmCreateTuningData :: struct {
+	ret_tuning_system_id : int;
+	create_tuning_type : CreateTuningType;
+	name : string;
+	short_name : string;
+	compass_interval : float64;
+	point_count : int;
+	values : [] float64;
+}
+AsmCSFilter :: struct {
+	filter_index : int;
+	filter_value : float64;
+	value_set : [] float64;
+	filter_type : ChordSpaceFilterType;
+}
+AsmMapCircle :: struct {
+	dspace_id : int;
+	op_space_id : int;
+	dspace_shape_group : int;
+	pitches : [] float64;
+	draw_vl_type : DrawVLType;
+}
+AsmMapSpiral :: struct {
+	op_space_id : int;
+	dspace_id : int;
+	dspace_shape_group : int;
+	map_chords : [] float64;
+	draw_vl_lines : bool;
+}
+MapChordS2Data :: struct {
+	dspace_id : int;
+	op_space_id : int;
+	vl_start_chord : [] float64;
+	vl_deltas : [] float64;
+}
+MapChordS3Data :: struct {
+	op_space_id : int;
+	vl_start_chord : [] float64;
+	vl_deltas : [] float64;
+	vl_index_ref : int;
+}
+AsmCreateRowData :: struct {
+	octave_height : float64;
+	row_height : float64;
+	muted_row : bool;
+	row_system_type : RowSystemType;
+	row_system_id : int;
+	row_sub_system_id : int;
+	row_sections : [] RowSectionData;
+	row_midi_data : AsmRowMidiData;
+}
+AsmSpace3Data :: struct {
+	op_space_id : int;
+	tuning_system_id : int;
+	higher_dim : int;
+	asm_cs_filters : [] AsmCSFilter;
+	s3_cam_start_type : S3CamStartType;
+	cam_start_pos : Vector3;
+	osc_wave_type : OscWaveType;
+	set_3d_perspective : bool;
+	depth : float64;
+	n : float64;
+	f : float64;
+}
 AsmGeom2D :: struct {
 	dspace_id : int;
 	op_space_id : int;
@@ -212,21 +276,6 @@ AsmText2D :: struct {
 	color : Vector4;
 	render_order : int;
 }
-AsmCSFilter :: struct {
-	filter_index : int;
-	filter_value : float64;
-	value_set : [] float64;
-	filter_type : ChordSpaceFilterType;
-}
-AsmCreateTuningData :: struct {
-	ret_tuning_system_id : int;
-	create_tuning_type : CreateTuningType;
-	name : string;
-	short_name : string;
-	compass_interval : float64;
-	point_count : int;
-	values : [] float64;
-}
 AsmShapeData :: struct {
 	ret_shape_id : int;
 	dspace_id : int;
@@ -241,55 +290,6 @@ AsmShapeData :: struct {
 	type : AsmShapeType;
 	rect_pos : Vector2;
 	rect_dim : Vector2;
-}
-AsmMapCircle :: struct {
-	dspace_id : int;
-	op_space_id : int;
-	dspace_shape_group : int;
-	pitches : [] float64;
-	draw_vl_type : DrawVLType;
-}
-AsmMapSpiral :: struct {
-	op_space_id : int;
-	dspace_id : int;
-	dspace_shape_group : int;
-	map_chords : [] float64;
-	draw_vl_lines : bool;
-}
-AsmSpace3Data :: struct {
-	op_space_id : int;
-	tuning_system_id : int;
-	higher_dim : int;
-	asm_cs_filters : [] AsmCSFilter;
-	s3_cam_start_type : S3CamStartType;
-	cam_start_pos : Vector3;
-	osc_wave_type : OscWaveType;
-	set_3d_perspective : bool;
-	depth : float64;
-	n : float64;
-	f : float64;
-}
-MapChordS3Data :: struct {
-	op_space_id : int;
-	vl_start_chord : [] float64;
-	vl_deltas : [] float64;
-	vl_index_ref : int;
-}
-MapChordS2Data :: struct {
-	dspace_id : int;
-	op_space_id : int;
-	vl_start_chord : [] float64;
-	vl_deltas : [] float64;
-}
-AsmCreateRowData :: struct {
-	octave_height : float64;
-	row_height : float64;
-	muted_row : bool;
-	row_system_type : RowSystemType;
-	row_system_id : int;
-	row_sub_system_id : int;
-	row_sections : [] RowSectionData;
-	row_midi_data : AsmRowMidiData;
 }
 AsmCircleData :: struct {
 	ret_dspace_id : int;

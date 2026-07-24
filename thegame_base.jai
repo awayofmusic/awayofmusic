@@ -94,9 +94,9 @@ if !trans.is_initialized {
 
 //TODO Set these here for convenience when we pass in perm.all_data but maybe best to remove it
 //We use audio_data in ExecMInstr for example for the sample_rate since we already passed in all_data
-perm.all_data.renderer_data = renderer_data;
-perm.all_data.audio_data = audio_data;
-perm.all_data.game_input = game_input;
+// perm.all_data.renderer_data = renderer_data;
+// perm.all_data.audio_data = audio_data;
+// perm.all_data.game_input = game_input;
 
 /*TODO should we do this for every renderer_data.all_render_groups?
 
