@@ -1,0 +1,16345 @@
+#import "Sort";
+
+GameState :: struct {
+    memory : MemoryData;
+    is_initialized : bool;
+    persist : Persist;
+}
+
+//TODO move this out once we place rendere_data in the right place
+//TODO make a transient storage allocator
+TransientState :: struct {
+	memory : MemoryData;
+	is_initialized : bool;
+}
+
+ResetTransientMemory :: inline (trans : *TransientState) {
+}
+
+Kilobytes :: (bytes : s64) -> s64 #expand {
+    return 1024 * bytes;
+}
+
+Megabytes :: (bytes : s64) -> s64 #expand {
+    return 1024 * Kilobytes(bytes);
+}
+
+Gigabytes :: (bytes : s64) -> s64 #expand {
+    return 1024 * Megabytes(bytes);
+}
+
+TransformToCameraSpace :: inline (v : Vector2F, transform : Matrix2F, 
+							      cam : Camera2D, rotate_about : Vector2F = Vector2F.{}) 
+								  -> Vector2F 
+{
+	trans_pos : Vector2F = TransformAboutPoint(v, transform, rotate_about);
+	cam_pos : Vector2F = WorldSpaceToCameraSpace(trans_pos, cam);
+	return cam_pos;
+}
+
+ViewportOffset :: inline (v : Vector2F, render_group : RenderGroup) -> Vector2F {
+	//TODO Try changing this to pixels_per_square * screen_half_dim to see if that works for zoom
+	viewport : Vector2F = v + render_group.half_monitor_squares;
+	// viewport : Vector2F = v + render_group.screen_half_dim * render_group.pixels_per_square;
+	return viewport;			
+}
+
+WorldSpaceToViewportSpace :: inline (world_pos : Vector2F, cam : Camera2D, render_group : RenderGroup) -> Vector2F {
+	cam_pos := WorldSpaceToCameraSpace(world_pos, cam);
+	viewport := ViewportOffset(cam_pos, render_group);
+	return viewport;
+}
+//TODO This is very SIMDable
+WorldSpaceToCameraSpace :: inline (world_pos : $vec_type, cam : $cam_type) -> vec_type {
+	cam_rel : vec_type = world_pos - cam.world_pos;
+	return cam_rel;
+}
+
+CameraSpaceToWorldSpace :: inline (cam_pos : $vec_type, cam : $cam_type) -> vec_type {
+	cam_rel : vec_type = cam_pos + cam.world_pos;
+	return cam_rel;
+}
+
+PixelSpaceToWorldSpace :: inline (pixel_pos : s64, pixels_per_square : float) -> float {
+	world_pos : float = pixel_pos / pixels_per_square;
+	return world_pos;
+}
+
+DSpaceToCameraSpace :: inline (grid_pos : Vector2F, cam : $cam_type, space : DimensionalSpace) -> Vector2F {
+	cam_pos := DSpaceToWorldSpace(grid_pos, space);
+	cam_pos = WorldSpaceToCameraSpace(cam_pos, cam);
+	return cam_pos;
+}
+
+//TODO generalize to 2D object space with rotations and maybe 3D homogeneous coordinates
+DSpaceToWorldSpace :: inline (rel_pos : $vec_type, space : DimensionalSpace) -> vec_type {
+	world_pos : vec_type = rel_pos + space.dspace_world_pos;
+	return world_pos;
+}
+
+WorldSpaceToDimSpace :: inline (world_pos : $vec_type, dspace_world_pos : vec_type) -> vec_type {
+	dspace_pos : vec_type = world_pos - dspace_world_pos;
+	return dspace_pos;
+}
+
+//TODO could shorten this to one operation combining both conversion
+DimSpaceToCameraSpace :: inline (dspace_pos : $vec_type, space : DimensionalSpace, cam : $cam_type) -> vec_type {
+	world_pos : vec_type = GridSpaceToWorldSpace(dspace_pos, space);
+	cam_pos : vec_type = WorldSpaceToCameraSpace(world_pos, cam);
+	return cam_pos;
+}
+
+WorldRectToCamRect :: inline (world_rect : Rectangle2, cam : Camera2D) -> Rectangle2 {
+	cam_rect : Rectangle2 = world_rect;
+	cam_rect.min -= cam.world_pos;
+	cam_rect.max -= cam.world_pos;
+	return cam_rect;
+}
+
+//TODO write inverse of this function
+//and write unit_tests for both
+//REMINDER : Used to be s32 from old windows system layer for reference
+// MouseScreenToCam :: inline (mouse_x : s32, mouse_y : s32, render_group : RenderGroup) -> Vector2F {
+//TODO Can just pass in screen_half_dim and pixels pre square so we make it game independt and compute this in platform later
+MouseScreenToCam :: inline (mouse_x : int, mouse_y : int, render_group : RenderGroup) -> Vector2F {
+	delta_x : float = (mouse_x / cast(float) (render_group.window_width-1.0));
+	delta_y : float = (mouse_y / cast(float) (render_group.window_height-1.0));
+	#if 0 {
+	mouse_cam_x : float = 2.0 * render_group.half_monitor_squares.x * delta_x - render_group.half_monitor_squares.x;
+	mouse_cam_y : float = 2.0 * render_group.half_monitor_squares.y * delta_y - render_group.half_monitor_squares.y;
+	} else {
+	//TODO Need to either update half_monitor_squares when we update pixels_per_square OR just use this way everywhere
+	//Would this be clearer on 1 line?
+	mouse_cam_x : float = 2.0 * (render_group.screen_half_dim.x / render_group.pixels_per_square) * delta_x - 
+		render_group.screen_half_dim.x / render_group.pixels_per_square;
+	mouse_cam_y : float = 2.0 * (render_group.screen_half_dim.y / render_group.pixels_per_square) * delta_y - 
+		render_group.screen_half_dim.y / render_group.pixels_per_square;
+	}
+
+	mouse_cam : Vector2F = MakeV2F(mouse_cam_x, mouse_cam_y);
+	return mouse_cam;
+}
+
+#if 0 {
+GetDefaultBaseCam2D :: inline (all_2D_cams : [] Camera2D) 
+-> Camera2D 
+{
+	assert(all_2D_cams.count > 0);
+	default_base_cam : Camera2D = all_2D_cams[0];
+	return default_base_cam;
+}
+}
+
+/*TODO WE could have these inputs be passed in from 
+input mappings and just take the key code without the modifiers
+if people want movement to be something like arrow keys I think
+that makes sense. This as default makes sense since its 2d plane movement
+similar to 3d movement with wasd.
+
+TODO Can also pass in a speed here to change that although that 
+might make things choppy unless its a multiple i think with the
+smooth diagonal movement I added below.
+*/
+DefaultInputMove2D :: inline (
+	game_input : GameInput,
+	pixels_per_square : float) 
+-> Vector2F, moved_this_frame : bool
+{
+	//TODO Replace this with new input functions
+	keyboard := game_input.Controllers[0];
+	move_vec := Vector2F.{0,0};
+	moved_this_frame : bool = false;
+	// if keyboard.Right.EndedDown {
+	if IsInputDown(xx #char "D", game_input) {
+		move_vec += MakeV2F(1.0, 0);
+		moved_this_frame = true;
+	}
+	// if keyboard.Left.EndedDown {
+	if IsInputDown(xx #char "A", game_input) {
+		move_vec += MakeV2F(-1.0, 0);
+		moved_this_frame = true;
+	}
+	// if keyboard.Up.EndedDown {
+	if IsInputDown(xx #char "W", game_input) {
+		move_vec += MakeV2F(0, 1.0);
+		moved_this_frame = true;
+	}
+	// if keyboard.Down.EndedDown {
+	if IsInputDown(xx #char "S", game_input) {
+		move_vec += MakeV2F(0, -1.0);
+		moved_this_frame = true;
+	}
+
+ 	if move_vec.x != 0 && move_vec.y != 0 {
+    	move_vec *= 2.0*(1.0 / pixels_per_square);
+    	// move_vec *= 1.0*(1.0 / pixels_per_square);
+ 	} else {
+    	move_vec *= 2.0*(1.5 / pixels_per_square);
+    	// move_vec *= 1.0*(1.5 / pixels_per_square);
+	}	
+	return move_vec, moved_this_frame;
+}
+
+Camera3D :: struct {
+	world_pos : Vector3F;
+	rotation : Matrix3F;
+	//TODO how should we store our cubes dimensions?
+	// cam_dim : Rectangle2;
+}
+
+MakeRectToPixelSpace :: inline (
+	rect_pos : Vector2F,
+	rect_size : Vector2F,
+	window_center_pixel : Vector2F,
+	pixels_per_square : float)
+-> Rectangle2
+{
+	pixel_rect : Rectangle2 = RectCenterDim(rect_pos, rect_size);
+	pixel_rect_min : Vector2F = GetMinCorner(pixel_rect);
+	pixel_rect_max : Vector2F = GetMaxCorner(pixel_rect);
+
+	pixel_rect.min = CamSpaceToPixelSpace(pixel_rect_min, window_center_pixel, pixels_per_square);
+	pixel_rect.max = CamSpaceToPixelSpace(pixel_rect_max, window_center_pixel, pixels_per_square);
+
+	return pixel_rect;
+}
+
+CamRectToPixelRect :: inline (
+	cam_rect : Rectangle2,
+	window_center_pixel : Vector2F,
+	pixels_per_square : float)
+-> Rectangle2 
+{
+	pixel_rect := cam_rect;
+	pixel_rect.min = CamSpaceToPixelSpace(pixel_rect.min, window_center_pixel, pixels_per_square);
+	pixel_rect.max = CamSpaceToPixelSpace(pixel_rect.max, window_center_pixel, pixels_per_square);
+	return pixel_rect;
+}
+
+CamSpaceToPixelSpace :: inline (
+	cam_pos : Vector2F,
+	screen_half_dim : Vector2F,
+	pixels_per_square : float) 
+-> Vector2F
+{
+	pixel_pos : Vector2F = screen_half_dim + cam_pos * pixels_per_square;
+	return pixel_pos;
+}
+CamRectToPixelRect :: inline (rect : Rectangle2, g : *RenderGroup) -> Rectangle2 {
+	rp : Rectangle2 = ---;
+	rp.min = g.screen_half_dim + rect.min * g.pixels_per_square;
+	rp.max = g.screen_half_dim + rect.max * g.pixels_per_square;
+	return rp;
+}
+
+WorldSpaceToPixelSpace :: inline (
+	world_pos : Vector2F,
+	cam : Camera2D,
+	screen_half_dim : Vector2F,
+	pixels_per_square : float) 
+-> Vector2F 
+{
+	cam_pos : Vector2F = WorldSpaceToCameraSpace(world_pos, cam);
+	pixel_pos : Vector2F = CamSpaceToPixelSpace(cam_pos, screen_half_dim, pixels_per_square);
+	return pixel_pos;
+}
+
+GetPermanentStorage :: inline (game_memory : *GameMemory) -> *Persist {
+    game_state := cast(*GameState) game_memory.PermanentStorage;
+    perm := *game_state.persist;
+    return perm;
+}
+
+MOUSE_DEFAULT :: Vector2F.{FLOAT32_MIN+7, FLOAT32_MIN+92};
+
+
+TextCommandType :: enum {
+	NONE;
+	LEVEL_LOAD;
+	LEVEL_UPDATE;
+	RUN_TEST;
+}
+
+GameMode :: enum {
+	PLAY;
+	TEST;
+	DEBUG;
+}
+
+//TODO These need to be separated out so we have data that can be used externally and data that
+//cannot be used externally
+TestLevelType :: #type (
+	test_name : string,
+	//TODO What if just pass TIPData in here instead
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput);
+
+file_type_enum_names : [] string : #run enum_names(FileTypeEnum);
+file_type_enum_enums : [] FileTypeEnum : #run enum_values_as_enum(FileTypeEnum);
+FileTypeEnum :: enum {
+	txt;
+	dll;
+	dylib;
+}
+
+//TODO I think we should pass in runtime_settings into here for default values and setting anything else at startup
+InitAllData :: () -> *AllData {
+	//TODO I think we don't have to pass in context.allocator since that is done by default...
+	all_data : *AllData = New(AllData,, context.allocator);
+	#insert #run SetResizableArrays(AllData, "all_data.%.allocator = context.allocator;\n");
+
+	//TODO Should remove ALL_NEXT_IDS and pass it in everywhere
+	//We reset all_next_ids in the New call above and then set them since we reinit the data here.
+	ALL_NEXT_IDS = all_data.all_next_ids;
+	context.ALL_NEXT_IDS = *ALL_NEXT_IDS;
+
+	//TODO Pass in runtime_settings here if we pass it into InitAllData eventually
+	GetOrCreateMusicSpace(.{}, all_data.runtime_settings, *all_data.all_mspace_data, *all_data.free_mspace_data_pool);
+	GetOrCreateSimpleSynth(.{}, *all_data.all_simple_synths, *all_data.free_simple_synth_pool);
+
+   // all_data.global_rules.memory_unit_width = 2.0;
+   all_data.global_rules.memory_unit_width = 1.75;
+
+
+	//TODO Can adjust this later if we need more. Could just allow the 256 default
+	//And we could reuse the pool/alloc for all compilations since we can make compilations sequential.
+	//TODO FROM HERE This could be MySimplePool now, although in-game we always want default anyways...
+	//This is a leak during tests but with SimpleAlloc it would not be
+	init(*all_data.comp_pool, Megabytes(10));
+	//TODO What if we just used the allocator and set the pool externally?
+	//Then during tests we would set it to MySimplePool and during runtime we would use Flat_Pool
+	//but we would still need to store the pool somewhere so maybe MySimplePool is best
+	//since it defaults to default allocator when the context.allocator is not changed.
+	//We could set the pool in TestData though and then have a slighlty different all_data for test
+	//but then it is not exactly the same which is best to really test what is happening.
+	all_data.comp_alloc.proc = flat_pool_allocator_proc;
+	all_data.comp_alloc.data = *all_data.comp_pool;
+
+   // set_allocators(*all_data.mspace_pool);
+	// all_data.mspace_alloc = .{pool_allocator_proc, *all_data.mspace_pool};
+
+
+	/*DOC : Default music setup can be done here after setting everything up.
+	We create the default tuning systems on top, so maybe we can move that down here now.
+	*/
+	SetupMusic(all_data);
+
+	for reg_def_enums array_add(*all_data.all_register_memory, MemoryValue.{});
+
+	CreateDefaultTuningSystems(*all_data.all_tuning_systems, *all_data.all_tuning_pitches);
+	//TODO Need to remove this and just use tuning system from the tano
+	all_data.global_rules.tuning_system_id = all_data.all_tuning_systems[0].id;
+	all_data.global_rules.tuning_system = all_data.all_tuning_systems[0];
+	
+
+	/*I think the Flat_Pool is more robust 
+      - Flat_Pool allows contiguous memory on get() in virtual os memory without
+	  changing the memory_base. A [..] resize would move the memory_base change.
+	  - Flat_Pool makes a call to VirtualAlloc instead of using the default allocator. (This is not a positive point
+	  since we want to control which allocator that allocates our memory.)
+	  - [..] u8 is obviously an underlying byte array, Flat_Pool can yield a similar result with an extra byte array.
+
+	  TODO Lets implement strings and then see if the underlying byte memory is somehow advantageous or not.
+	*/
+	#if 1 {
+	//This options allows just using all_byte_memory here and then we have just 2 arrays instead of Flat_Pool.
+	//It also allocates memory in the context.allocator which is preferable in general so we can use it
+	//with test_alloc or other allocs. I am not sure of the benefit of pool other than resizing from the same address
+	//but we can still resize here, it will just change address in memory which should not effect us since we
+	//access ram using integer memory indices anyways.
+	//TODO If we keep using this method then we can just store the [..] u8 in RAMMemory, unless we want that
+	//to just have a *char and a count... iunno, lets see i guess. Keeping it in RAMMemory makes it more clear
+	//that the memory is THERE. Then when we have multiple rams, we know exactly where it is and where each one
+	//is being allocated.
+	//TODO Should likely have an allocator for this so we can reset on compilation
+	//Maybe we don't need though... depends how we allow resetting of ram and also using multiple rams.
+	//This should likely be set by the compiler to knwo what to grab. IF we have values at the beginning
+	//they should not be included in this. So if we let the user set this (stack and heap size-heap can maybe change
+	//with another setting), then we would want to set this in compiler and then just grab ram at runtime
+	//so then we could have multiple rams if needed. Could have 1 allocator for ram and just grab that so 
+	//if there is nothing running then we can reset the whole thing or whatever is most convenient and efficient.
+	//TODO FROM HERE I think stick with a resizable array for now and then we can change size later since
+	//we will have a different model where we reuse memory anyways.
+	// init(*all_data.ram_memory.ram_alloc_pool, ram_size);
+	// all_data.ram_memory.bytes.count = ram_size;
+	// all_data.ram_memory.bytes.data = cast(*u8) get(*all_data.ram_memory.ram_alloc_pool, ram_size);
+	// all_data.ram_memory.bytes.allocated = ram_size;
+	//TODO We don't really use this allocator now since we use the array fixed, but this would be the idea
+	//eventually if we allow increasing the heap size at runtime if needed. Or we could make it fixed
+	//and they have to increase it, or could set a start size and then increase if desired.
+	// all_data.ram_memory.bytes.allocator.data = *all_data.ram_memory.ram_alloc_pool;
+	//TODO Can use somethign like same_start_resize_flat_pool_allocator_proc here if we increase heap memory
+	//at runtime and then it would reset and increase from the same point i think, but would have to test to make sure
+	//SO we would call array_resize(all_data.ram_memory.bytes) which would use realloc and just grab the same memory
+	//but increase it from the same position. NEED TO TEST THAT IT WORKS THOUGH BY CHECKING THE POINTERS
+	// all_data.ram_memory.bytes.allocator.proc = flat_pool_allocator_proc;
+	ram_size : int = Megabytes(4);
+	array_resize(*all_data.ram_memory.bytes, ram_size);
+	// array_resize(*all_data.all_ram_byte_memory, ram_size);
+	// all_data.ram_memory.bytes.allocator.proc = same_start_resize_flat_pool_allocator_proc;
+	// all_data.ram_memory.bytes.data = all_data.all_ram_byte_memory.data;
+	// all_data.ram_memory.bytes.count = all_data.all_ram_byte_memory.count;
+	// all_data.ram_memory.stack_size = cast(int) (0.5 * ram_size);
+	all_data.ram_memory.stack_size = ram_size/2;
+	// all_data.value_mem.data = cast(*MemoryValue) *all_data.old_byte_memory;
+	// all_data.value_mem.count = Megabytes(1) / size_of(MemoryValue);
+	// all_data.byte_mem.data = (cast(*u8) *all_data.old_byte_memory) + Megabytes(1);
+	// all_data.byte_mem.count = Megabytes(1) / size_of(u8);
+	} else {
+	//TODO Using this flat_pool with overlay ram_memory now. Can remove other things here if we never use them.
+	if *all_data.ram_flat_pool == null {
+		init(*all_data.ram_flat_pool, Megabytes(5));
+	} else {
+		reset(*all_data.ram_flat_pool);
+	}
+	ram_size : int = Megabytes(2);
+	all_data.ram_memory.bytes.data = cast(*u8) get(*all_data.ram_flat_pool, ram_size);
+	all_data.ram_memory.bytes.count = ram_size;
+	}
+
+	//TODO Set this as default for now but we could set externally later
+	//Or we could pass a value in here to set it to whatever we want.
+	//Likely will have multiple rams and registers for each program currently executing later anyways.
+	// all_data.all_register_memory[RegDef.hsp].int_value = ram_size/2;
+	all_data.all_register_memory[RegDef.hsp].int_value = all_data.ram_memory.stack_size;
+	all_data.all_register_memory[RegDef.hcp].int_value = all_data.all_register_memory[RegDef.hsp].int_value;
+
+	// all_data.ram_memory.heap_p = ram_size - 1; //Could start from ram_size but then we would be off the actual memory.
+	//This is off the ram but we could check this on a Get function for example.
+	//Starting like this removes the need to check for initial conditions.
+	all_data.ram_memory.heap_p = all_data.ram_memory.stack_size;
+	all_data.ram_memory.debug_int.data = cast(*int) all_data.ram_memory.bytes.data;
+	all_data.ram_memory.debug_int.count = ram_size / size_of(int);
+
+	//TODO Remove this now that we use ram_memory
+	// all_data.value_mem.data = cast(*MemoryValue) get(*all_data.ram_flat_pool, Megabytes(1));
+	// all_data.value_mem.count = Megabytes(1) / size_of(MemoryValue);
+	// all_data.byte_mem.data = cast(*u8) get(*all_data.ram_flat_pool, Megabytes(1));
+	// all_data.byte_mem.count = Megabytes(1) / size_of(u8);
+	// all_data.all_byte_mem.data = cast(*u8) all_data.ram_flat_pool.memory_base;
+	// all_data.all_byte_mem.count = Megabytes(2) / size_of(u8);
+
+
+	return all_data;
+}
+OP_TERMINAL_NAME :: "terminal88";
+TERMINAL_LINE_HEIGHT_FACTOR : float : 1.35;
+
+//TODO Each text file should have it's own allocator for string and lines
+TEST_TEXT_NAME :: "test102";
+CreateTestTextFile :: inline (all_next_ids : *AllNextIds, all_text_files : *[..] TextFile)
+-> *TextFile
+{
+	//TODO FileString should be created externally as needed and then grabbed from a list as needed
+	//Can do it once we finish with library and jai.
+	//Also, they should be stored outside the current level so they can persist. Although the main
+	//file should be in the current level and library files should be outside. For now we only have
+	//1 library file but can have multiple later if we resolve dependency similarities with labels.
+	//TODO Where should we put this default?
+	//https://stackoverflow.com/questions/21038965/why-does-the-speed-of-memcpy-drop-dramatically-every-4kb
+	// 1000 lines * 50 chars = 50000 bytes = 50kb
+	//TODO This can be increased to anything if we do relative rendering of lines of code
+	// since well always be rendering a fixed amount. Probably around 100 lines.
+	//TODO Was tested with 5 Megabytes and 100k lines of code and it worked fine
+	//so we could make 4-5 megabytes an upper limit and can do even more to see how far we can go...
+	// main_text_file : TextFile = MakeTextFile(all_next_ids, TEST_TEXT_NAME, Kilobytes(50));
+	new_text_file : *TextFile = array_add(all_text_files);
+	new_text_file.* = MakeTextFile(all_next_ids, TEST_TEXT_NAME, Kilobytes(50));
+	return new_text_file;
+}
+
+//TODO This should have a scissor so we only see text within the box and can move with text camera x
+//systematically in UpdateFileStringAtCursor
+DrawTextInputBox :: inline (
+	command_type : TextCommandType, 
+	text_string : string,
+	cursor_diff_x : float,
+	font_height : int,
+	render_group : *RenderGroup)
+{
+	PushTextAndCursorShaderOrder(render_group);
+
+	rect_height : float = 2;
+	world_rect : Rectangle2 = RectCenterDim(Vector2F.{0,0}, MakeV2F(20,rect_height));
+	PushRectangle(world_rect, DARK_BROWN, render_group, order = 10001);
+
+	PushText(MakeV2F(world_rect.min.x, 2), enum_names(TextCommandType)[command_type], LIGHT_BROWN, render_group, order = 10003);
+
+	text_cursor_start : Vector2F = world_rect.min;
+	text_cursor_start.y += 0.5*rect_height;
+	PushText(text_cursor_start, text_string, GREY_DARK_V, render_group, order = 10003);
+	PushTypeCursor(text_cursor_start, cursor_diff_x, font_height, render_group);
+}
+
+PushTextAndCursorShaderOrder :: inline (render_group : *RenderGroup)
+{
+	PushShaderEntries(render_group, 10002, 10000, 9999999);
+	PushSetShaderColor(render_group, 10004);
+}
+
+ComputeFontHeightSquares :: inline (font_height : int, render_group : *RenderGroup) -> float {
+	result : float = (OP_SPACE_LINE_HEIGHT*font_height) / render_group.pixels_per_square;
+	return result;
+}
+
+//TODO Pulled these functions out so we can reuse them in other places while rendering.
+ComputeCursorHeight :: inline (font_height : int, pixels_per_square : float) -> float {
+	cursor_height : float = (1.5*font_height) / pixels_per_square;
+	return cursor_height;
+}
+YAdjustCursorHeight :: inline (cursor_height : float) -> float {
+	return 0.12 * cursor_height;
+}
+TextToMinCursorPos :: inline (text_pos : *Vector2F, cursor_height : float){
+	text_pos.y -= 0.5*cursor_height;
+	text_pos.y -= YAdjustCursorHeight(cursor_height);
+}
+/*TODO Conceptually we want the cursor to be a bit higher and lower than the char and for it to be even above and below.
+*/
+//TODO Pass in cursor color.
+//TODO Could pass in TextCursor and put cursor_height in there
+//TODO Maybe we should pass this in and compute it relative to char_width? Yes, then we don't have to do zoom factor.
+PushTypeCursor :: inline (
+	text_center_pos : Vector2F,
+	cursor_diff_x : float,
+	font_height : int,
+	render_group : *RenderGroup,
+	//TODO I think these should all be passed in. We just had the defaults before but now I think we should set
+	//them manually in all cases like we are doing in the text editor.
+	order : int = 10005,
+	color : Vector4F = FGREEN_V,
+	cursor_width : float = 0.1,
+	//TODO Maybe we can remove this if we don't use it
+	line_height_factor : float = 1.0)
+-> Rectangle2
+{
+	cursor_rect : Rectangle2 = TypeCursorRect(text_center_pos, cursor_diff_x, font_height, 
+		render_group.pixels_per_square, cursor_width, line_height_factor);
+	PushRectangle(cursor_rect, color, render_group, order = order);
+	return cursor_rect;
+}
+TypeCursorRect :: inline (
+	text_center_pos : Vector2F,
+	cursor_diff_x : float,
+	font_height : int,
+	pixels_per_square : float,
+	//TODO I think these should all be passed in. We just had the defaults before but now I think we should set
+	//them manually in all cases like we are doing in the text editor.
+	cursor_width : float = 0.1,
+	//TODO Maybe we can remove this if we don't use it
+	line_height_factor : float = 1.0)
+-> Rectangle2
+{
+	//TODO This should be set somewhere else like TextEditorData or RendererData so we don't have to recompute
+	//and also so the font is consistent.
+	// font_height_squares : float = (cast(float)(render_group.my_font.character_height + 0.5*render_group.my_font.typical_ascender)) / render_group.pixels_per_square;
+	// font_height_squares : float = (1.5*font_height) / render_group.pixels_per_square;
+	//TODO Maybe we should not multiple by OP_SPACE_LINE_HEIGHT by default and pass that in...
+	// font_height_squares : float = ComputeFontHeightSquares(font_height, render_group);
+	//TODO We don't seem to use the line_height_factor since we are using the height of the cursor for it anyways...
+	// cursor_height : float = (line_height_factor*font_height) / render_group.pixels_per_square;
+	// cursor_height : float = (1.5*font_height) / render_group.pixels_per_square;
+	cursor_height : float = line_height_factor * ComputeCursorHeight(font_height, pixels_per_square);
+	// font_height_squares_2 : float = OP_SPACE_LINE_HEIGHT;
+	cursor_pos_x : float = text_center_pos.x + cursor_diff_x;
+	//Move the cursor down a bit since it is higher than the line by line_height_factor.
+	//TODO We could add the line_height_factor to cursor height as (1.0-line_height_factor)*font_height/pixels_per_square
+	//and then add it here but this seems to work fine.
+	// y_offset : float = (line_height_factor/11.5)*cursor_height;
+	// cursor_rect : Rectangle2 = RectCenterDim(MakeV2F(cursor_pos_x, text_center_pos.y-y_offset), 
+	// 	MakeV2F(cursor_width, cursor_height));
+	//NOTE : This way we bring down the cursor a tiny bit since the center is around the same height as 
+	//a lower case char and we want it a bit below that. 
+	// y_adjust : float = 0.12 * cursor_height;
+	y_adjust : float = YAdjustCursorHeight(cursor_height);
+	//Not sure we need x_adjust... It seems to help a bit but maybe it could go either way depending on the case.
+	//We can remove it if it causes any wierd issues here.
+	x_adjust : float = 0.2 * cursor_width; 
+	cursor_rect : Rectangle2 = RectCenterDim(MakeV2F(cursor_pos_x-x_adjust, text_center_pos.y-y_adjust), 
+		MakeV2F(cursor_width, cursor_height));
+	return cursor_rect;
+}
+DefaultCursorWidth :: inline (char_width_world : float) -> float {
+	return 0.15 * char_width_world;
+}
+DefaultXGap :: inline (
+	cursor_width : float,
+	char_width_world : float,
+	factor : float = 2.3) 
+-> float
+{
+	x_gap : float = factor * cursor_width * char_width_world;
+	return x_gap;
+}
+SingleCursorSettings :: struct {
+	input_cursor_width : float;
+	cursor_height_factor : float = 0.95;
+	cursor_color : Vector4F = BLACK_V;
+	draw_cursor : bool = true;
+	highlight_color : Vector4F = LMBLUE_V;
+}
+DrawSingleLineCursor :: inline (
+	cursor : TextCursor,
+	start_text_cam_pos : Vector2F,
+	//NOTE : This is here solely to highlight to the left withou a gap but
+	//would be replaced with text scissoring if we do that instead
+	start_rect_x : float,
+	render_order : int,
+	render_group : *RenderGroup,
+	ted : TextEditorData,
+	scs : SingleCursorSettings)
+{
+	my_cursor_width : float = DefaultCursorWidth(ted.code_font_1_char_width_world);
+	if scs.input_cursor_width > 0 {
+		my_cursor_width = scs.input_cursor_width;
+	}
+
+	cursor_x_diff : float = (cursor.cursor_line_char - cursor.left_char_bound) * ted.code_font_1_char_width_world;
+	cursor_rect : Rectangle2 = TypeCursorRect(start_text_cam_pos, cursor_x_diff, ted.char_height, 
+		render_group.pixels_per_square, my_cursor_width, line_height_factor=scs.cursor_height_factor);
+	if scs.draw_cursor {
+		PushRectangle(cursor_rect, scs.cursor_color, render_group, order = render_order + 1);
+	}
+	// cursor_rect : Rectangle2 = PushTypeCursor(start_text_cam_pos, cursor_x_diff, ted.char_height,
+	// 	render_group, order=render_order+1, color=ORANGE_V, cursor_width=input_cursor_width,
+	// 	line_height_factor=TEXT_BAR_CURSOR_FACTOR);
+	if cursor.cursor_is_selecting {
+		min_select_char : int;
+		max_select_char : int;
+		if cursor.fixed_select_line_char < cursor.cursor_line_char {
+			min_select_char = max(cursor.fixed_select_line_char, cursor.left_char_bound);
+			max_select_char = min(cursor.cursor_line_char, cursor.right_char_bound+2);
+		} else { //cursor_line_char < fixed_select_line_char
+			//Sanity check, this should never happen to avoid extra button presses to move it.
+			//This case should set cursor_is_selecting=false in UpdateFileStringAtCursor
+			assert(cursor.cursor_line_char != cursor.fixed_select_line_char);
+			min_select_char = max(cursor.cursor_line_char, cursor.left_char_bound);
+			max_select_char = min(cursor.fixed_select_line_char, cursor.right_char_bound+2);
+		}
+		min_select_char -= cursor.left_char_bound;
+		max_select_char -= cursor.left_char_bound;
+
+		cursor_height : float = GetHeight(cursor_rect);
+		cursor_min_pos : Vector2F = start_text_cam_pos;
+		if cursor.fixed_select_line_char < cursor.left_char_bound {
+			//DOC : Doing this avoids having another scissor, but we can use a scissor instead if needed otherwise just for the text rect
+			cursor_min_pos.x = start_rect_x;
+		}
+		// cursor_min_pos.y = cursor_rect.min.y + height_diff*cursor_height;
+		cursor_min_pos.y = cursor_rect.min.y;
+		cursor_min_pos.x += min_select_char * ted.code_font_1_char_width_world;
+
+		char_count : int = max_select_char - min_select_char;
+		highlighted_rect : Rectangle2 = HighlightedLineRect(char_count, cursor_height, cursor_min_pos,
+			ted.code_font_1_char_width_world);
+		//TODO Could pass this through cursor settings FROM the 
+		PushRectangle(highlighted_rect, scs.highlight_color, render_group, order=render_order);
+	}
+}
+DEFAULT_CURSOR_HEIGHT_DIFF : float : 0.05;
+HighlightedLineRect :: inline (
+	char_count : int,
+	cursor_height : float,
+	cursor_min_pos : Vector2F,
+	char_width_world : float,
+	height_diff : float = DEFAULT_CURSOR_HEIGHT_DIFF) 
+-> Rectangle2
+{
+	text_pos : Vector2F = cursor_min_pos;
+	text_pos.y += height_diff * cursor_height;
+	highlighted_length : float = char_count * char_width_world;
+	//1-2*height_diff means we raise by height_diff from the bottom and so then take height_diff off the top and bottom to even it out
+	highlighted_height : float = (1.-2.*height_diff)*cursor_height;
+	highlighted_rect : Rectangle2 = RectMinDim(text_pos, .{highlighted_length, highlighted_height});
+	return highlighted_rect;
+}
+/*DOC :
+The use case in thegame_base where we draw the text cursor fails
+if we draw the cursor so that might be a reason to bind it.
+BUT for now we don't draw the cursor so that gives us a failure point.
+
+*/
+CharCountUntilCursorWithTab :: inline (
+	cursor_line_char : int,
+	cursor_line_number : int,
+	file_string : FileString)
+-> int
+{
+	// assert(file_string.file_loc.count > 0);
+	//TODO I will let this fail with invalid line number for now
+	//since it should be valid once we select it.
+	//This is tested in Test_TextOpCursor if needed to check
+	//We could clamp it eventually if that seems better but I will leave it
+	//for now to see if there are bugs.
+	loc : string = file_string.file_loc[cursor_line_number];
+	char_count : int = CharCountWithTabInString(loc, 0, cursor_line_char);
+	return char_count;
+}
+//TODO We could generalize this by passing in a char and then also
+//the char count or grabbing that in here from a function if needed.
+//Right now only tabs are > 1 char but if we add more then we just have
+//to update here with other char counts and check those that are > 1.
+//BUT I don't think I'll do that since most text editors only have tab as > 1 char
+CharCountWithTabInString :: inline (
+	s : string,
+	start_line_char : int,
+	end_line_char : int)
+-> int
+{
+	//This avoids weird issues or mistakes since this should not be possible
+	assert(start_line_char <= end_line_char);
+	//TODO Should this be a clamp below or asserted here?
+	//Asserting allows us to see bugs as I don't think it should be negative
+	//but maybe there are some cases where temporary invalid negative values are ok?
+	//I guess this will make us find them out clearly if it happens.
+	assert(start_line_char >= 0 && end_line_char >= 0);
+
+	//Early out for empty string although I think it would work fine below
+	if s.count <= 0 || s.data == null return 0;
+
+	/*TODO We could have this fail instead but this prevents weird issues
+	  like updating text file and having them in separate op spaces
+	  then at least the rendering would not crash and then we would update
+	  when choosing op space or changing tab. A crash might help us figure out
+	  where the issue is but also may be annoying from a user perspective
+	  where this would be fixed by selecting or refreshing the op space to update the cursor.
+	*/
+	start_char : int = min(start_line_char, s.count);
+	end_char : int = min(end_line_char, s.count);
+
+	char_count : int = end_char - start_char;
+	bounded_string : string = String.slice(s, start_char, char_count);
+	tab_count : int = StringCharCount("\t", bounded_string);	
+	//NOTE : if tab_count == 0 then the following 2 lines do nothing, since we just 
+	//subtract 0 and then add 0 but that is likely cheaper than having the if here anyways
+	char_count -= tab_count;
+	char_count += tab_count * TAB_CHAR_COUNT;
+	return char_count;
+}
+
+//Note : This is fairly expensive function because of Simp.prepare_text, which is already called when rendering text.
+//TODO Move this functio to the renderer since it is based on text data
+ComputePixelWidthOfString :: inline (
+	input_string : string,
+	my_font : *Dynamic_Font, 
+	prepare_text_function : (*Dynamic_Font,string,Font_Effects) -> s64)
+-> s64
+{
+    width_of_string : s64 = prepare_text_function(my_font, input_string, 0);
+    //Note : This seems to align the string by keeping it consistent regardless of odd or even.
+    if width_of_string % 2 == 1 width_of_string -= 1;
+	return width_of_string;	
+}
+//Add this here to connect empty lines. I think this also makes everything that is highlighted clearer
+//THIS ALSO removes the need for a second fixed select cursor
+HighlightEmptyLine :: inline (
+	cursor : $T,
+	select_line : int,
+	line_count : int) 
+-> bool 
+{
+#assert(AllOrEquals(T, .[TextCursor, TextSplitLine]));
+	highlighted_new_line : bool = 
+		//If we come from the top, then we only highlighted the newline if that is not the current and therefore last line we are on
+		//since we are only at the begnning of that line so we only highlighted the newline from the previous line and not the current line
+		(cursor.cursor_line_number > cursor.fixed_select_line_number && 
+	    cursor.cursor_line_number != select_line) 
+		||
+		//If we come from the bottom, then we always highlight the newline since we count that as a newline
+		cursor.cursor_line_number < cursor.fixed_select_line_number;
+		//This remove the newline on the way up but then we cant see the newline. Sublime text does it this way, not sure why...
+		//then we cant tell the difference between highlighting just the line or a line and the new line.
+		// cursor.cursor_line_number < cursor.fixed_select_line_number && line_count != 0;
+	highlight_empty_line : bool = line_count == 0 && highlighted_new_line;
+	return highlight_empty_line;
+}
+TextHighlight :: struct {
+	char_point : int;
+	char_count : int;
+	highlight_color : Vector4F;
+}
+/*DOC : It feels more natural to split this out from TextCursor
+as they are very different and serve different purposes. This is generally
+used for split line text and also is more convenient and feels more natural
+to use viewable lines here instead of end line index.
+
+TODO I think even putting the split_lines array in here would
+make it all be in 1 struct and be easily reusable anywhere
+that we want split lines.
+
+TODO Maybe we should call this TextWrapLine instead since split line can be confused
+with that it's split by line 
+*/
+TextSplitLine :: struct {
+	using cursor : TextCursor;
+	//REMINDER : we are using start_file_line_index in cursor instead
+	//this keeps it consistent with the cursor if we pass it into functions
+	//AND it also does not add unecessary space here
+	// start_line_index : int;
+
+	//TODO Should have a copy of the whole lines here and then
+	//use that for the terminal and the text console output
+	//so we can resize as needed and the split lines are just
+	//a string view into that anyways
+	//Or for text op we can just add to an external array anyways
+	//and just clear it when we recompile or reload settings
+	split_lines : [..] StringSplitByLine;
+	//DOC : Split selections which we can use to highlight
+	//or even multi copy or things like that
+	split_selcs : [..] StartEndLineChar;
+
+	/*DOC : This is from zero so 
+	end_index = start_file_line_index + viewable_lines_from_zero
+	total_line_count = viewable_lines_from_zero+1
+	this allows us to stay consistent with end index and not have to consider count
+	and subtract (-1) everywhere.
+
+	Generally I could have just used end_file_line_index like with text op space
+	but this allows less updates since we just have to update start_file_line_index
+	so I wanted to try that and see how it feels
+	*/
+	viewable_lines_from_zero : int;
+	line_char_count : int;
+
+	x_start_left : float;
+	y_start_top : float;
+	line_height : float;
+	cursor_height : float;
+}
+ResetTSLAllLines :: inline (
+	tsl : *TextSplitLine, 
+	//TODO This is separate because of all_terminal_lines but we can
+	//but it in TextSplitLine eventually if that makes more sense
+	all_lines : *[..] string) 
+{
+	ResetTextCursor(*tsl.cursor);
+	array_reset_keeping_memory(*tsl.split_lines);
+	array_reset_keeping_memory(all_lines);
+}
+AddTSLLine :: inline (
+	line : string,
+	tsl : *TextSplitLine, 
+	//TODO This is separate because of all_terminal_lines but we can
+	//but it in TextSplitLine eventually if that makes more sense
+	all_lines : *[..] string) 
+{
+	array_add(all_lines, line);
+	AddSplitStringByLines(line, tsl);
+}
+//TODO Should we call this StringWrapByLine?
+StringSplitByLine :: struct {
+	split_string : string;
+	//TODO Should we rename this to not_split_line_number?
+	not_split_line_number : int;
+}
+//TODO Likely need to pass in line number and reference it so we know which lines
+//OR just add line based on the previous one added
+//TODO Where should we put this since we use it in the MAIN text editor as well for the compiler console
+//Should we use it there as well or it just doing it straight away more efficient? I guess this is more consistent
+// AddSplitStringByLines :: inline (
+// 	s : string,
+// 	line_world_width : float,
+// 	char_width_world : float,
+// 	split_lines : *[..] StringSplitByLine)
+// {
+// 	line_char_count := cast(int) (line_world_width / char_width_world);
+// 	AddSplitStringByLines(s, line_char_count, split_lines);
+// }
+//DOC : We could pull out the split string by lines below but we are only adding them for now so no need.
+//This currently splits the lines and adds them as a new line
+AddSplitStringByLines :: inline (s : string, tsl : *TextSplitLine) {
+	new_line_number : int = 0;
+	if tsl.split_lines.count > 0 {
+		last_line_number : int = peek(tsl.split_lines).not_split_line_number;
+		new_line_number = last_line_number + 1;
+	}
+	
+	//DOC : Line count is always > 0 since we always have 1 line even if its empty.
+	//if s.count == line_char_count then we get 2 lines because technically the last char is on the next line
+	//even though that line will be empty. this is a convention since we want the cursor on the next line instead 
+	//of the previous line if we have no char at the end of line so we can see that we are now adding text to the next line
+	//in the terminal for example
+	//ALSO this code splits the lines, so we can pull this out if we want to just split lines but for now we only add split lines anyways as new lines
+	line_count : int = 1 + (s.count / tsl.line_char_count);
+	for 0..line_count-1 {
+		next_line : string = String.slice(s, it * tsl.line_char_count, tsl.line_char_count);
+		array_add(*tsl.split_lines, StringSplitByLine.{next_line, new_line_number});
+	}
+}
+CopyTSLToClipboard :: inline (tsl : TextSplitLine) {
+	selc : StartEndLineChar = TextSplitLineOrderedStartEndLineChar(tsl);
+	sb : String_Builder;
+	sb.allocator = temp;
+	last_line_number : int = tsl.split_lines[selc.start_line].not_split_line_number;
+	for split_line_index : selc.start_line..selc.end_line {
+		split_line : StringSplitByLine = tsl.split_lines[split_line_index];
+		line_string : string = split_line.split_string;
+		start_char, end_char := LineSpecificStartEndChar(line_string, split_line_index, selc);
+		char_count : int = end_char - start_char;
+		if char_count == 0 {
+			append(*sb, "\n");
+		} else {
+			if split_line.not_split_line_number != last_line_number {
+				append(*sb, "\n");
+			}
+			copy_s : string = String.slice(line_string, start_char, char_count);
+			append(*sb, copy_s);
+		}
+		last_line_number = split_line.not_split_line_number;
+	}
+
+	copy_text : string = builder_to_string(*sb,,temp);
+	if copy_text.count > 0 {
+		os_clipboard_set_text(copy_text);
+	}
+}
+//TODO Can unit test this in the integration test with the terminal op
+/*DOC : Char point is converted here to the position in a split line text.
+This allows us to just take any char point from any text and find where it
+would be in a split line text so we can highlight or select text in any way needed.
+Eventually we can allow this to be used externally through something like dynamic libraries
+or within our own code.
+Remember to consider that the split line array is lacking the new line characters
+in the char point so we need to either add those to the split line char (Which we are doing now)
+or remove them from the char point which would require and extra loop or to use
+an already made split line array to check how many lines we have till that char point.
+
+start_char_point is incremented by 1 if we are at a newline and
+end_char_point is decremented by 1 if we are at a newline
+
+the return start_line_char and end_line_char are indices, so we need to do 
+char_count = end_line_char - start_line_char + 1
+
+if the end_char_point goes over the end but the start char point is before, then we bound it
+
+since we are checking direct char points from the original text with new lines, it is the most clear
+to pass in the text and then check the newline chars directly instead of checking from the split lines data
+which could technically be done but is unnecessarily confusing
+
+TODO Can make a similar functions for lines that are split by line and not by split line
+*/
+CharPointToSplitSelc :: inline (
+	char_point : int, 
+	char_count : int,
+	text : string,
+	tsl : TextSplitLine) 
+-> StartEndLineChar 
+{
+	if text.count == 0 || char_point < 0 || char_count <= 0 || char_point >= text.count || tsl.split_lines.count == 0 {
+		return .{};
+	}
+
+	start_char_point : int = char_point;
+	if text[start_char_point] == #char "\n" {
+		//skip over the new line if we start with it
+		start_char_point += 1;
+	}
+	selc : StartEndLineChar;
+	line_start_char : int = 0;
+	// split_index : int = 0;
+	//DOC : Go till we find the start highlight char which includes new line chars but the splitl ines don't
+	//so we have to remember that if ever we have an issues here.
+	previous_not_split_line_number : int = 0;
+	for split_index : 0..tsl.split_lines.count-1 {
+		split_line := tsl.split_lines[split_index];
+		if split_line.not_split_line_number > previous_not_split_line_number {
+			//add the newline char since the split lines dont have new lines but the char point from the input does have 
+			//since its from the original text which contains new line chars
+			line_start_char += 1;
+			previous_not_split_line_number = split_line.not_split_line_number;
+		}
+		if InRange(line_start_char, start_char_point, line_start_char + split_line.split_string.count - 1) {
+			selc.start_line = split_index;
+			selc.start_line_char = start_char_point - line_start_char;
+			break;
+		} 
+		line_start_char += split_line.split_string.count;
+		// previous_not_split_line_number = split_line.not_split_line_number;
+		if split_index == tsl.split_lines.count-1 {
+			//we went past the end of the string and so start > end_of_string so return all 0s
+			return selc;
+		}
+	}
+
+	//end char point is an index and not a count so we need to do char_count = end_char_point - start_char_point
+	//to get the count like we do when rendering this as text in the text console
+	end_char_point : int = min(text.count-1, start_char_point + char_count - 1);
+	if text[end_char_point] == #char "\n" {
+		//remove the end line if we end with it
+		end_char_point -= 1;
+	}
+	for split_index : selc.start_line..tsl.split_lines.count-1 {
+		split_line := tsl.split_lines[split_index];
+		if split_line.not_split_line_number > previous_not_split_line_number {
+			//add the newline char since the split lines dont have new lines but the char point from the input does have 
+			//since its from the original text which contains new line chars
+			line_start_char += 1;
+			previous_not_split_line_number = split_line.not_split_line_number;
+		}
+		if InRange(line_start_char, end_char_point, line_start_char + split_line.split_string.count - 1) {
+			selc.end_line = split_index;
+			selc.end_line_char = end_char_point - line_start_char;
+			break;
+		} 
+		line_start_char += split_line.split_string.count;
+		// previous_not_split_line_number = split_line.not_split_line_number;
+
+		//IF the end char is over the string, then we highlight everything.
+		//Otherwise this would remain at 0 and would then be <= start_line which would not make sense
+		//we could also set this == to the start values but this seems more correct i think.
+		if split_index == tsl.split_lines.count-1 && end_char_point >= line_start_char {
+			selc.end_line = max(0,tsl.split_lines.count-1);
+			selc.end_line_char = max(0,peek(tsl.split_lines).split_string.count-1);
+			return selc;
+		}
+	}
+
+	// print("selc=%\n", selc);
+	return selc;
+}
+
+/*TODO 
+	TODO Need to write some integration tests for this eventually now that we have the input mapping system with events.
+	Implement text highlighting so we can remove the entire highlighted buffer.
+	Implement copy and pasting both highlights and also lines.
+	Implement undo system - put some notes below this comment
+
+	Implement mouse input to move cursor. Only need to compute the delta of the current cursor position
+	since it will have to be on the same screen and therefore < 50 lines away from the current position
+
+	Note : single_line currently skips this function if we hit return_enter this frame. This prevents
+	the '\n' char from being added when we want the text to remain on 1 line.
+
+	Idea : Could pass in all_lines_of_code with the start_index of each line in the file. Then things like
+	up and down arrow movement would be faster because we would not need search for the new_lines
+	since we already know where we are from the all_lines_of_code.
+
+	Line-by-line : Would only need to update this function and file_loc with a struct with dynamic string.	
+	On macos, I am not sure if the asm will work with ARM NEON right away for .split and also memcpy 
+	is 128-bit vectors like SSE instead of 256-bit vectors like AVX2. Does external string library work with ARM NEON?
+	Single string model is more efficient for things like searching and generally keeping everything together in memory. 
+	I tested it up to 100k loc, so even if mac only works for 10-50k loc that is ok. 
+
+	IMPORTANT : If we need bigger file editing, we can just use an external editor and then make it easy 
+	to reload text files and compile and run within this program.
+
+*/
+//TODO Undo system can be done by storing a point with cursor_pos and then accumulating text for a while or until
+//input stops and then we just have undo/redo chunks like that which should be enough. Then also if we allow
+//shortcuts we could have inverse events for the shortcuts like move line or replace all.
+//TODO Should we rename to UpdateCodeStringAtCursor?
+UpdateFileStringAtCursor :: inline (
+	//TODO We could compile-time FileString and set if it's single line in there and then not
+	//include the file_loc. I'll leave it separate for now but that would remove the array from there if needed
+	//and then also provide the compile-time info here to not have all the code for single-line text editing.
+	file_string : *FileString,
+	cursor : *TextCursor,
+	//TODO Pass in game_input here now so we can try to use new IsKeyboardPress
+	// input : ControllerInput,
+	/*DOC : I think having these here is clearer since we can update the file string
+	however we want with any command BUT if we need to pass more in, 
+	we can either pass in game_input or add some more variables 
+	here for like IsInputDown or maybe mouse BUT it might be best to 
+	just leave this as is since this updates the cursor and file 
+	string specifically with these events
+	*/
+	frame_input_events : [] FrameInputEvent,
+	// input_mappings : [] InputMapping,
+	game_input : GameInput,
+	//TODO Can pass in some mouse_data to move cursor with mouse eventually.
+	// pixels_per_square : float,
+	//TODO Can remove this now
+	//We use it for the undo split string but maybe we can just pass that in instead OR set that in game input...?
+	text_editor_data : TextEditorData,
+	//REMOVE this since we can just pass in frame_input_events now
+	//BUT we can add it back if we want specific actions later
+	// all_tc_data : [] TextCursorAction = .[],
+	$single_line : bool = false)
+-> updated_text : bool, updated_input : bool //TODO Could make this a struct
+{
+//This is the keyboard, but let's remove other controllers now.
+// input : ControllerInput = game_input.Controllers[0];
+return_input_update : bool = false;
+return_text_update : bool = false;
+
+/*DOC : We are processing the events array here directly because this way we keep the events in the order
+we receive them and therefore if we get a > 1 event in a frame, they are kept in the correct order. This prevents
+having to think about if text inputs together with other keys or arrow inputs will happen in a certain order because
+this way they will always happen in the same order as we receive them from the system.
+*/
+//TODO Could use a while loop here if we wanted to check other events or move around
+// event_index : int = 0;
+// for Input.events_this_frame print("event=%\n", it);
+// while event_index < game_input.frame_input_events.count {
+// 	defer event_index += 1;
+// 	current_event : FrameInputEvent = game_input.frame_input_events[event_index];
+// for current_event : game_input.frame_input_events {
+for current_event : frame_input_events {
+	//We only process events in order now so we can just check these as events since IsInputDown is whether we have
+	//an event or not. This maintains order as well in case we pressed something valid before this event on the same frame.
+	//TODO I think it might be best to also prevent this externally like in terminal and debug watch pane
+	//and have this here just as a failsafe to prevent invalid presses for single line.
+	#if single_line {
+	// if IsInputDown(.ENTER, game_input) ||
+	// 	IsInputDown(.TAB, game_input)
+	if IsKeyboardEventAnyFlag(.ENTER, .IS_DOWN_WITH_PAUSE, current_event) ||
+		//TODO We can set tab to show or not as an option since in the find bar we might want it and just show the unknown character
+		IsKeyboardEventAnyFlag(.TAB, .IS_DOWN_WITH_PAUSE, current_event)
+	{
+		return return_text_update, return_input_update;
+	}
+	}
+
+	event_text_update : bool;
+	event_input_update : bool;
+	// print("event=%\n", current_event);
+	// if IsKeyboardEvent(#char "C", .{ctrl_pressed=true}, .DOWN_THIS_FRAME, current_event) ||
+	if IsInputMapEvent(.TEXT_COPY, .DOWN_THIS_FRAME, current_event, game_input.game_input_mappings) ||
+		IsKeyboardEvent(#char "X", .{ctrl_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event) 
+	{
+		copy_text : string;
+		if cursor.cursor_is_selecting {
+			copy_text.count = abs(cursor.char_point - cursor.fixed_select_char_point);
+			if cursor.char_point < cursor.fixed_select_char_point {
+				copy_text.data = file_string.text_string.data + cursor.char_point;
+			} else if cursor.fixed_select_char_point < cursor.char_point {
+				copy_text.data = file_string.text_string.data + cursor.fixed_select_char_point;
+			} else {
+				//Sanity check
+				assert(false, "cursor.char_point == cursor.fixed_select_char_point is not possible");
+			}
+		} else {
+			//TODO MAYBE WE SHOULD REMOVE THIS CASE ALTOGETHER TO AVOID CONFUSION AND ISSUES?
+			//It is convenient for holding ctrl+x to remove a bunch of code or copy-pasting the same line a few times
+			//I removed it and if we don't use it then we remove this altogether. Will leave for now in case i decide to add it later
+			#if 0 {
+				//TODO Copy entire line find index from right and left of "\n" on both sides or start and end of file string
+				line_start_char : int = LineStartCharPoint(cursor.char_point, file_string.*, single_line);
+				//TODO Could use LineEndCharPoint and double check if we are at a "\n" or at the end and if so go over it.
+				line_end_char : int = String.find_index_from_left(file_string.text_string, #char "\n", cursor.char_point);
+				if line_end_char == -1 {
+					line_end_char = file_string.text_string.count; // In case we are on the last line so no '\n' after
+				} else {
+					//We include the \n at the end
+					line_end_char += 1;
+				}
+
+				copy_text.count = line_end_char - line_start_char;
+				copy_text.data = file_string.text_string.data + line_start_char;
+
+				//TODO We would have to add an extra remove text method code for general text remove without selection
+				//in order for this to work properly with the undo system as well.
+				//Can do that later if it seems necessary but now it just feels like unnecessary text editor functionality
+				//since we can do everything with selection
+				#if 0 {
+				//NOTE : We don't need to remove text if we don't have any text OR if we are on a last empty line
+				if copy_text.count > 0 &&
+					IsKeyboardEvent(#char "X", .{ctrl_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event) 
+				{
+					cursor.cursor_is_selecting = true;
+					cursor.fixed_select_char_point = line_start_char;
+					cursor.fixed_select_line_number = cursor.cursor_line_number;
+					cursor.fixed_select_line_char = 0;
+
+					cursor.char_point = line_end_char;
+				}
+				}
+			}
+		}
+
+		//NOTE : We don't need to remove text if we don't have any text OR if we are on a last empty line
+		//TODO We don't need this if now that we only copy selections but I will leave just in case for now.
+		//Can remove if we decide to remove the copy/cut line functionality above later
+		if copy_text.count > 0 {
+			os_clipboard_set_text(copy_text);
+		}
+	}
+	else if IsKeyboardEvent(#char "Z", .{ctrl_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event) &&
+		//If we don't have any undo history or action history, then we don't undo
+		file_string.text_action_history.count > 0 && file_string.undo_buffer_length > 0
+	{
+		last_write_index : int = PosMod(file_string.action_write_index - 1, file_string.text_action_history.count);
+		last_undo : TextAction = file_string.text_action_history[last_write_index];
+		if last_undo.action_type == {
+		case .REMOVE_TEXT_LEFT; #through;
+		case .REMOVE_TEXT_RIGHT; {
+			//Since we removed a char, we need to add it back
+			set_char_data : *u8 = file_string.text_string.data + last_undo.after_action_cursor.char_point;
+			last_char_data : *u8 = set_char_data + last_undo.undo_chars.count;
+			copy_string_length : s64 = file_string.text_string.count - last_undo.after_action_cursor.char_point; 
+			//Move over text to right
+			memcpy(last_char_data, set_char_data, copy_string_length);
+			//Add chars back where we had removed them
+			memcpy(set_char_data, last_undo.undo_chars.data, last_undo.undo_chars.count);
+
+			file_string.text_string.count += last_undo.undo_chars.count;
+		}
+		case .ADD_TEXT; {
+			set_char_data : *u8 = file_string.text_string.data + last_undo.cursor_before_action.char_point;	
+			last_char_data : *u8 = set_char_data + last_undo.undo_chars.count;
+			end_char_point : int = last_undo.cursor_before_action.char_point + last_undo.undo_chars.count;
+			copy_string_length : int = file_string.text_string.count - end_char_point;
+			//remove added text back and set cursor back to where we were before
+			memcpy(set_char_data, last_char_data, copy_string_length);
+
+			file_string.text_string.count -= last_undo.undo_chars.count;
+		}
+		}
+
+		file_string.undo_buffer_length -= 1;
+		file_string.action_write_index = last_write_index;
+		SetCursorWithCurrentBounds(cursor, last_undo.cursor_before_action);
+		// cursor.* = last_undo.cursor_before_action;
+	
+
+		//We want to text update so that the lines of code are recomputed.
+		event_text_update = true;
+		//We don't have to input update since we set the cursor back to how it was before
+		//BUT we do update because the cursor_line_char for action action cursor is wrong
+		//and it is best to do it again for consistency and resilience.
+		event_input_update = true;
+	}
+	//we can do redos if total_buffer_length > undo_buffer_length where
+	//undo_count = redo_count = total_buffer_length - undo_buffer_length
+	else if file_string.undo_buffer_length < file_string.total_buffer_length && 
+			(IsKeyboardEvent(#char "Y", .{ctrl_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event) ||
+			 IsKeyboardEvent(#char "Z", .{ctrl_pressed=true,shift_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event))
+	{
+		redo : TextAction = file_string.text_action_history[file_string.action_write_index];
+		if redo.action_type == {
+		case .REMOVE_TEXT_LEFT; #through;
+		case .REMOVE_TEXT_RIGHT; {
+			//Redoing a remove text, so removing the text again
+			set_char_data : *u8 = file_string.text_string.data + redo.after_action_cursor.char_point;
+			last_char_data : *u8 = set_char_data + redo.undo_chars.count;
+			end_char_point : int = redo.after_action_cursor.char_point + redo.undo_chars.count;
+			copy_string_length : int = file_string.text_string.count - end_char_point;
+			//remove added text back and set cursor back to where we were before
+			memcpy(set_char_data, last_char_data, copy_string_length);
+
+			file_string.text_string.count -= redo.undo_chars.count;
+		}
+		case .ADD_TEXT; {
+			//Redoing an add text, so we are adding the text back
+			set_char_data : *u8 = file_string.text_string.data + redo.cursor_before_action.char_point;
+			last_char_data : *u8 = set_char_data + redo.undo_chars.count;
+			copy_string_length : s64 = file_string.text_string.count - redo.cursor_before_action.char_point; 
+			//Move over text to right
+			memcpy(last_char_data, set_char_data, copy_string_length);
+			//Add chars back where we had removed them
+			memcpy(set_char_data, redo.undo_chars.data, redo.undo_chars.count);
+
+			file_string.text_string.count += redo.undo_chars.count;
+		}
+		}
+
+		next_write_cursor : int = PosMod(file_string.action_write_index + 1, file_string.text_action_history.count);
+		file_string.action_write_index = next_write_cursor;
+		file_string.undo_buffer_length += 1;
+		SetCursorWithCurrentBounds(cursor, redo.after_action_cursor);
+		// cursor.* = redo.after_action_cursor;
+
+		//We have to redo event_input_update because the cursor_line_char could be wrong from the after_action_cursor
+		//since we only so we update it accordingly and this is more consistent and resilient to any issues.
+		event_input_update = true;
+		event_text_update = true;
+	}
+	else if IsInputMapEvent(.TEXT_SELECT_ALL, .DOWN_THIS_FRAME, current_event, game_input.game_input_mappings) &&
+		file_string.text_string.count > 0
+	{
+		SelectText(0, file_string.text_string.count, cursor, file_string, single_line);
+		event_input_update = true;
+	}
+
+	/*DOC : If we update things on undo or redo, this avoids having also some extra text removal or addition
+	which could create issues with the cursor_line_char updating or maybe something else unknown.
+	I think having this here will be a bit more consistent and resilient but I guess testing and time will tell.
+
+	TODO We could put this above and set add_text = true if we hit a shortcut like ctrl+V
+	Having them all here is clearer though as to when we are actually adding and removing text.
+
+	TODO IF we have an add and remove, then we can eventually create a replace action to do the replace with 1 undo/redo.
+	This is simpler from a user perspective but requires some changes here which I can do later if needed.
+	*/
+	add_text : bool = current_event.event_type == .TEXT_BLOCK
+		|| IsTextInputEvent(.IS_DOWN_WITH_PAUSE, current_event) 
+	   || IsKeyboardEvent(.TAB, .IS_DOWN_WITH_PAUSE, current_event)
+	   || IsKeyboardEvent(.ENTER, .IS_DOWN_WITH_PAUSE, current_event)
+	   //TODO Can remove one of these (shift or ctrl) later if there is preference for only 1
+	   || IsKeyboardEvent(.ENTER, .{shift_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event)
+	   || IsKeyboardEvent(.ENTER, .{ctrl_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event)
+	   || IsKeyboardEvent(#char "V", .{ctrl_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event);
+
+	//TODO We could put this above and then set remove_text = true if we hit a shortcut like ctrl+X. Having here is clearer.
+	remove_text : bool = IsKeyboardEvent(.BACKSPACE, .IS_DOWN_WITH_PAUSE, current_event) 
+		|| IsKeyboardEvent(.DELETE, .IS_DOWN_WITH_PAUSE, current_event)
+		|| IsKeyboardEvent(#char "X", .{ctrl_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event) 
+		|| (add_text && cursor.cursor_is_selecting);
+
+	if remove_text && file_string.text_string.count > 0 {
+		current_char_point_data : *u8 = file_string.text_string.data + cursor.char_point;
+		if cursor.cursor_is_selecting {
+			remove_width : int = abs(cursor.char_point - cursor.fixed_select_char_point);
+			fixed_char_point_data : *u8 = file_string.text_string.data + cursor.fixed_select_char_point;
+			if cursor.char_point > cursor.fixed_select_char_point {
+				ta : TextAction;
+				ta.action_type = TextActionType.REMOVE_TEXT_LEFT;
+				ta.cursor_before_action = cursor;
+				action_string : string = copy_temporary_string(string.{remove_width, fixed_char_point_data});
+
+				copy_string_length : s64 = file_string.text_string.count - cursor.char_point; 
+				memcpy(fixed_char_point_data, current_char_point_data, copy_string_length);
+				//Adjust the cursor to the fixed select point
+				cursor.char_point -= remove_width;
+				cursor_line_diff : int = cursor.cursor_line_number - cursor.fixed_select_line_number;
+				#if single_line assert(cursor_line_diff == 0); //sanity check for single line just in case to avoid issues with undo actions for find and replace bars
+				if cursor_line_diff > 0 {
+					cursor.cursor_line_number -= cursor_line_diff;
+				}
+
+				//Removal unselects to store in action. We do this on the bottom but doing it in both places is resilient.
+				cursor.cursor_is_selecting = false;
+				ta.after_action_cursor = cursor;
+				CreateTextAction(action_string, ta, file_string, text_editor_data.undo_split_string);
+			} 
+			else if cursor.char_point < cursor.fixed_select_char_point {
+				//Delete or backspace does not move the cursor in this case since the cursor is on the left
+				//and we always remove text from the right.
+				ta : TextAction;
+				ta.action_type = TextActionType.REMOVE_TEXT_RIGHT;
+				ta.cursor_before_action = cursor;
+				//cursor.char_point on remove text right does not move so it is in the same place after the action.
+				//Removal unselects. We do this on the bottom but doing it in both places is resilient.
+				cursor.cursor_is_selecting = false;
+				ta.after_action_cursor = cursor;
+				CreateTextAction(string.{remove_width, current_char_point_data}, ta, file_string, text_editor_data.undo_split_string);
+
+
+				copy_string_length : s64 = file_string.text_string.count - cursor.fixed_select_char_point; 
+				memcpy(current_char_point_data, fixed_char_point_data, copy_string_length);
+			} else {
+				//Sanity check
+				assert(false, "cursor.char_point == cursor.fixed_select_char_point is not possible");
+			}
+
+			file_string.text_string.count -= remove_width;
+
+			/*DOC : If we are adding text we want to update the line char and bounds on remove so we can see the text.
+			So if we remove here then we adjust the bounds and line char and then if we add some text back then we
+			start from that removed position instead of the previous position which may result in not seeing any text.
+			For example, pasting in some text on a single line when its highlighted and we are on the right char bound
+			then this brings the left char bound back to 0 and then updates with the added text from there instead
+			of adjusting it from the right char bound.
+			*/
+			if add_text {
+				UpdateCursorLineCharAndBounds(cursor, file_string.*, single_line);
+			}
+		} 
+		else if !cursor.cursor_is_selecting 
+			&& IsKeyboardEvent(.BACKSPACE, .IS_DOWN_WITH_PAUSE, current_event)
+			&& cursor.char_point > 0 
+		{
+			new_char_point_data : *u8 = current_char_point_data - 1;
+
+			//TODO Can we generalize this if we pull out the memcpy and the position before changing the string
+			//but also before changing the char points
+			ta : TextAction;
+			ta.action_type = TextActionType.REMOVE_TEXT_LEFT;
+			ta.cursor_before_action = cursor;
+			action_string : string = copy_temporary_string(string.{1, new_char_point_data});
+
+			//IMPORTANT : Need to do this before the memcpy, otherwise we are checking the wrong char.
+			//This led to an issue where if the next char was a \n then we would move the cursor incorrectly.
+			if new_char_point_data.* == cast(u8) #char "\n" && !single_line {
+				cursor.cursor_line_number -= 1;
+			}
+			
+			copy_string_length : s64 = file_string.text_string.count - cursor.char_point; 
+			memcpy(new_char_point_data, current_char_point_data, copy_string_length);
+
+			cursor.char_point -= 1;
+			file_string.text_string.count -= 1;
+
+			ta.after_action_cursor = cursor;
+			CreateTextAction(action_string, ta, file_string, text_editor_data.undo_split_string);
+		} 
+		else if !cursor.cursor_is_selecting
+			&& IsKeyboardEvent(.DELETE, .IS_DOWN_WITH_PAUSE, current_event)
+			&& cursor.char_point < file_string.text_string.count
+		{
+			old_char_point_data : *u8 = current_char_point_data + 1;
+
+			ta : TextAction;
+			ta.cursor_before_action = cursor;
+			ta.action_type = TextActionType.REMOVE_TEXT_RIGHT;
+			//NOTE : Delete has same char point and line number before and after action, so we can set them beforehand
+			//and pass the string directly from the file instead of copying it.
+			ta.after_action_cursor = cursor;
+			CreateTextAction(string.{1, current_char_point_data}, ta, file_string, text_editor_data.undo_split_string);
+
+			copy_string_length : s64 = file_string.text_string.count - cursor.char_point - 1; 
+			memcpy(current_char_point_data, old_char_point_data, copy_string_length);
+			file_string.text_string.count -= 1;
+		}
+
+		//NOTE : This removes selection if we are removing text AND also if we are adding text after a selection
+		//which would remove the text here and therefore run this line and remove the selection.
+		//In order to not hide bugs i put an assert here since we undo the selection when selecting above now,
+		//so if we don't undo the selection then we should crash to avoid any text editing bugs/issues.
+		assert(!cursor.cursor_is_selecting);
+		// cursor.cursor_is_selecting = false;
+		event_input_update = true;
+		event_text_update = true;
+	}
+	/*NOTE : We do text_input first so that if the file_loc changes, then we can use that correct one after
+	on the same frame. This way we have a consistent text updating and cursor updating every frame.
+	*/
+	// cursor_start_line_number : int = cursor.cursor_line_number;
+	if add_text {
+		//TODO Could use a function here instead but this seems cleaner for now.
+		input_text : string;
+		char_input : u8;
+		if current_event.event_type == .TEXT_BLOCK {
+			input_text = current_event.text_block;
+		}
+		else if IsTextInputEvent(.IS_DOWN_WITH_PAUSE, current_event) {
+			input_text.data = cast(*u8) (*current_event.utf32);
+			input_text.count = 1;
+		}
+		else if IsKeyboardEvent(.ENTER, .IS_DOWN_WITH_PAUSE, current_event) ||
+	   		  //TODO Can remove one of these (shift or ctrl) later if there is preference for only 1
+	   		  //SETTINGS this should also be set in settings
+	   		  IsKeyboardEvent(.ENTER, .{shift_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event) ||
+	   		  IsKeyboardEvent(.ENTER, .{ctrl_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event)
+		{
+		   if IsKeyboardEvent(.ENTER, .{shift_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event) ||
+	   		IsKeyboardEvent(.ENTER, .{ctrl_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event)
+		   {
+				cursor.char_point = LineEndCharPoint(cursor.*, file_string.*, single_line);
+			}
+			char_input = #char "\n";
+			input_text.data = *char_input;
+			input_text.count = 1;
+	   }
+	   else if IsKeyboardEvent(.TAB, .IS_DOWN_WITH_PAUSE, current_event) {
+			char_input = #char "\t";
+			input_text.data = *char_input;
+			input_text.count = 1;
+	   }
+		else if IsKeyboardEvent(#char "V", .{ctrl_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event) {
+			input_text = os_clipboard_get_text(,,temp);
+		}
+
+		new_text_length : int = file_string.text_string.count + input_text.count;
+		if new_text_length >= file_string.total_allocated_bytes {
+			//TODO We could double the size of the string here and then write the buffer to it.
+			//Can try to do that with new same_start_resize_flat_pool_allocator_proc with Flat_Pool
+			//ALSO Can have an option that limits it and does not resize it automatically here.
+			//That can be used for watch and text box input.
+			//YES And we can put the option in FileString and then return from here if it is limited size.
+			//Could even add a return value although we won't update anything in that case
+			//But then for text editor string we would want to resize and then
+			//only limit it to the allocator max which we can check in here from Flat_Pool.
+			print("End of file text editing.\n");
+		}
+
+		//TODO Once we double the string size above, we can remove this if statement
+		if new_text_length < file_string.total_allocated_bytes
+		{
+			ta : TextAction;
+			ta.action_type = TextActionType.ADD_TEXT;
+			ta.cursor_before_action = cursor;
+
+			//TODO Test this new fast method of copying thoroughly.
+	    	//TODO make this a fast unsafe insert string method
+	    	//TODO Could be safe if we pass in TextFile and verify the total_allocated_bytes
+			old_char_point_data : *u8 = file_string.text_string.data + cursor.char_point;
+			new_char_point_data : *u8 = old_char_point_data + input_text.count;
+			copy_string_length : s64 = file_string.text_string.count - cursor.char_point; 
+			//Note : Copy second part forward
+			memcpy(new_char_point_data, old_char_point_data, copy_string_length);
+			//Note : Copy input_buffer
+			memcpy(old_char_point_data, input_text.data, input_text.count);
+
+			file_string.text_string.count = new_text_length;
+
+			// if text_add_update_cursor {
+			cursor.char_point += input_text.count;
+
+			// if input_text.count > 1 {
+			// 	print("text_buffer_count = %\n", input_text.count);
+			// }
+			// Being here prevents us from adding '\n' if we are >= total_allocated_bytes
+			#if !single_line {
+			// Need to move the cursor for every "\n" found.
+			// Not having this led to a bug where the cursor was not aligned with the text.
+			// This also keeps it consistent with the text_input instead of the return_enter key
+			// in case those mismatch for some reason.
+			// But maybe not on testing. The else if with the back_space may have been enough.
+			// Leaving though as this is resilient code for 
+			//TODO Can we do this faster with SIMD? YES use find_index_from_left in the loop instead.
+			//If we use external string module that uses AVX eventually then that would be double speed.
+			for 0..input_text.count-1 if input_text[it] == #char "\n" {
+				cursor.cursor_line_number += 1;
+			}
+			// if input.return_enter.is_down_with_pause {
+			// 	cursor.cursor_line_number += 1;
+			// }
+			}
+			// }	
+
+			ta.after_action_cursor = cursor;
+			CreateTextAction(input_text, ta, file_string, text_editor_data.undo_split_string);
+
+			event_input_update = true;
+			event_text_update = true;
+		}
+	}
+
+	//TODO We only need to do this if we update the cursor_line_number
+	#if !single_line {
+	//TODO Instead of storing this as a bool, do the diff and check if diff != 0
+	if event_text_update {
+		//Note : Clear the errors since we updated the text
+		// array_reset_keeping_memory(*perm.all_data.all_parse_errors);
+
+		//TODO Can optimize this further by only splitting within the viewable region
+		//and then only having those lines of code. One problem there is then we need some
+		//relative placement data for the positions of the line OR we can always replace it
+		//in the same place in the op_space and limit the op_space camera movement so we 
+		//cannot go beyond those limits. We could also just have chunks of lines and the position
+		//is always relative to the current chunk and we swap out chunks depending on where we are.
+		//and so the position won't change when we swap out chunks. (or it will)
+		//Note : This is stored in temporary storage. We can use custom StringSplit if we 
+		//want a different allocator and we can pass back char_index if we want to know
+		//the start char of each line from custom StringSplit.
+		/*This site suggest either a spit buffer or a line-by-line implementation.
+		https://stackoverflow.com/questions/4046246/how-are-text-editors-generally-implemented
+
+		CURRENT METHOD WAS TESTED WITH AROUND 50-100k lines and it works fine sooo...
+		I guess it would be worth testing with multiple files open but ultimately if we put things
+		on separate threads then that might even be totally fine eventually.
+		
+		AN ALTERNATIVE is to do line-by-line editing but then we would have jagged arrays. So line-by-line would
+		be faster for typical character input editing but would possibly create sparse memory and be
+		more complex code-wise for line-by-line changes. But then we would not have to split on every update.
+		Could try that eventually since we would only have to update UpdateFileStringAtCursor here and could
+		then have 2 different text editors.
+
+		NOTE : OPTIMIZING this split depending on the input case is more or less equivalent to line-by-line editing
+		in terms of efficiency I think. So we could do that and if we just move some lines around for example
+		or cut or paste a few full lines in then we can just update those lines in the file_loc instead
+		of re-splitting the whole file. WE can do the whole thing in other cases.
+		THIS IS ONLY NECESSARY IF WE HAVE SOME KIND OF SLOWDOWN BECAUSE OF THE SPLIT. Using avx find_index_from_left
+		would be a first level optimization which would give a free 2x speedup for this in any case.
+
+		ALSO Could have a FileViewer which does not allow editing but can view and traverse a file.
+		This would be more efficient for syntax highlighting because then we would only have to do it
+		whenever the file is externally updated and can index it as such. Otherwise we have to do
+		syntax highlighting for each line on each pass (not so bad with only viewable lines now).
+		FileViewer can be better for editing text externally and debugging or jumping around internally.
+		*/
+
+		//TODO Should split this directly into file_loc instead of like this.
+		//That would be much more efficient and then we can optimize directly here and not have 
+		//store this in temp and then do the memcpy since this could potentially be.
+		//THAT WOULD BE FIRST OPTIMIZATION ALONG WITH avx find_index_from_left with external string library.
+		//TODO Can just use an allocator directly anyways but then .split needs to use it
+		//so then we don't have to memcpy back to file_loc. Can copy a .split that uses allocator
+		//and then we just automatically reallocate the data with the same allocator as file_loc
+		//and then we don't need the memcpy here and that would be easily more efficient.
+		array_temp_split : [] string = 
+			String.split(file_string.text_string, cast(u8) #char "\n",, temp);
+		//ACTUALLY WE CAN JUST DO IT DIRECTLY HERE and load it in. We can adjust file_loc beforhane
+		//since we already know the cursor_line_number difference from above.
+		//TODO Would just need to keep track of it when we do cutting and highlighting add and removal later.
+		//I think the only case is cutting we would have to loop through how many "\n" we cut or deleted out.
+		//If we use external string module that uses AVX eventually then that would be double speed.
+
+		//TODO Can use this to adjust below instead.
+		//TODO Use this to adjust file_loc instead if we copy the split
+		//directly to file_loc which we should do eventually anyways.
+		//Also split with AVX2 since 95% of people have AVX2 on steam survey.
+		// cursor_line_diff : int = cursor_start_line_number - cursor.cursor_line_number;
+
+		//TODO Can do this beforehand now based on cursor_line_number and just compute a cursor_delta_lines
+		//and then add or remove to the count based on the delta.
+		//TODO instead of doing this we can have a max pre-allocated LOC and just copy over directly
+		//and then double when we have to.
+		//TODO Could check the allocated size for all_lines_of_code and just do a resize if we have to
+		s : string = ---; //TODO could place this globally so we don't have to recreate every time
+		while file_string.file_loc.count < array_temp_split.count {
+			//TODO Can just do array_resize here instead with cursor_line_diff
+			array_add(*file_string.file_loc, s);
+		}
+
+		//TODO Why not just reduce the count here with cursor_line_diff? Could test that out
+		//I think because I was trying to make it more efficient but it did not work so I think
+		//just reducing the count is ok now. Maybe can test when we implement multi-line copy/paste
+		//and also highlighting.
+		while file_string.file_loc.count > array_temp_split.count {
+			array_unordered_remove_by_index(*file_string.file_loc,
+				file_string.file_loc.count-1);
+		}
+
+		//TODO We can just split this directly in file_loc instead of doing this copy and adding above
+		memcpy(file_string.file_loc.data, array_temp_split.data,
+			array_temp_split.count * size_of(string));
+
+
+		//TODO We could do this for single line as well, maybe for the terminal but maybe better to use a different system for that.
+		//TODO We could put this on the bottom if that is clearer
+		file_string.not_saved_text_edit = true;
+	}
+	}
+
+	/*DOC : To prevent moving arrows and adding text input on the same frame, if we updated text beforehand
+	then we don't do it again here. This way we avoid potential issues with resetting select_line_char
+	or having out of order arrow keys on the same frame. We can remove it if there seems to be issues.
+	*/
+	
+	//TODO Should we put else if here with the other arrow keys?
+	//Probably yes since it does not seem to pickup anyways but
+	//we can check manually later.
+	// if IsOnlyInput(input.arrow_right.is_down_with_pause, input) &&
+	if (IsKeyboardEvent(.ARROW_RIGHT, .IS_DOWN_WITH_PAUSE, current_event) || 
+		 IsKeyboardEvent(.ARROW_RIGHT, .{shift_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event)) 
+		// && cursor.char_point < file_string.text_string.count 
+	{
+		if cursor.cursor_is_selecting && IsKeyboardEvent(.ARROW_RIGHT, .IS_DOWN_WITH_PAUSE, current_event) {
+			//If we are selecting then we leave the cursor where it is if it is > fixed point
+			//if cursor < fixed point, then we move it to the fixed point
+			cursor.cursor_is_selecting = false;
+			if cursor.char_point < cursor.fixed_select_char_point {
+				cursor.char_point = cursor.fixed_select_char_point;
+				cursor.cursor_line_number = cursor.fixed_select_line_number;
+				cursor.cursor_line_char = cursor.fixed_select_line_char;
+			}
+		} else if cursor.char_point < file_string.text_string.count {
+			//We leave this outside to unselect in any case
+			CheckAndSetSelection(cursor,
+				IsKeyboardEvent(.ARROW_RIGHT, .{shift_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event)); 
+	    	current_char : u8 = (file_string.text_string.data + cursor.char_point).*;
+			if current_char == cast(u8) #char "\n" && !single_line {
+				cursor.cursor_line_number += 1;
+			}
+			cursor.char_point += 1;
+		}
+		event_input_update = true;
+	} 
+	if (IsKeyboardEvent(.ARROW_LEFT, .IS_DOWN_WITH_PAUSE, current_event) || 
+		 IsKeyboardEvent(.ARROW_LEFT, .{shift_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event)) 
+		//NOTE : We don't want this for selection since then at char_point == 0 we don't trigger the unselect
+		// && cursor.char_point > 0 
+	{
+		//TODO We could pull this case out if it's cleaner but having it here seems cleaner since all left arrow is in the same place.
+		if cursor.cursor_is_selecting && IsKeyboardEvent(.ARROW_LEFT, .IS_DOWN_WITH_PAUSE, current_event) {
+			//If we are selecting and press arrow left without shift, 
+			//if cursor < fixed point, we leave the cursor where it is 
+			//if cursor > fixed point, we move it to the fixed point
+			cursor.cursor_is_selecting = false;
+			if cursor.char_point > cursor.fixed_select_char_point {
+				cursor.char_point = cursor.fixed_select_char_point;
+				cursor.cursor_line_number = cursor.fixed_select_line_number;
+				cursor.cursor_line_char = cursor.fixed_select_line_char;
+			}
+		} else if cursor.char_point > 0 {
+			CheckAndSetSelection(cursor, 
+				IsKeyboardEvent(.ARROW_LEFT, .{shift_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event));
+			cursor.char_point -= 1;
+	    	current_char : u8 = (file_string.text_string.data + cursor.char_point).*;
+			if current_char == cast(u8) #char "\n" && !single_line {
+				cursor.cursor_line_number -= 1;
+			}
+		}
+		event_input_update = true;
+	} 
+	CTRL_SKIP_CHARS : string : " \t";
+	if (IsKeyboardEvent(.ARROW_RIGHT, .{ctrl_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event) || 
+		 IsKeyboardEvent(.ARROW_RIGHT, .{ctrl_pressed=true,shift_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event)) 
+		//No longer need this since we want to unselect if we are at the end of the file
+		// && cursor.char_point < file_string.text_string.count  
+	{
+		CheckAndSetSelection(cursor, 
+			IsKeyboardEvent(.ARROW_RIGHT, .{ctrl_pressed=true,shift_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event));
+
+		did_right_skip : bool = false;
+ 		while cursor.char_point < file_string.text_string.count &&
+ 				String.is_any((file_string.text_string.data + cursor.char_point).*, CTRL_SKIP_CHARS)
+		{
+			cursor.char_point += 1;
+			did_right_skip = true;
+		} 			
+
+		if cursor.char_point < file_string.text_string.count {
+	 		current_char : u8 = (file_string.text_string.data + cursor.char_point).*;
+	 		if did_right_skip && current_char == "\n" {
+	 			//Explicitly do nothing since we want to no skip over newline after a skip to show that there
+	 			//are some empty spaces or tabs at the end of that line.
+	 		} else if !did_right_skip && current_char == "\n" {
+	 			//We only skip over single new lines since that feels best.
+				cursor.char_point += 1;
+				#if !single_line {
+				cursor.cursor_line_number += 1;
+				}
+			} else if is_alnum(current_char) {
+				//Skip over just the word
+		    	while cursor.char_point < file_string.text_string.count &&
+		    			is_alnum((file_string.text_string.data + cursor.char_point).*)
+		    	{
+		    		cursor.char_point += 1;
+		    	}
+		   } else if cursor.char_point + 1 < file_string.text_string.count &&
+	   			is_alnum((file_string.text_string.data + cursor.char_point + 1).*)
+	   			//NOTE : This is dealt with because the previous else if did not pass
+	   			//&& !is_alnum(current_char)
+		   {
+		   	//If next char is alnum but current char is not (because of above else if)
+		   	//Skip over 1 char and then the word 
+		   	cursor.char_point += 1;
+		   	while cursor.char_point < file_string.text_string.count &&
+	    				is_alnum((file_string.text_string.data + cursor.char_point).*)
+		    	{
+		    		cursor.char_point += 1;
+		    	}
+			} else {//!is_alnum(current_char) && !is_alnum(next_char)
+		    	while cursor.char_point < file_string.text_string.count && 
+		    			!is_alnum((file_string.text_string.data + cursor.char_point).*) &&
+		    			!is_space((file_string.text_string.data + cursor.char_point).*)
+	 			{
+		    		cursor.char_point += 1;
+		    	}
+		   }
+		}
+    	event_input_update = true;
+	} 
+	if (IsKeyboardEvent(.ARROW_LEFT, .{ctrl_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event) || 
+		 IsKeyboardEvent(.ARROW_LEFT, .{ctrl_pressed=true,shift_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event)) 
+		//Need to be able to unselect if we are at start of file so we put this check below
+		// && cursor.char_point > 0
+	{
+		CheckAndSetSelection(cursor, 
+			IsKeyboardEvent(.ARROW_LEFT, .{ctrl_pressed=true,shift_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event));
+
+		did_left_skip : bool = false;
+		if cursor.char_point > 0 {
+			if String.is_any((file_string.text_string.data + cursor.char_point - 1).*, CTRL_SKIP_CHARS) {
+				cursor.char_point -= 1;
+		 		while cursor.char_point > 0 &&
+		 				String.is_any((file_string.text_string.data + cursor.char_point).*, CTRL_SKIP_CHARS) 
+				{
+					cursor.char_point -= 1;
+				} 			
+				//NOTE : This is more explicit than putting >= 0 in the while loop and I want to make the file bound checks clear.
+				if cursor.char_point != 0 {
+					cursor.char_point += 1;
+				}
+	 			did_left_skip = true;
+		 	}
+		}
+
+	 	if cursor.char_point > 0 {
+			cursor.char_point -= 1;
+			if did_left_skip && (file_string.text_string.data + cursor.char_point).* == "\n" {
+				//EXPLICITLY just set the cursor back since we want to stop if we skipped to the beginning of a line
+				cursor.char_point += 1;
+			} else if !did_left_skip && (file_string.text_string.data + cursor.char_point).* == "\n" && !single_line {
+	 			//We only skip over single new lines since that feels best.
+				cursor.cursor_line_number -= 1;
+			} else if is_alnum((file_string.text_string.data + cursor.char_point).*) {
+				//Skip over word if current char is alnum
+		    	while cursor.char_point > 0 && is_alnum((file_string.text_string.data + cursor.char_point).*) {
+		    		cursor.char_point -= 1;
+		    	}
+		    	//We could put >= 0 in the while loop but this is clearer. IF we hit the beginning of the file
+		    	//then we don't add a char point since we stopped there.
+		    	if cursor.char_point != 0 {    
+			    	cursor.char_point += 1;
+			   }
+	   	} else if cursor.char_point - 1 > 0 && is_alnum((file_string.text_string.data + cursor.char_point - 1).*) 
+	   		//This is not needed because previous else if did not pass
+	   		//&& !is_alnum(current_char)
+	   	{
+	   		//We skip left over 1 char and then alnum. Good for cases liked "10," or "1.0]" or "x="
+	   		cursor.char_point -= 1;
+		    	while cursor.char_point > 0 && is_alnum((file_string.text_string.data + cursor.char_point).*) {
+		    		cursor.char_point -= 1;
+		    	}
+		    	if cursor.char_point != 0 {
+			    	cursor.char_point += 1;
+			   }
+			} else {//!is_alnum(current_char) && !is_alnum(current_char_point-1). both cases checked above
+				//Here we don't have alnum in previous 2 chars AND we dont have skip chars since we already skipped above
+				//SO then we skip over all non_alnum chars and also stop at is_space which includes newlines and tabs.
+				cursor.char_point -= 1;
+		    	while cursor.char_point > 0 && 
+		    			!is_alnum((file_string.text_string.data + cursor.char_point).*) &&
+		    			!is_space((file_string.text_string.data + cursor.char_point).*)
+	 			{
+		    		cursor.char_point -= 1;
+		    	}
+		    	if cursor.char_point != 0 {
+			    	cursor.char_point += 1;
+			   }
+			}
+		}
+    	event_input_update = true;
+	} 
+	if (IsKeyboardEvent(.HOME, .IS_DOWN_WITH_PAUSE, current_event) || 
+		 IsKeyboardEvent(.HOME, .{shift_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event)) 
+		&& cursor.char_point > 0 
+	{
+		CheckAndSetSelection(cursor, 
+			IsKeyboardEvent(.HOME, .{shift_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event));
+		line_start_char : int = LineStartCharPoint(cursor.char_point, file_string.*, single_line);
+		text_start_char : int = line_start_char;
+		next_char : *u8;
+		if text_start_char < file_string.text_string.count {
+			next_char = file_string.text_string.data + text_start_char;
+		}
+		//If we have some skip chars at the beginning of the line then we oscillate between the start of the line and end of those chars
+		while text_start_char < file_string.text_string.count && 
+			String.is_any(next_char.*, CTRL_SKIP_CHARS) 
+		{
+			text_start_char += 1;
+			next_char += 1;
+		}
+		if text_start_char == cursor.char_point {
+			cursor.char_point = line_start_char;
+		} else {
+			cursor.char_point = text_start_char;
+		}
+		event_input_update = true;
+	} 
+	if (IsKeyboardEvent(.END, .IS_DOWN_WITH_PAUSE, current_event) || 
+		 IsKeyboardEvent(.END, .{shift_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event)) 
+	{
+		CheckAndSetSelection(cursor,
+			IsKeyboardEvent(.END, .{shift_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event));
+
+		cursor.char_point = LineEndCharPoint(cursor.*, file_string.*, single_line);
+		event_input_update = true;
+	}
+	if IsKeyboardEvent(#char "L", .{ctrl_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event) 
+		&& !single_line 
+	{
+		if !cursor.cursor_is_selecting {
+			cursor.cursor_is_selecting = true;
+			cursor.fixed_select_char_point = LineStartCharPoint(cursor.char_point, file_string.*, single_line);
+			cursor.fixed_select_line_number = cursor.cursor_line_number;
+			cursor.fixed_select_line_char = 0;
+		} else if cursor.cursor_is_selecting && cursor.fixed_select_char_point > cursor.char_point {
+			cursor_copy : TextCursor = cursor.*;
+
+			cursor.fixed_select_char_point = LineStartCharPoint(cursor_copy.char_point, file_string.*, single_line);
+			cursor.fixed_select_line_number = cursor_copy.cursor_line_number;
+			cursor.fixed_select_line_char = 0;
+
+			cursor.char_point = cursor_copy.fixed_select_char_point;
+			cursor.cursor_line_number = cursor_copy.fixed_select_line_number;
+		} else if cursor.cursor_is_selecting && cursor.fixed_select_char_point < cursor.char_point &&
+			cursor.fixed_select_line_char > 0
+		{
+			cursor.fixed_select_char_point = LineStartCharPoint(cursor.fixed_select_char_point, file_string.*, single_line);
+			cursor.fixed_select_line_char = 0;
+		}
+
+		cursor.char_point = LineEndCharPoint(cursor.*, file_string.*, single_line);
+		if cursor.char_point < file_string.text_string.count &&
+			file_string.text_string[cursor.char_point] == #char "\n" 
+		{
+			cursor.char_point += 1;
+			cursor.cursor_line_number += 1;
+		}
+		event_input_update = true;
+	}
+
+	#if !single_line {
+	//DOC : I think allowing ctrl+arrow and arrow on the same frame is ok since they are separate functions.
+	//Also allowing up/down+left/right is ok but not up+down and left+right on the same frame
+	// if input.only_ctrl_down && input.arrow_up.is_down_with_pause
+	if IsKeyboardEvent(.ARROW_UP, .{ctrl_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event)
+		&& cursor.start_file_line_index > 0 
+	{
+		move_bounds : bool = true;
+		if cursor.cursor_line_number >= cursor.end_file_line_index &&
+			!cursor.cursor_is_selecting
+		{
+			move_bounds = MoveCursorUp(file_string, cursor);
+			//TODO technically this is only for the cursor right now but just in case we set it anyways.
+			//Not sure if there can be issues with doing this and text editing at the same time
+			event_input_update = true;
+		} 
+		if move_bounds {
+			//TODO Can have a render_start_index which could be this-1 or this-2 and end this+2
+			//so that we can render an extra line but this is where the cursor would stop at
+			cursor.start_file_line_index -= 1;
+			cursor.end_file_line_index -= 1;
+		}
+		//TODO We only do camera on x now but leaving here as reminder.
+		//We can update camera outside of this call so we don't have to pass it in here.
+		// op_2D_cam.world_pos.y += OP_SPACE_LINE_HEIGHT;
+	} 
+
+	/*NOTE: Here we check file_loc_count but if we updated text then it will be wrong. This could
+	cause an inconsistency if, for example, we remove some lines AND move down on the same frame.
+	We could prevent text_updating in this case to avoid that OR we could do text editing first 
+	and then compute new file_loc and then check this afterwards so that it is always consistent...?
+	*/
+	// if input.only_ctrl_down && input.arrow_down.is_down_with_pause
+	// if IsKeyboardEvent(.ARROW_DOWN, .{ctrl_pressed=true}, current_event)
+	if IsKeyboardEvent(.ARROW_DOWN, .{ctrl_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event)
+		&& cursor.end_file_line_index < file_string.file_loc.count-1 
+	{
+		move_bounds : bool = true;
+		if cursor.cursor_line_number <= cursor.start_file_line_index &&
+			!cursor.cursor_is_selecting
+		{
+			move_bounds = MoveCursorDown(file_string, cursor);
+			event_input_update = true;
+		} 
+		if move_bounds {
+			cursor.start_file_line_index += 1;
+			cursor.end_file_line_index += 1;
+		}
+		// op_2D_cam.world_pos.y -= OP_SPACE_LINE_HEIGHT;
+	}
+
+	//TODO These should be thoroughly tested in all cases, including bound checks.
+	//Can possibly pull out up and down arrow as functions and test there
+	//or just test this function directly in all cases.
+	if (IsKeyboardEvent(.ARROW_UP, .IS_DOWN_WITH_PAUSE, current_event) || 
+		 IsKeyboardEvent(.ARROW_UP, .{shift_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event)) 
+		//NOTE : We don't want to trigger this for selection so that we unselect
+		// && cursor.cursor_line_number > 0 
+	{
+		if cursor.cursor_is_selecting && IsKeyboardEvent(.ARROW_UP, .IS_DOWN_WITH_PAUSE, current_event) {
+			//If we are selecting and press arrow up without shift, 
+			//if cursor < fixed point, we move up normally 
+			//if cursor > fixed point, we move it to the fixed point and then move up normally
+			if cursor.char_point > cursor.fixed_select_char_point {
+				cursor.char_point = cursor.fixed_select_char_point;
+				cursor.cursor_line_number = cursor.fixed_select_line_number;
+				cursor.cursor_line_char = cursor.fixed_select_line_char;
+			}
+		} 
+
+		CheckAndSetSelection(cursor, 
+			IsKeyboardEvent(.ARROW_UP, .{shift_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event));
+		//We check this in MoveCursorUp anyways
+		// if cursor.cursor_line_number > 0 {
+		moved_cursor : bool = MoveCursorUp(file_string, cursor);
+		//Better to update anyways for consistency and resilience
+		event_input_update = true;
+		// event_input_update = moved_cursor;
+		// }
+	}	
+	if IsKeyboardEvent(.ARROW_DOWN, .IS_DOWN_WITH_PAUSE, current_event) || 
+		IsKeyboardEvent(.ARROW_DOWN, .{shift_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event) 
+	{
+		if cursor.cursor_is_selecting && IsKeyboardEvent(.ARROW_DOWN, .IS_DOWN_WITH_PAUSE, current_event) {
+			//If we are selecting and press arrow down without shift, 
+			//if cursor > fixed point, we move down normally 
+			//if cursor < fixed point, we move it to the fixed point and then move down normally
+			//We set is_selecting afterwards in the function below anyways
+			// cursor.cursor_is_selecting = false;
+			if cursor.char_point < cursor.fixed_select_char_point {
+				cursor.char_point = cursor.fixed_select_char_point;
+				cursor.cursor_line_number = cursor.fixed_select_line_number;
+				cursor.cursor_line_char = cursor.fixed_select_line_char;
+			}
+		} 
+
+		CheckAndSetSelection(cursor, 
+			IsKeyboardEvent(.ARROW_DOWN, .{shift_pressed=true}, .IS_DOWN_WITH_PAUSE, current_event));
+		moved_cursor : bool = MoveCursorDown(file_string, cursor);
+		// event_input_update = moved_cursor;
+		//Better to update anyways for consistency and resilience
+		event_input_update = true;
+	}
+
+	//TODO Can do go-to line with this same functionality.
+	//TODO We don't use this action_type currently, so I can remove it if we don't need it.
+	//WE JUST CALL MoveToLine where we need it. Having it here allows us to regulate how it
+	//happens with other input but we use it for debugging for example to move when the debugging line moves.
+	// if input.only_ctrl_down && input.g_button.down_this_frame {
+	// for all_tc_data if it.action_type == TextCursorActionType.MOVE_TO_LINE {
+	// 	MoveToLine(it.line_number, file_string.*, cursor);
+	// 	//We prevent further updating to make sure the cursor and line are in the right place.
+	// 	event_input_update = false;
+	// }
+	}
+
+	/*TODO We could do this twice in this function, once after text_updating and then again here.
+	It shoud accumulate the cursor_line_number and char_point regardless but maybe if there is something wrong
+	we can update it twice per frame anyways. and then put the cursor_line_char update code in a function a reuse it before.
+	*/
+	if event_input_update {
+		//TODO Should we move this into UpdateCursorLineCharAndBounds as well?
+		//WE NOT UPDATE THIS IN UpdateCursorLineCharAndBounds which seems more consisten
+		//TODO Should we just use this to update cursor_line_char everywhere?
+		// line_start_char : int = LineStartCharPoint(cursor.char_point, file_string.*, single_line);
+		//NOTE : This should not be used before this point since it gets updated here.
+		//In any case, it should only be used for x_bounds and rendering.
+		// cursor.cursor_line_char = cursor.char_point - line_start_char;
+
+		//We update x and y bounds here depending on how the input beforehand.
+		//This keeps text window movement consistent with all text input everywhere.
+		//Y is not needed for singl_line.
+		#if 1 {
+		UpdateCursorLineCharAndBounds(cursor, file_string.*, single_line);
+		} else {
+		#if !single_line {
+		//TODO Should we make this a function?
+		if cursor.cursor_line_number > cursor.end_file_line_index {
+			line_difference : int = cursor.cursor_line_number - cursor.end_file_line_index;
+			//TODO We could check line bounds here but I think we don't because we check beforehand based on input.
+			cursor.start_file_line_index += line_difference;
+			cursor.end_file_line_index += line_difference;
+			// op_2D_cam.world_pos.y -= line_difference*OP_SPACE_LINE_HEIGHT;
+		} else if cursor.cursor_line_number < cursor.start_file_line_index {
+			line_difference : int = cursor.start_file_line_index - cursor.cursor_line_number;
+			cursor.start_file_line_index -= line_difference;
+			cursor.end_file_line_index -= line_difference;
+			// op_2D_cam.world_pos.y += line_difference*OP_SPACE_LINE_HEIGHT;
+		}
+		}
+
+		//TODO FROM HERE Need to account for tabs here now
+		#if 1 {
+		//TODO We can make this a function and then reuse for cursor mouse holding
+		//Should we make sure that the left char bound is always in line with an actual char?
+		char_count_with_tab : int = CharCountUntilCursorWithTab(cursor.cursor_line_char, 
+			cursor.cursor_line_number, file_string.*);
+		if char_count_with_tab > cursor.right_char_bound {
+			char_diff : int = char_count_with_tab - cursor.right_char_bound;
+			cursor.right_char_bound += char_diff;
+			cursor.left_char_bound += char_diff;
+		} else if char_count_with_tab < cursor.left_char_bound {
+			char_diff : int = cursor.left_char_bound - char_count_with_tab;
+			cursor.right_char_bound -= char_diff;
+			cursor.left_char_bound -= char_diff;
+		}
+		} else {
+		if cursor.cursor_line_char > cursor.right_char_bound {
+			// print("char_point=% > right_bound=%\n", cursor.cursor_line_char, cursor.right_char_bound);
+			char_diff : int = cursor.cursor_line_char - cursor.right_char_bound;
+			cursor.right_char_bound += char_diff;
+			cursor.left_char_bound += char_diff;
+			//NOTE : We do this externally so this function does not depend on a camera.
+			// op_2D_cam.world_pos.x = cursor.left_char_bound * perm.text_editor_data.code_font_1_char_width_world;
+		} else if cursor.cursor_line_char < cursor.left_char_bound {
+			// print("char_point=% < left_bound=%\n", cursor.cursor_line_char, cursor.left_char_bound);
+			char_diff : int = cursor.left_char_bound - cursor.cursor_line_char;
+			cursor.right_char_bound -= char_diff;
+			cursor.left_char_bound -= char_diff;
+			// op_2D_cam.world_pos.x = text_file.file_tabs[text_op.ftab_i].tab_cursor.left_char_bound * perm.text_editor_data.code_font_1_char_width_world;
+		}
+		}
+		if cursor.cursor_is_selecting && cursor.char_point == cursor.fixed_select_char_point {
+			//Remove the selection if the cursor was brought back to the fixed selection.
+			//Checking this here avoids any issues like missing a backspace or text input because
+			//we still have that cursor is selected but the selection is 0 char width so nothing happens for 1 keypress.
+			cursor.cursor_is_selecting = false;
+		}
+		}
+
+		#if 0 {
+		//Note : Add these 2 lines to input if we want to use the dynamic char width font.
+		// my_font : *Dynamic_Font,
+		// prepare_text_function : (*Dynamic_Font,string,Font_Effects) -> s64,
+		string_to_cursor : string = file_string.text_string;
+		string_to_cursor.data += line_start_char;
+		string_to_cursor.count = cursor.cursor_line_char;
+		//TODO If we need this, it should be a function in the renderer which returns the dynamic
+		//width of a string based on the font_index instead of the actual font pointer
+		width_to_cursor : s64 = ComputePixelWidthOfString(string_to_cursor, my_font, prepare_text_function);
+		} else {
+		// This is an optimization that could be used for the code editing since we know
+		// the font width is always the same and we precomputed 1 character. 
+		// Otherwise we would use dynamic font char width above.
+		// cursor.cursor_diff_x = text_editor_data.code_font_1_char_width_world * cursor.cursor_line_char;
+		// width_to_cursor : s64 = text_editor_data.code_font_1_char_width_pixel * cursor_line_index;
+		}
+		//TODO Can put this back if or just recompute TextEditorData if we change the font size
+		// cursor.cursor_diff_x = (cast(float) width_to_cursor) / pixels_per_square;
+	}
+
+	// print("char_point=%\n", cursor.char_point);
+	if event_text_update return_text_update = true;
+	if event_input_update return_input_update = true;
+}
+
+return return_text_update, return_input_update;
+}
+LineStartCharPoint :: inline (char_point : int, file_string : FileString, $single_line : bool = false) -> int {
+	#if single_line {
+	return 0;
+	} else {
+	return LineStartCharPoint(char_point, file_string.text_string);
+	}
+}
+LineStartCharPoint :: inline (char_point : int, text : string) -> int {
+	// Cursor char_point is before the character. So we can have an index == text_string.count
+	// We want to start from the previous char so that if we are at the end we don't check 
+	// text_string[text_string.count] which is no longer part of the string since count starts from 0.
+	previous_char_point : int = char_point - 1;
+	//TODO replace this with find_index_from_right if it's ever optimized in String/module
+	line_start_char : int = FindIndexFromRight(text, cast(u8) #char "\n", previous_char_point);
+	//We want the char after the \n which is the start of the lines.
+	//ALSO If line_start_char == -1 then we get 0 so no need for an extra if statement for that boundary case.
+	line_start_char += 1;
+	return line_start_char;	
+}
+LineEndCharPoint :: inline (cursor : TextCursor, file_string : FileString, $single_line : bool) -> int {
+	#if single_line {
+	return file_string.text_string.count;
+	} else {
+	return LineEndCharPoint(cursor.char_point, file_string.text_string);
+	}
+}
+LineEndCharPoint :: inline (char_point : int, text : string) -> int {
+	line_end_char : int = String.find_index_from_left(text, #char "\n", char_point);
+	if line_end_char == -1 {
+		//Cursor can be at end of file but there is no character there so that needs to be checked externally
+		//to make sure we are not accessing the end of file text_string.count
+		line_end_char = text.count; // In case we are on the last line so no '\n' after
+	}
+	return line_end_char;
+}
+GetTextLine :: inline (char_point : int, text : string) -> string {
+	line_start : int = LineStartCharPoint(char_point, text);
+	line_end : int = LineEndCharPoint(char_point, text);
+	line_count : int = line_end - line_start;
+	line : string = String.slice(text, line_start, line_count);
+	return line;
+}
+CheckAndSetSelection :: inline (cursor : *TextCursor, is_selecting : bool) {
+	//TODO FROM HERE Could pass in if selected externally extend of checking here I THINK THAT IS BETTER
+	if is_selecting {
+		if !cursor.cursor_is_selecting {
+			//We set the values if we have not selected yet and we have shift down
+			cursor.fixed_select_char_point = cursor.char_point;
+			cursor.fixed_select_line_number = cursor.cursor_line_number;
+			cursor.fixed_select_line_char = cursor.cursor_line_char;
+			cursor.cursor_is_selecting = true;
+		}
+	} else { //if shift not down and we pressed a valid selection key (arrow keys)
+		cursor.cursor_is_selecting = false;
+	}		
+}
+
+
+/*We use this so we can move the cursor and do/add things to a text file without ControllerInput for example.
+TODO I am not currently since I pulled out MoveToLine but we can use it if needed later for convenience.
+*/
+TextCursorActionType :: enum u8 {
+	MOVE_TO_LINE;
+}
+TextCursorAction :: struct {
+	action_type : TextCursorActionType;
+	line_number : int;
+}
+
+//NOTE : This moves the camera(start/end line index bounds) and calls MoveCursor to a specific line.
+/*DOC : IF we move the cursor then we always want to reset it to make sure it's in a good position
+and there is no selection to have to check for where select_char_point == char_point.
+If we don't move the cursor, then we assume the cursor is in a good place so we just move the line bounds
+where we want to see. This may be useful later for something like moving to a breakpoint but likely
+moving the cursor there is better in any case so move_cursor is just here as an idea convenience but not used yet.
+*/
+MoveToLine :: inline (
+	line_number : int, 
+	file_string : FileString,
+	cursor : *TextCursor,
+	$move_cursor : bool = true,
+	$center_line : bool = true)
+{
+	//TODO I think this should be mandatory to avoid cursor selecting issues
+	#if move_cursor ResetTextCursor(cursor);
+
+	//TODO Should we adjust so that the new cursor_line_number is in between?
+	line_bound_diff : int = cursor.end_file_line_index - cursor.start_file_line_index;
+	// top_count : int = line_bound_diff / 2;
+	// top_count : int = line_bound_diff;
+	// bottom_count : int = line_bound_diff - top_count;
+	// line_diff : int = line_number - cursor.cursor_line_number;
+	// cursor.start_file_line_index = line_number;
+	clamp_line_number := Clamp(0, line_number, file_string.file_loc.count-1);
+	cursor.start_file_line_index = clamp_line_number;
+	#if center_line {
+		cursor.start_file_line_index -= line_bound_diff/2;
+	} else {
+		cursor.start_file_line_index -= line_bound_diff;
+	}
+	if cursor.start_file_line_index < 0 {
+		cursor.start_file_line_index = 0;
+	}
+
+	cursor.end_file_line_index = cursor.start_file_line_index + line_bound_diff;
+	//TODO Technically we might not have to do this since we check the file_loc.count max when rendering as well
+	//ACTUALLY This forces the text to be on the bottom of the editor which feels more natural than having it appear in the middle for example
+	//Removing this also seems to prevent issues with resizing and moving cursors where the bounds don't change.
+	//Let's leave it like this for now and see if that fixes all the issues
+	#if 0 {
+	if cursor.end_file_line_index >= file_string.file_loc.count {
+		cursor.end_file_line_index = file_string.file_loc.count-1;
+		cursor.start_file_line_index = max(0, cursor.end_file_line_index - line_bound_diff);
+	}		
+	}
+
+	#if move_cursor {
+		char_bound_diff : int = cursor.right_char_bound - cursor.left_char_bound;
+		cursor.left_char_bound = 0;
+		cursor.right_char_bound = char_bound_diff;
+		cursor.cursor_line_number = clamp_line_number;
+		cursor.cursor_line_char = 0;
+		cursor.char_point = StartCharPointOfLineNumber(cursor.cursor_line_number, file_string);
+	}
+}
+
+#if 0 {
+//TODO I tried pulling this out but it does not seem to work. Can seem to move up or down afterwards.
+//Maybe it's because of MoveCursorDown and MoveCursorUp. Can we update those to use loc bytes like we
+//did with MoveToLine. That would be more efficient if we could... not sure though if it would work consistently.
+//TODO LOOK INTO THIS when we update the text editor so we can MoveCursorToLine whenever we want and still move around.
+MoveCursorToLine :: inline (
+	line_number : int, 
+	file_string : FileString,
+	cursor : *TextCursor)
+{
+	//TODO Could just use UpdateCursorLineCharAndBounds here and then
+	//set cursor bounds to be in the middle of line bound diff if needed
+	char_bound_diff : int = cursor.right_char_bound - cursor.left_char_bound;
+	cursor.left_char_bound = 0;
+	cursor.right_char_bound = char_bound_diff;
+
+	cursor.cursor_line_number = line_number;
+	//TODO We could allow for a specific cursor_line_char here
+	//and then would have to check if < file_string.file_loc[line_number].count
+	//but i think GoToLine makes more sense in general as consistent behavior.
+	cursor.cursor_line_char = 0;
+
+	//TODO Use StartCharPointOfLineNumber here
+	//and then set cursor.char_point to that
+	#if 1 {
+	cursor.char_point = StartCharPointOfLineNumber(cursor.cursor_line_number, file_string);
+	} else {
+	//We check char_point out of bounds separately, otherwise there
+	//could be pointer issues on the bottom with this pointer offset method.
+	if cursor.cursor_line_number <= 0 {
+		//DOC : We do <= to 0 here otherwise we go into the case below if theres only 1 line and then the char_point 
+		//and cursor_line_char don't match up. As long as this functions always moves to the beggining of the line it's ok 
+		//but if we have to move to a specific cursor_line_char like when we add mouse input, then we would need a different function for that.
+		cursor.char_point = 0;
+	} else if cursor.cursor_line_number >= file_string.file_loc.count-1 {
+	// } else if cursor.cursor_line_number >= file_string.file_loc.count {
+		cursor.char_point = file_string.text_string.count;
+	} else {
+		//NOTE : This works because file_loc points to same string as text_string so the new char_point is just
+		//the offset from the first_char_point. Taking file_string.file_loc[0].data == file_string.text_string.data.
+		new_char_point : *u8 = file_string.file_loc[cursor.cursor_line_number].data;
+		first_char_point : *u8 = file_string.text_string.data;
+		//Sanity check to make sure the pointer is within bounds of the string to avoid memory issues as well.
+		assert(new_char_point >= first_char_point && new_char_point < first_char_point + file_string.text_string.count);
+		char_address_diff : int = new_char_point - first_char_point;
+		// cursor.char_point += char_address_diff;
+		cursor.char_point = char_address_diff;
+	}
+	}
+}
+}
+//TODO Reuse this in file above if we know it's working
+StartCharPointOfLineNumber :: inline (line_number : int, file_string : FileString) -> int {
+	assert(file_string.file_loc.count > 0); //sanity check
+
+	result_char_point : int;
+	//We check char_point out of bounds separately, otherwise there
+	//could be pointer issues on the bottom with this pointer offset method.
+	is_eof : bool = line_number >= file_string.file_loc.count 
+		||
+		//DOC : This is equivalent to checking if the last char is "\n" since then the last line is not associated to any string data
+		//We only update file_loc in 1 place in UpdateFileStringAtCursor so it's fine to just check this way.
+		(file_string.file_loc.count > 0 && line_number == file_string.file_loc.count-1 && 
+		 peek(file_string.file_loc).data == null);
+	// } else if line_number >= file_string.file_loc.count-1 {
+	if is_eof {
+		result_char_point = file_string.text_string.count;
+	} else if line_number <= 0 {
+		//DOC : We do <= to 0 here otherwise we go into the case below if theres only 1 line and then the char_point 
+		//and cursor_line_char don't match up. As long as this functions always moves to the beggining of the line it's ok 
+		//but if we have to move to a specific cursor_line_char like when we add mouse input, then we would need a different function for that.
+		result_char_point = 0;
+	} else {
+		//NOTE : This works because file_loc points to same string as text_string so the new char_point is just
+		//the offset from the first_char_point. Taking file_string.file_loc[0].data == file_string.text_string.data.
+		//Sanity check since if we only have 1 line then we return 0 from case above so we need some text in this case to get char pointer diff
+		assert(file_string.file_loc[line_number].data != null);
+		new_char_point : *u8 = file_string.file_loc[line_number].data;
+		first_char_point : *u8 = file_string.text_string.data;
+		//Sanity check to make sure the pointer is within bounds of the string to avoid memory issues as well.
+		assert(new_char_point >= first_char_point && new_char_point < first_char_point + file_string.text_string.count);
+		char_address_diff : int = new_char_point - first_char_point;
+		// cursor.char_point += char_address_diff;
+		result_char_point = char_address_diff;
+	}
+	return result_char_point;
+}
+//TODO maybe we should return a false error instead of -1 to avoid issues
+LineNumberOfCharPoint :: inline (char_point : int, file_loc : [] string) -> int {
+	total_char : int;
+	for loc, line_number : file_loc {
+		total_char += loc.count + 1; //add 1 for the \n
+		if char_point < total_char {
+			return line_number;
+		}
+	}							
+	//BETTER to assert here since a file should always have at least 1 line so this acts as a sanity check
+	assert(file_loc.count > 0);
+	if char_point >= total_char {
+		return file_loc.count-1;
+	}
+	return -1;
+}
+//DOC : This is used to move cursor to char point and clears the selection.
+//If we want to select text then currently we explicitly use the SelectText function
+MoveCursorToCharPoint :: inline (
+	char_point : int,
+	cursor : *TextCursor,
+	file_string : FileString,
+	$single_line : bool = false,
+	$center_line : bool = true,
+	$reset_cursor : bool = false)
+{
+	//TODO Could make this an option BUT this deals with clearing the selection and reseting char bounds in case
+	ResetTextCursor(cursor);
+
+	cursor.char_point = char_point;
+	cursor.char_point = Clamp(0, cursor.char_point, file_string.text_string.count);
+	#if single_line {
+	cursor.cursor_line_char = cursor.char_point;
+	cursor.cursor_line_number = 0;
+	} else {
+	line_number : int = LineNumberOfCharPoint(cursor.char_point, file_string.file_loc);
+	//TODO This way we don't error out... but maybe we should error out instead...
+	if line_number == -1 {
+		log_error("Char point % not valid for cursor % and file %.", char_point, cursor.*, file_string);
+	}
+	//NOTE : We do this in UpdateCursorLineCharAndBounds now so we only ever have to update char_point and line_number in general
+	// line_start_char : int = StartCharPointOfLineNumber(line_number, file_string);
+	// cursor.cursor_line_char = cursor.char_point - line_start_char;
+	cursor.cursor_line_number = line_number;
+	}
+	//TODO Could put cursor is selecting false here if we want that as general behavior.
+	//Otherwise we can put it outside of this function call on a per-case basis.
+	UpdateCursorLineCharAndBounds(cursor, file_string, single_line, center_line);
+}
+/*DOC : This is being used to update the cursor even if we udpate the text file
+for example, if we have the same text file in multiple different text op spaces
+SO we need to check bounds for both cursor and selection in case that changed
+
+Using this function with the current cursor values does a keep cursor in bounds
+functionality such that whether selecting or not, the cursor and selection is still valid
+and as close as possible to the previous line and line char if we updated the text file either
+in another op space or externally. 
+TODO We could make a separate KeepCursorInBounds function to reuse once this is tested to make that
+clearer or just use this function with the cursor values passed in to see clearly what we are doing.
+In that case we keep all compile-time values as false so that we don't update the bounds for mouse input
+afterwards. So if we move the cursor in choosing and then the mouse selects a position, we still see where
+the cursor actually is, so the mouse input will be accurate.
+
+When we choose an op space, we bring it to the top and 
+if its a text op space we also set the cursor to current line and char, so that if we edited the text file
+then the cursor will still be valid. We do the same thing when switching tabs.
+
+*/
+MoveCursorToLineAndLineChar :: inline (
+	line_number : int,
+	line_char : int,
+	cursor : *TextCursor,
+	file_string : FileString,
+	$single_line : bool = false,
+	$center_line : bool = false,
+	$reset_cursor : bool = false,
+	$update_bounds : bool = false)
+{
+	//We don't want to reset bounds here in case we moved over then we can just stay there
+	//otherwise we will update them below anyways if needed
+	#if reset_cursor ResetTextCursor(cursor, reset_bounds=false);
+
+	#if single_line {
+	cursor.char_point = Clamp(0, line_char, file_string.text_string.count);
+	cursor.cursor_line_char = cursor.char_point;
+	if cursor.cursor_is_selecting {
+		cursor.fixed_select_char_point = Clamp(0, cursor.fixed_select_line_char, file_string.text_string.count);
+		cursor.fixed_select_line_char = cursor.fixed_select_char_point;
+	}
+	} else {
+	//TODO This seems to only be for the test text file which I don't really like in general
+	//OK so leaving this here just in case for the test text file
+	assert(file_string.file_loc.count > 0);
+	clamp_line_number : int = Clamp(0, line_number, file_string.file_loc.count-1);
+	//If we have an empty file then this will have count == 0 but the data will be null which is ok since we are not checking the data pointer
+	loc : string = file_string.file_loc[clamp_line_number];
+	//We can be on the last line character since that is the cursor on the end of the line
+	clamp_line_char : int = Clamp(0, line_char, loc.count);
+
+	cursor.cursor_line_number = clamp_line_number;
+	cursor.cursor_line_char = clamp_line_char;
+	start_line_char_point : int = StartCharPointOfLineNumber(cursor.cursor_line_number, file_string);
+	cursor.char_point = start_line_char_point + clamp_line_char;
+
+	if cursor.cursor_is_selecting {
+		clamp_fixed_line_number : int = Clamp(0, cursor.fixed_select_line_number, file_string.file_loc.count-1);
+		//If we have an empty file then this will have count == 0 but the data will be null which is ok since we are not checking the data pointer
+		fixed_loc : string = file_string.file_loc[clamp_fixed_line_number];
+		//We can be on the last line character since that is the cursor on the end of the line
+		clamp_fixed_line_char : int = Clamp(0, cursor.fixed_select_line_char, fixed_loc.count);
+
+		cursor.fixed_select_line_number = clamp_fixed_line_number;
+		cursor.fixed_select_line_char = clamp_fixed_line_char;
+		fixed_start_line_char_point : int = StartCharPointOfLineNumber(cursor.fixed_select_line_number, file_string);
+		cursor.fixed_select_char_point = fixed_start_line_char_point + clamp_fixed_line_char;
+	}
+	}
+
+	//Maybe we should just leave this out and then update it as needed externally
+	#if update_bounds {
+	UpdateCursorLineCharAndBounds(cursor, file_string, single_line, center_line);
+	} else {
+	//DOC : In case we don't do update_bounds, then we check this here to avoid issues with not being able to move cursor 
+	if cursor.cursor_is_selecting && cursor.fixed_select_char_point == cursor.char_point {
+		cursor.cursor_is_selecting = false;
+	}
+	}
+}
+/*DOC : start_char_point is the fixed select point
+and the cursor goes to end_char_point
+*/
+//TODO FROM HERE test this and also MoveToLine and start line char point function
+SelectText :: inline (
+	start_char_point : int, //this is where fixed select point starts
+	end_char_point : int, //this is where the cursor goes
+	cursor : *TextCursor,
+	file_string : FileString,
+	$single_line : bool = false,
+	$center_line : bool = true,
+	$reset_cursor : bool = true) 
+{
+	if file_string.text_string.count == 0 return;
+
+	clamp_start_char_point : int = Clamp(0, start_char_point, file_string.text_string.count);
+	clamp_end_char_point : int = Clamp(0, end_char_point, file_string.text_string.count);
+	//DOC : This way we don't select anything they are equal or start > end
+	if clamp_start_char_point >= clamp_end_char_point return;
+
+	//DOC : We already reset the cursor in here and update cursor line char bounds in here then do the select below
+	//We check that clamp_start_char_point >= clamp_end_char_point above and return if so to avoid selection issues
+	MoveCursorToCharPoint(clamp_end_char_point, cursor, file_string, single_line, center_line, reset_cursor=false);
+
+	//DOC : We check above that clamp_start_char_point != clamp_end_char_point and then return so we don't have to unselect for that
+	cursor.cursor_is_selecting = true;
+	cursor.fixed_select_char_point = clamp_start_char_point;
+	#if single_line {
+	cursor.fixed_select_line_char = cursor.fixed_select_char_point;
+	cursor.fixed_select_line_number = 0;
+	} else {
+	fixed_line_number : int = LineNumberOfCharPoint(clamp_start_char_point, file_string.file_loc);
+	fixed_line_start_char : int = StartCharPointOfLineNumber(fixed_line_number, file_string);
+	cursor.fixed_select_line_char = clamp_start_char_point - fixed_line_start_char;
+	cursor.fixed_select_line_number = fixed_line_number;
+	}
+
+	//NOTE : We already do this in MoveCursorToCharPoint
+	// #if reset_cursor UpdateCursorLineCharAndBounds(cursor, file_string, single_line, center_line);
+	UnselectCursorWithSameFixedCharPoint(cursor);
+}
+CopySelectedTextToFindBar :: inline (
+	text_op : *TextOpSpaceData,
+	tab_cursor : TextCursor,
+	file_string : FileString,
+	ted : TextEditorData,
+	game_input : GameInput)
+{
+	selected_text : string = GetSelectedText(tab_cursor, file_string);
+	//If we did not find a newline, then we copy the selected text to the find bar
+	//TODO SETTING multiline_selection_to_find_bar = false by default
+	//Need to set it = true in the test for find and replace bar
+	/*	
+	if !multiline_selection_to_find_bar {
+		found_newline : int = String.find_index_from_left(selected_text, "\n");
+		if found_newline == -1 return;
+	}
+	*/
+	fie : [1] FrameInputEvent;
+	SetTextBlock(selected_text, *fie[0]);
+	SelectText(0, text_op.first_bar_input_text.text_string.count, *text_op.first_bar_cursor, text_op.first_bar_input_text, 
+		single_line=true);
+	//We select text before updating to remove the old one and add the new one
+ 	updated_text := UpdateFileStringAtCursor(*text_op.first_bar_input_text, *text_op.first_bar_cursor,
+		fie, game_input, ted, single_line=true);
+	assert(updated_text);
+	//We select text after since that allows easy removal of the text if needed
+	SelectText(0, text_op.first_bar_input_text.text_string.count, *text_op.first_bar_cursor, text_op.first_bar_input_text,
+		single_line=true);
+}
+SetCursorWithCurrentBounds :: inline (
+	current_cursor : *TextCursor,
+	new_cursor : TextCursor)
+{
+	current_line_diff : int = current_cursor.end_file_line_index - current_cursor.start_file_line_index;
+	old_line_diff : int = new_cursor.end_file_line_index - new_cursor.start_file_line_index;
+	current_char_diff : int = current_cursor.right_char_bound - current_cursor.left_char_bound;
+	old_char_diff : int = new_cursor.right_char_bound - new_cursor.left_char_bound;
+
+	current_cursor.* = new_cursor;
+
+	if old_line_diff != current_line_diff {
+		current_cursor.end_file_line_index = current_cursor.start_file_line_index + current_line_diff;
+	}
+	if old_char_diff != current_char_diff {
+		current_cursor.right_char_bound = current_cursor.left_char_bound + current_char_diff;
+	}
+}
+GetSelectedText :: inline (
+	cursor : TextCursor,
+	file_string : FileString) 
+-> string 
+{
+	//sanity check - these should not be the same from updating the string in any case
+	assert(cursor.char_point != cursor.fixed_select_char_point); 
+	start_char_point : int = min(cursor.char_point, cursor.fixed_select_char_point);
+	end_char_point : int = max(cursor.char_point, cursor.fixed_select_char_point);
+	selected_text : string; 
+	selected_text.data = file_string.text_string.data + start_char_point;
+	selected_text.count = end_char_point - start_char_point;
+	return selected_text;
+}
+
+//TODO Test this function thoroughly with and without UpdateFileStringAtCursor
+//Should be easier now since we separated this out.
+//TODO Can likely simplify these now with file_loc since we would have separated the lines sequentially
+//in UpdateFileStringAtCursor and so the file_loc would be correct and we could remove the find index functions
+//but its probably fine especially the simd find index from left.
+MoveCursorUp :: inline (
+	file_string : *FileString,
+	cursor : *TextCursor)
+-> moved_cursor : bool
+{
+	previous_char_point : s64 = cursor.char_point - 1;
+	previous_new_line_index : int = 
+		FindIndexFromRight(file_string.text_string, cast(u8) #char "\n", previous_char_point);
+	found_previous_line : bool = previous_new_line_index != -1;
+	if found_previous_line {
+		// Line relative char index
+		line_start : int = previous_new_line_index + 1;
+		line_relative_index : int = cursor.char_point - line_start;
+
+		// Previous line relative char index
+		//Note : Start and end mean without the new line so \nTEST\n -> first T is start and last T is end
+		previous_line_end : int = previous_new_line_index - 1;
+		previous_line_start : int = FindIndexFromRight(file_string.text_string, cast(u8) #char "\n", previous_line_end);
+		if previous_line_start == -1 {
+			previous_line_start = 0; // In case we are on the first line so no '\n' before
+		} else {
+			previous_line_start += 1;
+		}
+		previous_line_length : int = previous_line_end - previous_line_start + 1;
+		previous_line_char_point : int = previous_line_start + line_relative_index;
+
+		if line_relative_index > previous_line_length {
+			cursor.char_point = previous_new_line_index;
+		} else {
+			cursor.char_point = previous_line_char_point;
+		}
+		cursor.cursor_line_number -= 1;
+		return true;
+	}
+	return false;
+}
+
+//TODO Test this function thoroughly with and without UpdateFileStringAtCursor
+//Should be easier now since we separated this out.
+MoveCursorDown :: inline (
+	file_string : *FileString,
+	cursor : *TextCursor)
+-> moved_cursor : bool
+{
+	next_new_line_index : int = 
+		String.find_index_from_left(file_string.text_string, cast(u8) #char "\n", cursor.char_point);
+	found_next_line : bool = next_new_line_index != -1;
+	if found_next_line {
+		// Find line relative char index
+		previous_char_point : s64 = cursor.char_point - 1;			
+		previous_new_line_index : int = 
+				FindIndexFromRight(file_string.text_string, cast(u8) #char "\n", previous_char_point);
+		if previous_new_line_index == -1 previous_new_line_index = 0;
+
+		line_start : int = previous_new_line_index + 1;
+		if previous_new_line_index == 0 line_start = 0;
+		line_relative_index : int = cursor.char_point - line_start;
+
+		// Find next line relative char index
+		//Note : Start and end mean without the new line so \nTEST\n -> first T is start and last T is end
+		next_line_start : int = next_new_line_index + 1;
+		next_line_end : int = String.find_index_from_left(file_string.text_string, cast(u8) #char "\n", next_line_start);
+		if next_line_end == -1 {
+			next_line_end = file_string.text_string.count; // In case we are on the last line so no '\n' after
+		}
+		next_line_end -= 1;
+		next_line_length : int = next_line_end - next_line_start + 1;
+		next_line_char_point : int = next_line_start + line_relative_index;
+
+		if line_relative_index > next_line_length {
+			cursor.char_point = next_line_end + 1;
+		} else {
+			cursor.char_point = next_line_char_point;
+		}
+		cursor.cursor_line_number += 1;
+		return true;
+	}
+	return false;
+}
+/*DOC : This allows us to scroll text bounds and remain within the limits.
+TODO Rename to MouseScrollTextBounds
+*/
+MouseScrollTextBounds :: inline (
+	start_line_ptr : *int,
+	end_line_ptr : *int,
+	upper_limit : int,
+	mouse_wheel : int) 
+{
+	line_bound_diff : int = end_line_ptr.* - start_line_ptr.*;
+	if mouse_wheel > 0 && start_line_ptr.* > 0 {
+		start_line_ptr.* -= mouse_wheel;
+		if start_line_ptr.* < 0 {
+			start_line_ptr.* = 0;
+		}
+		end_line_ptr.* = start_line_ptr.* + line_bound_diff;
+	}
+	//NOTE : if end_line_ptr > upper_limit, then we don't want to move since it means
+	//what our bounds are larger than the number of lines available in total.
+	else if mouse_wheel < 0 && end_line_ptr.* < upper_limit {
+		end_line_ptr.* -= mouse_wheel;
+		if end_line_ptr.* >= upper_limit {
+			end_line_ptr.* = upper_limit-1;
+		}
+		start_line_ptr.* = end_line_ptr.* - line_bound_diff;
+	}
+}
+MouseSingleLineCharPoint :: inline (
+	op_mouse : Vector2F,
+	min_x : float,
+	text_string : string,
+	cursor : TextCursor,
+	char_width_world : float)
+-> int
+{
+	//TODO We could return this x_diff if needed i guess...
+	mouse_x_diff : float = op_mouse.x - min_x;
+	mouse_char_float_x_diff : float = mouse_x_diff / char_width_world;
+	mouse_char_point : int = round_to_int(mouse_char_float_x_diff) + cursor.left_char_bound;
+	if mouse_char_point < 0 {
+		mouse_char_point = 0;
+	} else if mouse_char_point > text_string.count {
+		mouse_char_point = text_string.count;
+	}
+	return mouse_char_point;
+}
+/*DOC : Here we update the given bounds if the highlighted index
+is outside of the given start and end bounds.
+This assumes that the given highlighted index is within
+the total bounds since we just adjust the bound indices.
+BUT rendering deals with limits in case we are beyond limits.
+*/
+AdjustTextBoundsToIndex :: inline (
+	highlighted_index : int,
+	start_bound_ptr : *int,
+	end_bound_ptr : *int) 
+{
+	if highlighted_index < start_bound_ptr.* {
+		index_diff : int = start_bound_ptr.* - highlighted_index;
+		start_bound_ptr.* -= index_diff;
+		end_bound_ptr.* -= index_diff;
+	} else if highlighted_index > end_bound_ptr.* {
+		index_diff : int = highlighted_index - end_bound_ptr.*;
+		start_bound_ptr.* += index_diff;
+		end_bound_ptr.* += index_diff;
+	}
+}
+/*DOC : We update cursor.cursor_line_char in here now which feels better overall since it keeps the line char calculation
+consistent whenever we move the chars instead of relying on it externally.
+ALSO this means we only ever need to update the char_point and line_number (for multi-line) anywhere and then we just
+call this function to update everything else which makes the most sense from a programmer standpoint.
+
+REMINDER : we can remove mouse_line_char from CheckCursorMouseHolding if this is working since we just compute it here anyways
+for both the single and multi line cases.
+*/
+//TODO Should we rename this to UpdateTextCursor since we seem to be doing other things than updating the boudns anyways?
+//Like preventing selection if char_point == fixed_select_char_point and also maybe updaing cursor_line_char eventually?
+UpdateCursorLineCharAndBounds :: inline (
+	cursor : *TextCursor, 
+	file_string : FileString,
+	$single_line : bool = false,
+	$center_line : bool = false) 
+{
+	line_start_char : int = LineStartCharPoint(cursor.char_point, file_string, single_line);
+	//NOTE : This should not be used before this point since it gets updated here.
+	//In any case, it should only be used for x_bounds and rendering.
+	cursor.cursor_line_char = cursor.char_point - line_start_char;
+
+	//I think this way is clearer than the the old version in dead code since we clearly maintain the line bound diff in both cases.
+	//I think it is arithmetically equivalent to the above anyways.
+	#if !single_line {
+	line_bound_diff : int = cursor.end_file_line_index - cursor.start_file_line_index;
+	if cursor.cursor_line_number < cursor.start_file_line_index {
+		cursor.start_file_line_index = cursor.cursor_line_number;
+		cursor.end_file_line_index = cursor.start_file_line_index + line_bound_diff;
+	} else if cursor.cursor_line_number > cursor.end_file_line_index {
+		cursor.end_file_line_index = cursor.cursor_line_number;
+		cursor.start_file_line_index = cursor.end_file_line_index - line_bound_diff;
+	}
+	#if center_line {
+	if cursor.cursor_line_number == cursor.start_file_line_index {
+		cursor.start_file_line_index -= line_bound_diff/2;
+	} else if cursor.cursor_line_number == cursor.end_file_line_index {
+		cursor.start_file_line_index += line_bound_diff/2; 
+	}
+	if cursor.start_file_line_index < 0 {
+		cursor.start_file_line_index = 0;
+	}
+	cursor.end_file_line_index = cursor.start_file_line_index + line_bound_diff; 
+	} else {
+	//I dont think this happens since the cursor_line_number is clamped but just a sanity check in case.
+	if cursor.start_file_line_index < 0 {
+		cursor.start_file_line_index = 0;
+		cursor.end_file_line_index = cursor.start_file_line_index + line_bound_diff; 
+	}
+	}
+	//TODO Should we make sure that the left char bound is always in line with an actual char?
+	//TODO We assume cursor_line_number is valid here but we could clamp it in this function.
+	//I will leave it as is for now to see if there are bugs in the line checking code in general.
+	total_char_count : int = CharCountUntilCursorWithTab(cursor.cursor_line_char, 
+		cursor.cursor_line_number, file_string);
+	} else {
+	//If we have single line then all characters are single width only
+	total_char_count : int = cursor.cursor_line_char;
+	}
+
+	if total_char_count > cursor.right_char_bound {
+		char_diff : int = total_char_count - cursor.right_char_bound;
+		cursor.right_char_bound += char_diff;
+		cursor.left_char_bound += char_diff;
+	} else if total_char_count < cursor.left_char_bound {
+		char_diff : int = cursor.left_char_bound - total_char_count;
+		cursor.right_char_bound -= char_diff;
+		cursor.left_char_bound -= char_diff;
+	}
+
+	UnselectCursorWithSameFixedCharPoint(cursor);
+}
+UnselectCursorWithSameFixedCharPoint :: inline (cursor : *TextCursor) {
+	if cursor.cursor_is_selecting && cursor.char_point == cursor.fixed_select_char_point {
+		//Remove the selection if the cursor was brought back to the fixed selection.
+		//Checking this here avoids any issues like missing a backspace or text input because
+		//we still have that cursor is selected but the selection is 0 char width so nothing happens for 1 keypress.
+		cursor.cursor_is_selecting = false;
+	}	
+}
+
+/*TODO
+	it may be time for an entity struct which would have
+	the world pos and the relative height
+
+	height could be used to know what were interacting with to only
+	grab whats on top without ambiguity
+*/
+ChosenEntity :: struct {
+	id : int;
+	//TODO separate UpdateEntityType function so we can have pre and post processing
+	entity_type : EntityType;
+	//TODO default for now but we should consider this more in all
+	//specific cases
+	order : int = 1000;
+	//TODO should we have extra data in here?
+	//TODO should we have list of ids and entity_types?
+	// other_id : int;
+}
+
+EqualsChosenEntity :: inline (
+	c1 : ChosenEntity, c2 : ChosenEntity) 
+-> bool
+{
+	result : bool = c1.id == c2.id &&
+					c1.entity_type == c2.entity_type;
+	return result;
+}
+
+HoverEntity :: struct {
+	id : int;
+	entity_type : EntityType;
+	//TODO use custom order here instead of hover_entity_type_order
+	// order : int;
+	//TODO could have a list of ids and entity_types instead here
+	// other_id : int;
+	//TODO could cache hover mesh here so we don't have to fetch again
+}
+
+//TODO SETTINGS auto_save should be done here
+ResetToUnselectedState :: inline (ad : *AllData) {
+	AutoSaveChosenTextOpTab(ad);
+	// base_cam : Camera2D = GetDefaultBaseCam2D(ad.all_2D_cams);
+	// ad.active_cam_id = base_cam.id;
+	array_reset_keeping_memory(*ad.all_chosen_entities);
+	// ad.input_check.is_writing_code = false;
+	ad.reset_to_unselected_state = false;
+}
+
+Persist :: struct {
+	//TODO where should we put this?
+	//TODO can we just remove this now?
+	draw_buffer : RenderBuffer;
+
+	//TODO should this work with text input instead of type
+	//eg "test level1" vs "load level1" vs "update level1"
+	text_command_type : TextCommandType;
+	text_command_string : FileString;
+	text_command_cursor : TextCursor;
+
+	//TODO Should we put this in AllData now or still leave here to persist the commands we run through all modes
+	using terminal_data : TerminalData;
+
+	//Will need to have multiple of these for multiple text editors
+	//TODO Should likely have this in the text op space data eventually say it can be set for each op space
+	//can set things like color and font size and undo split for each text op space separately
+	//AND THEN we can replace the default settings with the runtime settings file
+	text_editor_data : TextEditorData;
+	
+	game_mode : GameMode;
+
+	test_data : TestData;
+
+	// locked_sound_data : LockedSoundData;
+
+	all_data : *AllData;
+	//TODO separate different datas here
+	//saveable data, ui data, transient level data, etc...
+}
+
+/*TODO
+	need to separate transient level data from saveable level data
+	possible also separate data that changes between levels
+*/
+//TODO i believe this can be done with metaprogramming for all space types
+//TODO could test out metaprogramming with this but then not use because it would be hard to read and debug for now
+//TODO lets create some better metaprogramming analysis tools!
+//TODO one selected array for each dspace type?
+//TODO Cleanup AllData since the compiler complained
+//so for now we put #type_info_no_size_complaint since we need the type_info in InitAllData
+//but most of the data in here is no longer being used
+AllData :: struct #type_info_no_size_complaint {
+	/*TODO We are storing this here for convenience. Right now AllData is being used
+	in general, but eventually we want to separate the data model better to account
+	for being able to change between music spaces.
+	If we can remove some later or pass them into the functions that need them, I think that might be better but let's see.
+	*/
+	renderer_data : *RendererData;
+	audio_data : *AudioData;
+	game_input : *GameInput;
+
+	global_rules : GlobalRules;
+	//TODO Should this be in AllCodeData since we reset
+	//it every time we run some code.
+	audio_timing : AudioTiming;
+	last_play_pos_x : float;
+
+	//This is only used for tests right now
+	input_mappings_file_path : string = INPUT_MAPPINGS_REL_PATH;
+	runtime_settings_file_path : string = RUNTIME_SETTINGS_REL_PATH;
+	runtime_settings : RuntimeSettingsData;
+
+	/*TODO This should be associated to internal synths
+	so we can adjust the parameters. For now, we just 
+	have them here to generate for ease. Also in general
+	will likely use midi data HOWEVER this is necessary
+	for alternative tuning systems because midi does not
+	easily support that and neither do any DAWs.
+	*/
+	all_osc_waves : [..] OscWave;
+
+	all_next_ids : AllNextIds;
+
+	all_terminal_events : [..] TerminalEvent;
+	//These will be loaded into all_terminal_events
+	//next frame so we can process a loaded level
+	//before opening op_spaces for example.
+	next_frame_terminal_events : [..] TerminalEvent;
+
+	//TODO Should we pull text files out of all_data?
+	//Maybe only decide once we store files on disk drive.
+	/* Right now all_text_files are used to store
+	all code files currently available. We can default
+	that all_text_files[0] is the starting main file.
+	*/
+	/*TODO All text file strings should be stored
+	somewhere and then that should be cleared on level
+	load. Maybe all string should be stored somewhere
+	and then cleared on level load (probably custom allocator).
+	Right now they are lost in oblivion.
+
+	Could use a pool in that case since we will reset it
+	on any level reset.
+	*/
+	all_text_files : [..] TextFile;
+	all_run_external_update_events : [..] string;
+
+	reset_to_unselected_state : bool;
+
+	/*TODO We need an even higher layer so we can duplicate most of AllData
+	so we can multiple row spaces that all have different op_spaces. Although we then could allow
+	veiwing op spaces between these higher level spaces for convenience or not... Not sure.
+	But this would be necessary later so that we can have infinitely long pieces.
+	*/
+	//Note : All data that can be reset when we
+	//need to reset the data generated from the code.
+	//This should be a parameter in AllLevelData
+	//once we separate level_data from all_data.
+	// using all_code_data : *AllCodeData;
+	//TODO We can use an allocator for each mspace if that helps but maybe we want 
+	//We would need to use a pool since we want it to be of arbitrary size.
+	// mspace_alloc : Allocator; 
+	// mspace_pool : Pool;
+
+	/*3D Data
+		TODO can move this closer to chord_s2 once more fleshed out
+	*/
+	all_render_music_pt_3D : [..] RenderMusicPt3D;
+	//TODO update to vl_line_segments in 3D eventualy
+	all_grid_edges_3D : [..] GridEdge3D;
+
+	//TODO Change name to all_chord_space_points since we
+	//will use another array for regular axes space
+	all_space_points_3D : [..] SpacePoint3D;
+	all_chord_space_points : [..] ChordSpacePoints3D;
+	// cam_test : Camera2D;
+	/*
+	*/
+
+	/*TODO only one for now what if we want more than one?
+		will we ever want more than one chosen dspace?
+		TODO if we want more then we would have a sorted array here 
+		to choose from instead
+
+		also these seem like more of a transient data thing
+		but transient over the course of a level
+		could separate level transient data from start level data
+		for easier level storing and serialization
+	*/
+	//MusicPt : this is an FSM where we have chosen and hover states
+	//except hover is per frame and chosen persists into next frames
+	// chosen_entity : ChosenEntity;
+	all_chosen_entities : [..] ChosenEntity;
+
+
+	//New Collision Data
+	//TODO Can likely remove everything above this and just use this
+	//and then optimize later based on shapes if needed.
+	all_op_collision_entities : [..] CollisionEntity;
+	//TODO Could have a different struct for this without the
+	//op_space_id and maybe just rect if that's the only shape in the base.
+	// all_base_collision_entities : [..] CollisionEntity;
+
+
+	//TODO could make these structs if needed
+	all_audio_events : [..] AudioEvent;
+	game_audio_play : GameAudioPlay;
+	set_audio_position_data : SetAudioPositionData;
+	//TODO This is not a very efficient model for 
+	//the wave synthesis but it is consistent and solid
+	//for now until we understand it better.
+	//Ie reusing osc_wave volume_envolope per lane
+	all_playing_music_pt_and_waves : [..] MusicPointAndOscWave;
+
+	/*Note : This are placed here in case we recompile
+	and we still want the notes to keep playing or stop.
+
+	all_playing_midi and all_playing_music_pt_and_waves
+	need to be able to end even if we recompile code. So we set
+	them here and they get reset.
+	TODO So if we update the level, these all need to get cleared
+	since internal synth will just stop but all_playing_midi
+	will never send the note_off message.
+	If we are playing on a separate thread, then it doesn't
+	matter since the notes will end when they end or we can
+	trigger a stop on level change.
+	*/
+	//TODO should rename this to all_playing_midi_music_pts or all_playing_external_music_pts or something like that.
+	all_playing_midi : [..] PlayingMidi;
+	// all_playing_music_pts : [..] MusicPoint;
+
+	//TODO REMOVE THIS AND ITS USAGE EVERYWHERE ONCE WE KNOW ITS OK
+	// input_check : InputCheck;
+
+	all_compile_code_events : [..] CompileCodeEvent;
+	/*TODO Could allow multiple sets of these so each text file
+	can have its own music/data instructions to execute
+	*/
+	/*TODO we only allow 1 event in here and then use the count to check
+	if we are currently executing something this frame. Should we leave it this
+	way or just set 1 struct here with a bool to check?
+	Leaving an array allows us to catch issues with multiple processes running
+	which is the main reason to keep it for now.
+	*/
+	all_process_instruction_events : [..] ProcessInstructionEvent;
+	//TODO Will likely need to have 1 of these for each file
+	//especially if we can run things concurrently, then well
+	//have multiple cpu_states, although having 1 for each
+	//is likely fine anyways so we can compile > 1 thing at once.
+	//TODO We don't need this anymore since we have comp_data
+	//I will reference that array for now but really we don't need it anymore.
+	all_music_instructions : [..] MusicInstruction;
+	exec_info : ExecutionInfo;
+
+	//TODO Will need multiple of these eventually for each compiled file.
+	//Can have an allocator for each OR just reuse the same allocator
+	//if we don't allow multiple compilations at once for example.
+	comp_pool : Flat_Pool;
+	//TODO We can make this before compiling instead of storing it here unless the comp_pool can be changed
+	comp_alloc : Allocator;
+	//TODO We should create an array of these and treat them like 
+	//debugging EXEs. Then we can store a name and by default it would be
+	//the file_name for text_op. Otherwise it can be called specifically by another name.
+	//When we update this then we can specify text_file_id in EvaluateWatchData and 
+	//anything else for watch window or other text_file specific debugging
+	//Can likely have 1 alloc per comp_data then, maybe even store it in CompilationData
+	//so then if we recompile something with the same name, we can just reset and redo it.
+	//OR we can also use a free list and if we recompile then we free/reuse it with the same allocator.
+	comp_data : *CompilationData;
+	//TODO should remove this cpu_state entirely
+	cpu_state : CPUState;
+
+	//OpSpace
+	all_open_op_spaces : [..] OperationSpace;
+	all_closed_op_spaces : [..] OperationSpace;
+	all_resizing_op_space : [..] ResizeOpSpace;
+	//DOC : We use this so we can move multiple op spaces at once later
+	//if we allow attaching op spaces to each other and also this makes it
+	//easy to check if we are currently moving any op space to prevent
+	//any unwanted mouse hovering behavior.
+	all_moving_op_spaces : [..] MovingOpSpace;
+
+	//TODO Eventually we could have 2d and 3d free render groups and remove the 3d scissor group for 2d
+	//and then use them in tandem with the 2d and 3d updated renderer data.
+	//TODO We can likely remove this if we put it in the RendererData as
+	//something like this instead of just flat render groups which
+	//would greatly simplify sorting as well.
+	// free_op_space_render_groups : [..] OpSpaceRenderGroups;
+
+	all_op_space_spec_data : [..] OpSpaceSpecData;
+	all_op_spec_data_3D : [..] OpSpecData3D;
+
+	all_text_op_space_data : [..] TextOpSpaceData;
+
+	all_terminal_op_space_data : [..] TerminalOpSpaceData;
+
+	/*TODO do we need this?
+		how else would we know that the dspace ops are grouped for rendering.
+		otherwise we would have to check that the primary music_pt_set is attached
+		to a dspace in the base space and that dspace is attached to a dspace_set
+	*/
+	//TODO should these be viewable or is clustering them together
+	//enough of a symbol to show that it is a DSpaceSet
+	all_dspace_to_op_space : [..] DSpaceToOpSpace;
+
+	//TODO Could collapse this with MemoryUnitToDSpace. Keeping separate for now since chord spaces
+	//are processed very differently from the other dspaces. With space_points and vl_points.
+	//TODO RENAME THIS TO all_vl_mem_to_chord_space or something
+	//like that since this for voice leadings.
+	all_memory_unit_to_chord_space : [..] MemoryUnitToChordSpace;
+
+
+	/* OLD All Code Data
+	Some of these arrays can be pre-allocated since we know things
+	like # of rows and lanes during compilation. Then those arrays
+	don't need to be dynamic, they can just be pre-allocated arrays
+	although then this would conflict with code levels which would be
+	more robust. But we could still pre-allocate the dynamic array
+	so no new allocations are needed and then use a Pool allocator
+	more efficiently.
+
+	I think we can separate this data between OpSpaceData which is specific to op_space
+	and then MusicSpaceData which is specific to each MusicSpace.
+	Then MusicSpaces can communicate through code and by copying over rows.
+	Through code because text files are stored in the OS so they can move between
+	one MusicSpace easily by opening by name.
+
+	This should be associated to 1 executable so that we can have each
+	one running as desired whenever we want and still keep data after.
+	this would also help with music spaces. Can think about it then
+	since music rows are shared.
+	*/
+
+	//TODO Use this to select which mspace we are currently on.
+	//Can likely make a function to ensure that index exists before accessing the all mspace array.
+	//TODO We can put this all in 1 object that helps eventually
+	/*DOC : The mspaces play in sequence based on this array. So if we want to change the order of the audio,
+	then we want to update the the order of this mspace array. It acts as a circular array when playing in general
+	and moves to the next mspace in the array. We can mute mspace by making the audio row size = 0;
+	The idea here is that we can loop on any mspace by muting all the other mspaces and then it will
+	skip over all of them. This allows 1 method with lots of flexibility for what we loop over and then
+	we can rearrange mspace or rows or music points individually to go over or loop over different areas.
+	FOR EXAMPLE if we want to check a specific section, then we can just copy that over to a new mspace and
+	then mute every other mspace and just have that 1 mspace loop naturally.
+	*/
+	audio_mspace_id : int;
+	render_mspace_id : int;
+	all_mspace_data : [..] MusicSpaceData;
+	free_mspace_data_pool : [..] MusicSpaceData;
+	//TODO Can store all unused mspaces (maybe including tano stack mspace data) for reuse later
+	//since we will likely be making and recreating.
+	// free_mspace_data : [..] *MusicSpaceData;
+
+	//Music Points
+	all_start_playing_music_pts : [..] MusicPoint;
+	//NOTE TODO : We are just using a separate array here for now BUT
+	//this is simulating a musical space and when we implement music spaces
+	//then we should just use another music space for the tano stack music points.
+	//TODO I Think we can just use negative mspace_index for tano since we can't
+	//access those in the array anyways and then have a separate tano_stack_mspace_data
+	//array where we take the absolute value of the given mspace_index - 1 and grab by index like that.
+	//so tano_stack_mspace_data[abs(mspace_index) - 1] and use the separate array so it does not 
+	//interfere with user mspaces and then we can also have a way of seeing them in real time if needed
+	//later where we can have a command that moves to a particular tano stack mspace (or negative mspace)
+	// tano_stack_mspace_data : [..] *MusicSpaceData;
+	tano_stack_music_pts : [..] MusicPoint;
+
+
+	//TODO Gradually move this out for mspaces and op_spaces
+	// Tuning System data
+	all_tuning_systems : [..] TuningSystem;
+	all_tuning_pitches : [..] TuningPitch;
+	all_linear_to_tuning_system : [..] LinearToTuningSystem;
+
+	//Register Data
+	//TODO We could store an array of the names here to see them
+	//since they are computed as compile-time constants right now
+	all_register_memory : [..] MemoryValue;
+
+	//TODO Should this be a FlatPool or a [..] u8?
+	//Flat_Pool allows contiguous memory on get in virtual os memory without
+	//changing the memory_base. A [..] resize would move the memory_base.
+	//Flat_Pool is also a fresh chunk of memory and does not use the default memory allocator.
+	ram_memory : RAMMemory;
+
+	//Linear Space Data
+	//TODO should this just be a tile grid on the whole world map?
+	//TODO should points be directly associated to DSpaces due to the inherent geometrical advantages of each space?
+	all_space_points : [..] SpacePoint;
+	//TODO maybe change to smaller type for log ratio points since we only need the different mesh?
+	all_log_ratio_points : [..] SpacePoint;
+	/*TODO should we have all_linear_base_spaces
+	as a separate array from all_linear_op_spaces
+	*/
+	//TODO Convert these to use generic data table model indexed by id
+	all_linear_pitch_spaces : [..] LinearPitchSpace;
+	//TODO should we have a base_linear_pitch_spaces?
+
+	//TODO I am not sure I want this anymore. I think having everything in memory is simpler and more consistent.
+	//If we want arrays off, we can have rows that are muted or allow negative rows that are automatically not visible.
+	all_extra_circle_points : [..] CirclePoint;
+
+	//TODO Rename this to all_circle_spaces
+	all_new_circle_spaces : [..] CircleSpace;
+
+	//TODO I think putting these all in 1 struct would make it easier to pass them around in general.
+	//In case we decide to add more shapes or change shapes in a given function, or if we add more SpaceObjects
+	using all_space_shapes : AllSpaceShapes;
+	//TODO Having an array here would allow us to naturally index by op_space_id
+	//which seems to be the natural way to index and organize these shapes anyways.
+	//all_space_shapes : [..] AllSpaceShapes;
+
+	//TODO I think we can just have this one to associate memory to dspace for visual convenience
+	//Or also if the player wants to use them
+	all_memory_range_to_dspace : [..] MemoryRangeToDSpace;
+
+	all_memory_unit_to_dspace : [..] MemoryUnitToDSpace;
+	all_dspace_to_op_space_id : [..] DSpaceToOpSpaceIndex;
+
+	all_op_linear_data : [..] OpLinearData;
+
+	//TODO Eventually I think we can have a different struct if needed
+	//since the op rows will likely be different from the base rows.
+	all_op_linear_rows : [..] MusicLaneRow;
+	//TODO We can change this as well. Possibly even remove it if we only
+	//allow single section for op rows. Let's see how we use the op linear rows.
+	all_op_section_to_row : [..] SectionToRow;
+
+	/*Note : viewable and editable are subsets of all
+		editable <= viewable <= all
+		can maybe use this pattern in general for many
+		different types of data
+	*/
+	//Note : viewable_linear_pitch_spaces applies to base_render_group
+	//TODO change name to viewable_base_linear_spaces? viewable_lane_linear_spaces?
+	//TODO could use viewable_linear_pitch_space if all_editable
+	//TODO should these just be ids so we avoid having to update everywhere?
+	// all_editable : bool;
+	viewable_linear_pitch_spaces : [..] LinearPitchSpace;
+
+	all_spiral_spaces : [..] SpiralSpace;
+	all_spiral_vls : [..] SpiralVoiceLeading;
+
+	all_space_point_to_value : [..] SpacePointToValue;
+
+	//TODO Rename this to PitchSpace2
+	//TODO Shoudl we merge this with ChordSpace2
+	all_pitch_space_2D : [..] PitchSpace2D;
+
+	all_cs2_points_2D : [..] ChordS2Points2D;
+
+	//TODO rename to visible_space_points_3D
+	//or viewable_space_points_3D so it accounts for 4D
+	//sub sections
+	visible_space_points_3D : [..] SpacePoint3D;
+	all_chord_spaces_3 : [..] ChordSpace3;
+
+
+	//Synthesis and audio data
+	//TODO We could have an osc_wave pool and reuse osc_waves here as well.
+	all_simple_synths : [..] SimpleSynth;
+	free_simple_synth_pool : [..] SimpleSynth;
+	// all_subtractive_synths : [..] SubtractiveSynth;
+	// all_hover_simple_synths : [..] SimpleSynth;
+}
+
+
+AsmGetOrCreateMSpaceData :: struct {
+	ret_mspace_id : int;
+
+	gc_type : GetOrCreateMSpaceType;
+	mspace_id : int;
+	mspace_index : int;
+	mspace_name : AsmString;
+} @LibraryAsmGen
+GetOrCreateMSpaceType :: enum {
+	GET_BY_NAME;
+	GET_BY_ID;
+	GET_BY_INDEX;
+	// CREATE;
+} @LibraryAsmGen
+GetOrCreateMSpaceData :: struct {
+	gc_type : GetOrCreateMSpaceType;
+	mspace_id : int;
+	mspace_index : int;
+	mspace_name : string;
+}
+GetOrCreateMusicSpace :: (
+	gcmd : GetOrCreateMSpaceData,
+	rs : RuntimeSettingsData,
+	all_mspace_data : *[..] MusicSpaceData,
+	free_mspace_data_pool : *[..] MusicSpaceData) 
+-> *MusicSpaceData
+{
+	if gcmd.gc_type == {
+	case GetOrCreateMSpaceType.GET_BY_INDEX; {
+		if gcmd.mspace_index >= 0 && gcmd.mspace_index < all_mspace_data.count {
+			return *(all_mspace_data.*[gcmd.mspace_index]);
+		}
+	}
+	case GetOrCreateMSpaceType.GET_BY_ID; {
+		mspace_data, found_mspace := ArrayFindFirstByNameId(all_mspace_data.*,
+			gcmd.mspace_id, "mspace_id");
+		if found_mspace return mspace_data;
+	}
+	case GetOrCreateMSpaceType.GET_BY_NAME; {
+		mspace_data, found_mspace := ArrayFindFirstByNameId(all_mspace_data.*,
+			gcmd.mspace_name, "mspace_name");
+		if found_mspace return mspace_data;
+	}
+	}
+
+	//We did not find the mspace so we create it
+	//DOC : We will reuse mspaces eventually so having this as default allocator
+	//is fine since we can just clear it and then reuse later when needed
+	mspace_data : *MusicSpaceData;
+	if free_mspace_data_pool.count > 0 {
+		popped_mspace : MusicSpaceData = pop(free_mspace_data_pool);
+		ClearMusicSpace(*popped_mspace);
+		array_add(all_mspace_data, popped_mspace);
+		mspace_data = peek_pointer(all_mspace_data.*);
+	} else {
+		mspace_data = array_add(all_mspace_data);
+	}
+	//TODO We only need to set the id for a new mspace but to avoid errors ill just always generate a new id there
+	mspace_data.mspace_id = ALL_NEXT_IDS.NEXT_MSPACE_ID;
+	ALL_NEXT_IDS.NEXT_MSPACE_ID += 1;
+	#insert #run SetResizableArrays(MusicSpaceData, 
+		"mspace_data.%.allocator = context.allocator;\n");
+
+	//This will set all the default values from runtime settings to the new mspace by default
+	//We could pass this in to create but I think it's ok to separate them right now.
+	//Setting the name here ensures that we free the old string if neede.
+	update : UpdateMSpaceData;
+	update.update_mspace_name = true;
+	update.mspace_name = gcmd.mspace_name;
+	UpdateMusicSpace(mspace_data, update, rs, all_mspace_data);
+
+	return mspace_data;
+}
+AsmUpdateMSpaceData :: struct {
+	mspace_id : int;
+
+	update_mspace_index : AsmBool;
+	mspace_index : int;
+
+	update_mspace_name : AsmBool;
+	mspace_name : AsmString;
+
+	update_tano_x_unit_width : AsmBool;
+	tano_x_unit_width : float64;
+
+	update_mspace_audio_row_size : AsmBool;
+	set_fixed_audio_row_size : AsmBool;
+	mspace_audio_row_size : int;
+} @LibraryAsmGen
+UpdateMSpaceData :: struct {
+	mspace_id : int;
+
+	update_mspace_index : bool;
+	mspace_index : int;
+
+	update_mspace_name : bool;
+	mspace_name : string;
+
+	update_tano_x_unit_width : bool;
+	tano_x_unit_width : float64;
+
+	update_mspace_audio_row_size : bool;
+	set_fixed_audio_row_size : bool;
+	mspace_audio_row_size : int;
+}
+UpdateMusicSpace :: (
+	update : UpdateMSpaceData,
+	rsd : RuntimeSettingsData,
+	all_mspace_data : *[..] MusicSpaceData)
+-> *MusicSpaceData, success : bool, msg : string
+{
+	mspace, found_mspace := ArrayFindFirstByNameId(all_mspace_data.*,
+		update.mspace_id, "mspace_id");
+	if !found_mspace {
+		return null, false, tprint("mspace_id % not found.\n", update.mspace_id);
+	}
+
+	success, msg := UpdateMusicSpace(mspace, update, rsd, all_mspace_data);
+	return mspace, success, msg;
+}
+UpdateMusicSpace :: (
+	mspace : *MusicSpaceData,
+	update : UpdateMSpaceData,
+	rsd : RuntimeSettingsData,
+	all_mspace_data : *[..] MusicSpaceData)
+-> success : bool, msg : string
+{
+	if update.update_mspace_index {
+		if update.mspace_index >= 0 && update.mspace_index < all_mspace_data.count {
+			swap(mspace, *(all_mspace_data.*[update.mspace_index]));
+		}
+	}
+	if update.update_mspace_name {
+		//TODO If we ever have an mspace allocator, then we can also use that here instead
+		//although we only clear it on clearing mspace so maybe this is better overall
+		if mspace.mspace_name.data != null && mspace.mspace_name.count > 0 {
+			free(mspace.mspace_name);
+		}
+		mspace.mspace_name = copy_string(update.mspace_name);
+	}
+	if update.update_tano_x_unit_width {
+		mspace.tano_x_unit_width = update.tano_x_unit_width;
+	} else {
+		mspace.tano_x_unit_width = rsd.default_tano_x_unit_width;
+	}
+	if update.update_mspace_audio_row_size {
+		mspace.is_fixed_audio_row_size = update.set_fixed_audio_row_size;
+		if update.set_fixed_audio_row_size {
+			mspace.mspace_audio_row_size = update.mspace_audio_row_size;
+		} else {
+			mspace.mspace_audio_row_size = ArrayFindMaxByNameId(mspace.all_music_lane_rows, "row_size", 0);
+		}
+	}
+
+	return true, "";
+}
+
+AsmDeleteMSpaceData :: struct {
+	mspace_id : int;
+} @LibraryAsmGen
+DeleteMSpaceData :: struct {
+	mspace_id : int;
+}
+DeleteMusicSpace :: (
+	delete : DeleteMSpaceData,
+	all_mspace_data : *[..] MusicSpaceData,
+	free_mspace_data_pool : *[..] MusicSpaceData)
+-> success : bool, msg : string
+{
+	mspace_index, found_mspace := ArrayFindFirstIndexByNameId(all_mspace_data.*,
+		delete.mspace_id, "mspace_id");
+	if !found_mspace {
+		return false, tprint("mspace_id % not found.\n", delete.mspace_id);
+	}
+	/*DOC : We don't reset or clear the mspace here because in case we accidentally
+	deleted it, we still have the info, so we can make a terminal command or function
+	to keep these back (or dynamic lib can just get it back directly from free_mspace_data_pool)
+	*/
+	deleted_mspace : MusicSpaceData = all_mspace_data.*[mspace_index];
+	array_add(free_mspace_data_pool, deleted_mspace);
+	array_ordered_remove_by_index(all_mspace_data, mspace_index);
+	return true, "";
+}
+AsmClearMSpaceData :: struct {
+	mspace_id : int;
+} @LibraryAsmGen
+ClearMSpaceData :: struct {
+	mspace_id : int;
+}
+ClearMusicSpace :: (
+	clear : ClearMSpaceData,
+	all_mspace_data : *[..] MusicSpaceData) 
+-> success : bool, msg : string
+{
+	//TODO We could do by index or id here and the do a GetMusicSpace and pull that out from get or create
+	//and then fetch by that here
+	// if !InRange(0, clear.mspace_index, all_mspace_data.count-1) {
+	// 	return false, tprint("mspace_id % not found.\n", clear.mspace_id);
+	// }
+	mspace, found_mspace := ArrayFindFirstByNameId(all_mspace_data.*,
+		clear.mspace_id, "mspace_id");
+	if !found_mspace {
+		return false, tprint("mspace_id % not found.\n", clear.mspace_id);
+	}
+
+	ClearMusicSpace(mspace);
+	return true, "";
+}
+ClearMusicSpace :: (mspace_data : *MusicSpaceData) {
+	#insert #run SetResizableArrays(MusicSpaceData, 
+		"array_reset_keeping_memory(*mspace_data.%);\n");
+
+	ResetCamera2D(*mspace_data.mspace_cam);
+}
+
+ChangeRenderMusicSpace :: inline (
+	new_mspace_id : int,
+	ad : *AllData) 
+{
+	last_mspace, found_last_mspace := ArrayFindFirstByNameId(ad.all_mspace_data,
+		ad.render_mspace_id, "mspace_id");
+	assert(found_last_mspace);
+
+	new_mspace, found_new_mspace := ArrayFindFirstByNameId(ad.all_mspace_data,
+		new_mspace_id, "mspace_id");
+	assert(found_new_mspace);
+
+	ad.render_mspace_id = new_mspace_id;
+
+	MoveFixedCameraOpSpaces(last_mspace.mspace_cam.world_pos,
+		new_mspace.mspace_cam.world_pos, ad);
+}
+GetRenderMSpace :: inline (all_data : *AllData) -> *MusicSpaceData {
+	render_mspace, found_render_mspace := ArrayFindFirstByNameId(all_data.all_mspace_data,
+		all_data.render_mspace_id, "mspace_id");
+	assert(found_render_mspace);
+	return render_mspace;
+}
+GetAudioMSpace :: inline (all_data : *AllData) -> *MusicSpaceData {
+	audio_mspace, found_audio_mspace := ArrayFindFirstByNameId(all_data.all_mspace_data,
+		all_data.audio_mspace_id, "mspace_id");
+	assert(found_audio_mspace);
+	return audio_mspace;
+}
+GetNextNonMutedMSpace :: inline (
+	start_index : int, 
+	all_mspace_data : [] MusicSpaceData) 
+-> next_mspace_index : int, all_muted : bool 
+{
+	//TODO Should we return invalid here for these 2 assertions instead?
+	assert(start_index >= 0);
+	assert(start_index < all_mspace_data.count);
+	if start_index + 1 < all_mspace_data.count {
+		for start_index+1..all_mspace_data.count-1 {
+			check_mspace := all_mspace_data[it];
+			if check_mspace.mspace_audio_row_size == 0 continue;
+			else return it, false;
+		}
+	}
+	for 0..start_index {
+		check_mspace := all_mspace_data[it];
+		if check_mspace.mspace_audio_row_size == 0 continue;
+		else return it, false;
+	}
+	return start_index, true;
+}
+
+MoveFixedCameraOpSpaces :: inline (
+	new_cam_pos : Vector2F,
+	last_cam_pos : Vector2F,
+	//TODO Maybe we should just pass in all_open_op_spaces here
+	ad : *AllData) 
+{
+	for * ad.all_open_op_spaces if it.fixed_op_type == .FIXED_TO_CAMERA {
+		distance_from_last_cam : Vector2F = (it.world_offset - last_cam_pos);
+		it.world_offset = new_cam_pos + distance_from_last_cam;
+	}	
+}
+
+IsFixedViewableOpSpace :: inline (
+	op_space : OperationSpace,
+	render_mspace_id : int)
+-> bool 
+{
+	is_viewable : bool = op_space.fixed_op_type == .FIXED_TO_CAMERA ||
+		(op_space.fixed_op_type == .FIXED_TO_MSPACE && 
+		 op_space.fixed_mspace_id == render_mspace_id);
+	return is_viewable;
+}
+OpSpaceFixedToMSpace :: inline (
+	op_space : OperationSpace,
+	render_mspace_id : int)
+-> bool 
+{
+	skip : bool = op_space.fixed_op_type == .FIXED_TO_MSPACE && 
+		render_mspace_id == op_space.fixed_mspace_id;
+	return skip;	
+}
+
+#if 0 {
+for_expansion :: (all_dspaces : *AllDSpaces, body : Code, flags : For_Flags) #expand {
+	//MusicPt : Need POINTER so we can cast the return value to the proper space type
+	#assert(flags == For_Flags.POINTER);
+
+	should_break : bool = false;
+	//MusicPt : need to assign index out here to avoid name overlap within loop
+    `it : *DimSpaceHeader = null;
+    `it_index : int = 0;
+    for *circle, circle_index : all_dspaces.circle_pitch_spaces {
+    	if should_break break;
+    	it = *circle.header;
+    	it_index += 1;
+    	#insert(break={should_break = true;}) body;
+    	// #insert body;
+    }    
+    for *dspace_2D, dspace_2D_index : all_dspaces.chord_spaces_2 {
+    	if should_break break;
+    	it = *dspace_2D.header;
+    	it_index += 1;
+    	#insert(break={should_break = true;}) body;
+    	// #insert body;
+    }
+
+    for *piano, piano_index : all_grids.piano_grids {
+    	if should_break break;
+    	it = *piano.header;
+    	it_index += 1;
+    	#insert(break={should_break = true;}) body;
+    	// #insert body;
+    }
+    //TODO this required making DimSpaceHeader only 2D
+    //TODO but we could split out if we needed DimSpaceHeader(Vector3F)
+    //TODO then we would have 2D loop and 3D loop
+    // print("it_index is %\n", it_index);
+    for *grid_3D, grid_3D_index : all_grids.grids_3D {
+    	if should_break break;
+    	it = *grid_3D.header;
+    	it_index += 1;
+    	#insert(break={should_break = true;}) body;
+    	// #insert body;
+    }
+}
+}
+
+/*NOTE : This is interesting because we needed 3 states in integration test.
+The state to start so we can reset data and test results.
+The state to continue so we can have a test run through multiple frames.
+The state to end so we don't run anymore and print out CURRENT_TEST_RESULTS.
+*/
+TestState :: enum u8 {
+	NO_TEST_RUNNING;
+	TEST_STARTED;
+	TEST_CONTINUE;
+	TEST_FINISHED;
+	//TODO Can use this to set an error later. 
+	//For now we just print them but maybe we want to do something with the error.
+	//If we don't then we can just replace this with TEST_FINISHED anyways
+	TEST_ERROR;
+}
+//TODO Should we put this in thegame_test?
+/*TODO If we need per-test data later on, then we can
+add that array at compile-time with the itest arrays
+and set it to default for each array and then set them
+as needed on first test_data.is_initialized in case we have to change them at runtime.
+*/
+TestData :: struct {
+	is_initialized : bool;
+	test_name : string;
+	test_state : TestState;
+	test_function_name : string;
+	//TODO Could use this to early out of tests if needed.
+	// test_failsafe : bool;
+
+	//TODO Can use this to store specific data for at the current
+	//running test with test_alloc
+	spec_data : *void;
+
+	all_unit_tests_finished : bool;
+	// all_i_test_finished : bool;
+	all_itest_index : int;
+
+	//TODO Can use this to keep track of time within
+	//a test itself.
+	//TODO could make this float64 if that's easier to use
+	test_timer : Apollo_Time;
+
+	//TODO Can use this from inside a test to check how long
+	//all the frames are taking to run.
+	// max_all_frame_time : Apollo_Time;
+	//TODO could make this float64 if that's easier to use
+	all_frames_time : Apollo_Time;
+	//TODO Can use this from inside a test to check how long
+	//the last frame took to run.
+	// max_dt_time : Apollo_Time;
+	//TODO could make this float64 if that's easier to use
+	last_frame_dt : Apollo_Time;
+
+	//We use this to run more inputs/actions within a test. This can be used
+	//to do benny tests (maybe another name) just by setting
+	//test_running = true and then using the sub_test_index to know what to run.
+	//So we only need 1 function and this to run multiple inputs or other actions
+	//for the same test since the test will keep running as long as we keep
+	//resetting test_running = true;
+	//This can also be used as a frame_count. We could add 
+	//frame_count separately if we do that often
+	sub_test_index : int;
+	//We set this externally since it seems that it will be consistent,
+	//but if it's not we can just use sub_test_index or something else.
+	//This is is just there so the test can now where it is at and act accordingly.
+	//We could also have a timer set in here if needed.
+	//TODO Should have a timer which throttles the frames.
+	frame_count : int;
+
+	/*NOTE : This is one way to run tests consistently.
+	HOWEVER we could just use frame_count and sub_test_index
+	in any other way to write tests. This will just run inputs
+	until done and seems like a pretty regular and consisten way
+	to write integration tests with various inputs.
+	*/
+	initialized_test : bool;
+	all_sub_tests : [..] SubTestData;
+
+	//TODO REMINDER if we want to SubTest to just run a few frames, we would just put how many
+	//frames we want to run as the repeat_count and have the test be an empty function.
+	//So if we want the test to run more slowly we could just check a timer and keep running frames
+	default_frame_wait : int;
+
+	use_as_test_input : *GameInput;
+
+	pre_test_runtime_settings : RuntimeSettingsData;
+
+	//Some extra testing data
+	//NOT SURE if I like this so maybe we can remove it if theres issues
+	//ALSO If ever we pull out the mouse line char code then this would not be necessary
+	test_mouse_line_char : int;
+}
+//TODO Maybe we can use this everywhere for tests now instead.
+TIPData :: struct {
+	perm : *Persist;
+	game_memory : *GameMemory;
+	renderer_data : *RendererData; 
+	audio_data : *AudioData; 
+	game_input : *GameInput;
+}
+SubTestData :: struct {
+	// test_inputs : [] TestInput;
+	// has_test_proc : bool;
+	//TODO Can remove this if we don't need it anymore later
+	//leaving for now just as a reminder of doing tests with procs instead
+	//which ended up being more complicated and cumbersome in terms of both
+	//implementation and legibility and the if statements are much clearer and
+	//cleaner in general and I prefer working with them.
+	//Let's see how it is over time writing more tests now.
+	test_proc : TestInputProc;
+
+	run_count : int;
+	//TODO If we want the test to wait, we can just set this to 0
+	//OR we could have an override flag that says to wait here instead
+	//until something happens in the test
+	run_index : int;
+	//TODO Not sure we need this also best to have a failsafe otherwise
+	//Or just reset the run_index or do run_index -= 1 so at least it won't get stuck;
+	// wait_to_run : bool;
+
+	//TODO We can use this to wait a certain number of frames
+	//before running the test or each run of it, this way
+	//the game keeps running and we just check each frame instead
+	//TODO Could set this * fraction so if we slow it down
+	//we would just multiple this by 2 or 3 or whatever and it would
+	//wait until it hits that frame
+	current_frame_wait : int;
+	override_wait : bool;
+	frame_wait_override : int;
+	//TODO Could set this to current frame_count + frame_wait
+	//once we hit this test.
+	// end_frame : int;
+
+	spec_data : *void;
+}
+SubT :: inline (
+	run_count : int = 1,
+	frame_wait_override : int = 1,
+	proc : TestInputProc = null)
+-> SubTestData 
+{
+	sub_test : SubTestData;
+	//TODO Remove this if we never use it
+	sub_test.test_proc = proc;
+	sub_test.run_count = run_count;
+	//We have run_index < run_count to loop run_count times. We could check run_index < run_count-1
+	//But this also lets us check run_index == 0 as a default value and then set the run_count to how
+	//many times we want it to actually run.
+	sub_test.run_index = 1; 
+	if frame_wait_override > 1 {
+		sub_test.override_wait = true;
+	}
+	sub_test.frame_wait_override = frame_wait_override;
+	return sub_test;
+}
+//TODO We simplify the if statement out here for convenience so we can run a test n times with 1 line.
+//DOC : This actually runs it n-1 times so 0 would run it once maybe we can change that eventually for clarity...
+RunSubTestNTimes :: (n : int, test_data : *TestData) {
+	if test_data.all_sub_tests[test_data.sub_test_index].run_index == 0 {
+		test_data.all_sub_tests[test_data.sub_test_index] = SubT(n);
+	}
+}
+
+//TODO Could have a version where we pass in the whole string with and then it will set both
+SetResizableArrays :: ($t : Type, $code : string) -> string #expand {
+	sb : String_Builder;
+	comp_data_type_info := cast(*Type_Info_Struct) type_info(t);
+	for ti_member : comp_data_type_info.members {
+		if ti_member.type.type == Type_Info_Tag.ARRAY {
+			ti_array := cast(*Type_Info_Array) ti_member.type;
+			if ti_array.array_type == .RESIZABLE {
+				print_to_builder(*sb, code, ti_member.name);
+			}
+		}
+	}
+	return builder_to_string(*sb);
+}
+TestInputProc :: #type (
+	perm : *Persist,	
+	game_memory : *GameMemory,
+	renderer_data : *RendererData, 
+	audio_data : *AudioData, 
+	game_input : *GameInput);
+
+//Leaving this here in case we want to remember what we reset for this but can remove once
+//we separate out all the mspace and op_space data from all data properly.
+#if 0 {
+//TODO Generalize the ResetAllDynamicArrays metacode
+//and also do a reset for AllData
+ResetAllCodeData :: (all_code_data : *AllCodeData) {
+//TODO Could make a function for any type for this
+//So we could reuse for AllDataInstructionData
+//and AllOldMusicInstructionData
+//TODO Could we use SetResizable array now? maybe in this case this is better since we also have integers
+#insert #run () -> string {
+	sb : String_Builder;
+	all_code_data_type_info := cast(*Type_Info_Struct) type_info(AllCodeData);
+	for ti_member : all_code_data_type_info.members {
+		if ti_member.type.type == Type_Info_Tag.ARRAY {
+			ti_array := cast(*Type_Info_Array) ti_member.type;
+			if ti_array.array_type == .RESIZABLE {
+				print_to_builder(*sb, 
+				"array_reset_keeping_memory(*all_code_data.%);\n", ti_member.name);
+			}
+		} else if ti_member.type.type == Type_Info_Tag.INTEGER {
+			print_to_builder(*sb, 
+			"all_code_data.% = 0;\n", ti_member.name);
+		}
+	}
+	return builder_to_string(*sb);
+}();
+
+	// for reg_def_enums array_add(*all_code_data.all_register_memory, MemoryValue.{});
+
+	//TODO There could be a setting where we don't reset this if we want to maintain the memory_values.
+	// reset(*all_code_data.ram_flat_pool);
+
+	//TODO Could pull this out into separate function
+	//Or also call DefaultCodeLevelData
+	//Default values can be added here if needed.
+	//Although in the case of the tuning_system, we have to check
+	//later to make sure we already created it if it is added.
+	//TODO Could allow an instruction that sets the default_tuning_system
+	#if 1 {
+	CreateDefaultTuningSystems(*all_code_data.all_tuning_systems, *all_code_data.all_tuning_pitches);
+	} else {
+	CreateEqualTemperedTuningSystemWithTuningPitches(12,
+		*all_code_data.all_tuning_systems,
+		*all_code_data.all_tuning_pitches,
+		*all_code_data.all_mps_systems);
+	CreateTuningSystem(TuningSystemType.pyth, 13, *all_code_data.all_tuning_systems, *all_code_data.all_tuning_pitches, *all_code_data.all_mps_systems);
+	CreateCreateTuningDataSystems(*all_code_data.all_tuning_systems, *all_code_data.all_tuning_pitches);
+	}
+}
+}
+
+
+/*DOCU : MySimplePool is the simplest allocator I could think of. It just allocates and does not free.
+It is currently made to grab memory from another allocator assuming that that will deal with it.
+So this allows us to allocate memory within another allocator.
+
+This is currently being tested in WatchData (although we will likely remove it), so that we can get the
+expression nodes to have the same memory as the given allocator for TextOpSpaceData which will likely be
+the default allocator.
+
+We could add .RESIZE and then allocate more but then we would have to get more data from the original allocator
+so we would then ahve to store it, so I am keeping this as simple as possible for now.
+
+TODO IDEA : We could make a pool from Flat_Pool and then have MySimplePool make small pools from the Flat_Pool
+so that then when we reset, we reset everything and if we want to increase memory from a specific place
+we just reset and grab more. Not sure if this is useful but it could be worth trying.
+*/
+MySimplePool :: struct {
+	base : *u8;
+	//DOCU : used and size are in bytes. We could set "used" to be *u8 but this seems natural.
+	used : int;
+	size : int;	
+	//TODO Could have a flag here or a separate pool that is resizable MyResizePool to avoid extra memory
+	// is_resizable : bool;
+}
+InitMySimplePool :: (msp : *MySimplePool, size_in_bytes : int) {
+	msp.used = 0;
+	msp.size = size_in_bytes;
+	msp.base = alloc(size_in_bytes);
+}
+ResetMySimplePool :: (msp : *MySimplePool) {
+	msp.used = 0;
+}
+MySimpleAllocProc :: (mode: Allocator_Mode, requested_size: s64, old_size: s64, old_memory: *void, allocator_data: *void) -> *void {
+	if mode == {
+	case .RESIZE; #through;
+	case .ALLOCATE;
+		msp := cast(*MySimplePool) allocator_data;
+		assert(msp != null && msp.base != null);
+		return_data : *u8 = msp.base + msp.used;
+		if msp.used + requested_size >= msp.size {
+			//TODO We could realloc here and memcpy over to the new one (Could make that a flag or a different alloc type)
+			//Note that then we would lose the pointers
+			// realloc(requested_size);
+         log_error("Attempt to allocate size %, but MySimplePool is full : %\n", requested_size, msp);
+         //TODO Which is better here. Returning null will likely crash something so the error will be obvious
+         //but maybe we don't want to crash?
+			// return return_data;
+			return null;
+		}
+		msp.used += requested_size;
+		return cast(*void) return_data;
+	//NOTE : This was resizing the allocator but we don't want that
+	// case .RESIZE;
+	// 	msp := cast(*MySimplePool) allocator_data;
+	// 	assert(msp != null && msp.base != null);
+	// 	// return_data : *u8 = msp.base + msp.used;
+	// 	if requested_size > msp.size {
+	// 		//TODO We could realloc here and memcpy over to the new one (Could make that a flag or a different alloc type)
+	// 		// realloc(requested_size);
+   //       log_error("Attempt to resize : % bytes, but MySimplePool is fixed to : % bytes\n", requested_size, msp.size);
+   //       //TODO Which is better here. Returning null will likely crash something so the error will be obvious
+   //       //but maybe we don't want to crash?
+	// 		// return return_data;
+	// 		return null;
+	// 	}
+	// 	// msp.used += requested_size;
+	// 	return cast(*void) msp.base;
+	case .FREE; #through;
+		//TODO Leaving these here separate in case we want to implement them later.
+	case;
+		//TODO Not sure this is works with our RESIZE changes, but we do it for now just in case.
+      log_error("MySimpleAllocProc invalid Allocator_Mode : %\n", mode);
+		return null;
+	}
+}
+//TODO Should likely put this in TextOpSpaceData since we will allow
+//changing the font size and color per op space I think.
+TextEditorData :: struct {
+	//TODO If we want these to be per op_space then we need one for each RenderGroup.
+	//We have font_id so we could just associate one of these per font
+	//if we want different fonts for different spaces for example.
+	code_font_1_char_width_pixel : s64;
+	//I prefer pre-computing this so it's the same everywhere without 
+	//the possibility of a floating point difference error
+	code_font_1_char_width_world : float;
+	char_height : int;
+	font_color : Vector4F;
+	//TODO Eventually we will pass this in through the settings either directly or
+	//we can set it from the settings to here so people can update text editor data and have
+	//different text editor data for each text op space
+	undo_split_string : string;
+	undo_split_chars : [16] u8;
+}
+//DOC : We only have 1 font right now, if we add more then we can add an index here for that specific font
+//but if we add more then we have to set that for PushText for example and in the text op space or at least
+//for ui eventually i guess.
+UpdateFontSize :: inline (font_size : float, ted : *TextEditorData, rd : *RendererData) {
+	UpdateRendererFontSize(font_size, rd);
+	SetupTextEditorData(ted, rd.*);
+}
+SetupTextEditorData :: inline (ted : *TextEditorData, renderer_data : RendererData) {
+	//TODO Will need to pass in this function if we bring back hot code reloading.
+	//TODO Should we search for the font by name instead in case we add new fonts later?
+	//TODO Can call this from renderer and do it in there.
+	one_char_width : s64 = renderer_data.all_my_fonts_data[1].char_width;
+    // if one_char_width % 2 == 1 one_char_width -= 1;
+	ted.code_font_1_char_width_pixel = one_char_width;
+	//TODO Need to update this on zoom for text editor and text in general OR just remove it
+	//and recompute it wherever we use it which may be preferable although we will have to adjust the
+	//font size on zoom as well eventually. Leaving it like this for now for consistency and since I think
+	//when we change the font size, we will have to update this anyways.
+	ted.code_font_1_char_width_world = one_char_width / renderer_data.base_render_group.pixels_per_square;
+	ted.char_height = renderer_data.all_my_fonts_data[1].char_height;
+	// print("char_height=%, char_width_pixel=%, chard_width_world=%, pixels_per_square=%\n", 
+	// 	ted.char_height, one_char_width, ted.code_font_1_char_width_world, renderer_data.base_render_group.pixels_per_square);
+
+	//TODO This should be udpated from settings
+	//TODO MAybe we should store these in FileString instead
+	//so we can have it be different for single line input
+	ted.undo_split_chars[0] = "\n";
+	ted.undo_split_string = string.{1, ted.undo_split_chars.data};
+}
+
+//TODO Do this for other OpSpace/Window connections
+//and we store persistent data in the non-window data
+TextFileToOpSpace :: struct {
+	text_file_id : int;
+	op_space_id : int;
+}
+
+//TODO I think text_files or at least FileString should have it's own allocator.
+//Then we can reuse the allocators if we close and open other files.
+//I think we would only reuse a text file if we deleted a file in which case
+//we could just reuse it later in a pool and reuse the pooled text file directly
+//and just reset the count files and the file string values directly.
+TextFile :: struct {
+	id : int;
+	//TODO Should we have a path variable and full name?
+	absolute_path_name : string;
+	/*DOC : This is technically either the relative path if we use load_op by name otherwise it's the absolute path.
+	That is somewhat confusing but is convenient for loading by relative path when typing in the name.
+	That is the only case we use it though. In all other cases the absolute path above should be used.
+	*/
+	file_name : string;
+	file_write_time : Apollo_Time;
+	//TODO Could have a file_extension or do this by enum. 
+	//Extension is more robust since then we can add any 
+	//extension we want. Could still have enum for specific
+	//types that we support by default.
+	file_extension : string;
+	//TODO file_short_name should be file_name by default
+	//TODO I think we can remove this now since we have absolute_path_name and 
+	//file_name (which is relative or absolute depending on how the user inputs it)
+	file_short_name : string;
+	//TODO use resize_flat_pool_allocator_proc to resize text_string once we implement that
+	//and see if that works at all with some copy_pasting.
+	using file_string : FileString;
+
+	was_internal_saved : bool;
+
+	//TODO This should also be separated out since it is op_space specific
+	//since we can have the same file in multiple op_spaces.
+	//TODO Put this in TextOpSpaceData
+	// text_cursor : TextCursor;
+
+	//TODO We could separate this out since its only needed for the text editor and not for compiling for example
+	//TODO How should we store lines of code in a separate data table and then manage the lines ourselves?
+	//OR Each file_loc has it's own allocator and then we can
+	//just split to the same allocator memory every time.
+	//TODO Should probably put this in TextOpSpaceData anyways since we can
+	//have a file in multiple op_spaces regardless. OR keep it here for now
+	//so that the lines remain consistent for now.
+	// file_loc : [..] string;
+	//TODO Remove this completely once it is working in TextCursor
+	// start_file_line_index : int;
+	// end_file_line_index : int;
+	// left_char_bound : int;
+	// right_char_bound : int;
+
+	/*TODO Could split this enum out into multiple arrays
+		if that is more efficient or also split up
+		all_text_files to have DEFAULT at the beginning
+		and LIBRARY at the end depending on how we use it 
+		or if we add more text file types. 
+		Let's see what we do after we have the 
+		jai files working.
+	*/
+	file_type : TextFileType;
+	is_external_file : bool;
+}
+
+TextFileType :: enum {
+	DEFAULT;
+	LIBRARY;
+}
+
+//TODO Would could also make an IncreasingAllocator which always increases like this and instead of doing reset
+//the get just gets from the same place every time. It would be slightly more efficient but then I would alos
+//have to maintain it myself between Windows and Mac so this seems more convenient at least for now.
+//TODO Use this for FileString for TextFile so that we can resize the string without wasting any memory at all.
+same_start_resize_flat_pool_allocator_proc :: (mode: Allocator_Mode, requested_size: s64, old_size: s64, old_memory: *void, allocator_data: *void) -> *void {
+    if mode == {
+      case .FREE;   
+      	return null;
+      case .RESIZE;
+			pool := cast(*Flat_Pool) allocator_data;
+			assert(pool != null);
+			//We reset the pool here and then get so that 
+			reset(pool);
+			result := get(pool, requested_size);
+			return result;
+      case .ALLOCATE;
+      	//TODO I think not allowing allocated here at all so we can only resize might be best... or maybe not...
+      	//OR MAYBE alloc should be the same as resize anyways since this is a specific use case.
+			pool := cast(*Flat_Pool) allocator_data;
+			assert(pool != null);
+			result := get(pool, requested_size);
+			return result;
+			// return null;
+      case;
+      	//TODO Not sure this is works with our RESIZE changes, but we do it for now just in case.
+			return flat_pool_allocator_proc(mode, requested_size, old_size, old_memory, allocator_data);
+    }
+}
+//TODO Should we rename this to TextString or TextEditString
+//since it can be used for a file but also we are using everywhere
+//for single line.
+CreateFileStringData :: struct {
+	//I will leave defaults out here if it really depends on the use case
+	total_allocated_bytes : int;
+	undo_action_count : int;
+	//TODO We could default to " \n" if that makes more sense or put those as constants
+	//TODO SETTINGS
+	text_undo_split : string = "\n";
+}
+InitFileString :: inline (fs : *FileString, cfsd : CreateFileStringData) {
+	fs.total_allocated_bytes = cfsd.total_allocated_bytes;
+	fs.text_string = alloc_string(cfsd.total_allocated_bytes);
+	fs.text_string.count = 0;
+
+	InitTextActionHistory(fs, cfsd);
+}
+InitTextActionHistory :: inline (fs : *FileString, cfsd : CreateFileStringData) {
+	fs.action_write_index = 0;
+	fs.undo_buffer_length = 0;
+	fs.total_buffer_length = 0;
+	fs.text_undo_split = cfsd.text_undo_split;
+	fs.text_action_history = NewArray(cfsd.undo_action_count, TextAction);
+}
+//TODO Should we generalize this to thegame_string as an AllocatedString or PreAllocString
+//or leave here for now until we have to change it?
+//Or call it CodeString to separate it from system Files
+//but also this somewhat imitates a system file and the
+//way we read and write to it.
+//TODO Could we replace this with a *[..] u8 which
+//already has allocated variable in it?
+//TODO Can rename this to DynamicString so we can 
+//build up for our own purposes.
+//TODO Maybe rename this editable string since we use it with
+//UpdateFileStringAtCursor and it is not necessarily a file.
+//TODO WE COULD PUT single_line in here instead of compile-timing it everywhere
+FileString :: struct {
+	//TODO If we have a [..] u8 in here with it's own allocator
+	//then I think we would not need to manage the member
+	//and this string would just point to that array OR
+	//I think we could just cast that array to string when needed.
+	//TODO Use this instead with a Pool or Flat_Pool
+	//Maybe Flat_Pool is fine so we can limit file size.
+	//So each text file would have its own pool and string here
+	//and then it would increase automatically when needed
+	//and we can set allocated to the pool max allocated size.
+	//With Flat_Pool we can reset and then get so that we stick to the same
+	//initial .data. This way we could make our own allocator
+	//that uses the Flat_Pool but keeps the same .data memory_base.
+	//TODO Make our own flat_pool_allocator_proc that has its own resize.
+	//text_string : [..] u8;
+	text_string : string;
+	total_allocated_bytes : int;
+
+	/*NOTE : storing this in here now because techinally file_loc should be consistent
+	across all text editors. If we want to keep a specific text editor window
+	consistent, we can just update the bounds of that editor whenever we add lines.
+	So just adjust all text_cursor_bounds for all TextOpSpaceData with this text_file.
+	*/
+	//TODO We can compile-time this out for single_line files
+	file_loc : [..] string;
+	//TODO FROM HERE should we generalize this?
+	//text_string would point to first *u8
+	//of dynamic string and its count would
+	//be = dynamic_string.count
+	//This has the advantage of being able to use
+	//the built in jai memory allocation directly
+	//and so we would only need to update the default
+	//allocator
+	// text_string : string;
+	// dynamic_string : *[..] u8;
+
+	not_saved_text_edit : bool;
+
+	//TODO Can also have an allocator for the text undo system strings
+	//so that if we reuse it eventually, then we can just clear it in 1 go.
+	// text_undo_system : TextActionSystem;
+	/*DOC : If undo_buffer_length < total_buffer_length, then we are undoing
+	and therefore we could redo. If we perform an action, then we set
+	total_buffer_length = undo_buffer_length so we can no longer redo
+	but we can still undo if we have any undos left.
+	So undo_buffer_length gets decremented as we undo and set back to
+	total_buffer_length when we perform an action to reset the action history
+	to the current write cursor.
+	
+	FOR RESET OR REUSE FILE if we delete a file for example and reuse the memory.
+	//TODO We could put this into a struct like below if that helps transferring data or something like that later.
+	I am not putting in a separate struct for now because it is likely best to
+	just reuse the file_string altogether if we delete a file or something like that.
+	Then if we use a separate allocator for the entire file, we could maybe use that here.
+	Right now if we reuse, we would just reset these to 0 
+	and the text_action_history would not change since the total_buffer_length
+	and the undo_buffer_length would both be 0 we can just keep the old history the same.
+	TODO WE COULD cycle through text_action_history and set them all to .NONE for good measure though
+	*/
+	action_write_index : int;
+	undo_buffer_length : int;
+	total_buffer_length : int;
+	text_undo_split : string;
+	//size_of(TextAction) == 224 bytes and size_of(TextCursor) == 88 bytes
+	//so if we used u32/s32 in TextCursor then 224-88 = 136 bytes
+	//100 * 224 bytes = 22400bytes = 22.4kb -> * 2 = 44.8kb
+	//Seems ok to default to < 50kb but could increase default if we compress TextCursor
+	text_action_history : [] TextAction;
+}
+// TextActionSystem :: struct {
+// 	action_write_index : int;
+// 	undo_buffer_length : int;
+// 	total_buffer_length : int;
+// 	text_action_history : [] TextAction;
+// }
+TextActionType :: enum u8 {
+	NONE;
+	ADD_TEXT;
+	REMOVE_TEXT_LEFT;
+	REMOVE_TEXT_RIGHT;
+	//TODO We could add this later to do replace undos in 1 action for convenience
+	//REPLACE_TEXT;
+}
+TextAction :: struct {
+	action_type : TextActionType;
+	//TODO We can make all the vars in here s32 which would reduce
+	//the size of these actions by about 50% which may be worth doing.
+	//TECHNICALLY we only have store char_point, line_number and fixed_select data
+	//since everything else is computed based on char_point. 
+	//Maybe we can do that eventually as that would be even more compression if needed.
+	cursor_before_action : TextCursor;
+	after_action_cursor : TextCursor;
+
+	//TODO This could have a Flat_Pool as an allocator so we can
+	//reuse it later if needed if we delete a text file for example 
+	//but maybe we don't want that in general in which case it's not necessary.
+	//FOR TESTS this gets allocated with test_alloc so then we continue using that if we play with the test.
+	//But it will get reset on the next test if we run another one. Generally tests should be used as test
+	//and only played around with for testing purposes after running the integration test.
+	undo_chars : [..] u8;
+}
+CreateTextAction :: inline (
+	action_string : string,
+	ta : TextAction,
+	file_string : *FileString,
+	//TODO We can let people set this to whatever they want in a settings file. 
+	//Default could be new line or something else.
+	//Currently this only applies to adding text since deleting seems like wed want to undo in chunks
+	//If we end up not using this, then we can hardcode checking single char or specific chars instead of using is_any
+	// undo_split := " \r\t\n"
+	undo_split := "\n")
+{
+	//TODO In case we have not added a text action history to this
+	//file string then we just return. This currently applies to single
+	//line input like terminal commands, test strings and watch window variable names.
+	if file_string.text_action_history.count == 0 return;
+	//NOTE : We use the action_string in here for new array no the undo_chars.
+	//Maybe we should just pass in the variables directly instead of through TextAction
+	//if that is less confusing but the TextAction feels better for setting data.
+	assert(ta.undo_chars.count == 0);
+
+	compressed_action_with_previous : bool = false;
+	last_write_index : int = PosMod(file_string.action_write_index - 1, file_string.text_action_history.count);
+	last_ta : *TextAction = *file_string.text_action_history[last_write_index];
+
+	is_sequential_action : bool = last_ta.after_action_cursor.char_point == ta.cursor_before_action.char_point;
+	is_single_char_action : bool = action_string.count == 1;
+	same_action_as_last : bool = ta.action_type == last_ta.action_type;
+	same_sequential_single_char_action : bool = is_sequential_action && is_single_char_action && same_action_as_last;
+	if ta.action_type == .ADD_TEXT && same_sequential_single_char_action {
+		//If we have the same undo split char, then we compress it instead of splitting it
+		//eg if undo_split = " \n" then multiple single "\n" in a row or 
+		//multiple single spaces " " in a row if user holds enter or spacebar for example
+		if String.is_any(action_string[0], file_string.text_undo_split) {
+			same_undo_split_char : bool = last_ta.undo_chars.count > 0 &&
+				peek(last_ta.undo_chars) == action_string[0];
+			compressed_action_with_previous = 
+				same_sequential_single_char_action && same_undo_split_char;
+		} else {
+			compressed_action_with_previous = same_sequential_single_char_action;
+		}
+		if compressed_action_with_previous {
+			next_char : u8 = action_string[0];
+			array_add(*last_ta.undo_chars, next_char);
+			last_ta.after_action_cursor = ta.after_action_cursor;
+		}
+	} 
+	else if ta.action_type == .REMOVE_TEXT_LEFT && same_sequential_single_char_action {
+		//We insert at index 0 here because we are removing the previous char and therefore need to reverse the order
+		//eg "test" will be removed from right to left as t-s-e-t so in reverse we get t-e-s-t
+		// sequential_text_remove_left : bool = last_ta.cursor_before_action.char_point - last_ta.undo_chars.count == ta.cursor_before_action.char_point;
+		next_char : u8 = action_string[0];
+		array_insert_at(*last_ta.undo_chars, next_char, 0);
+		last_ta.after_action_cursor = ta.after_action_cursor;
+		compressed_action_with_previous = true;
+	} 
+	else if ta.action_type == .REMOVE_TEXT_RIGHT && same_sequential_single_char_action {
+		//Remove text right does not move cursor so last_ta.cursor_before_action == ta.after_action_cursor AND last_ta.after_action_cursor == ta.cursor_before_action
+		//because last_ta.cursor_before_action == last_ta.after_action_cursor AND ta.cursor_before_action == ta.after_action_cursor
+		// sequential_text_remove_right : bool = last_ta.cursor_before_action.char_point == ta.cursor_before_action.char_point;
+		next_char : u8 = action_string[0];
+		array_add(*last_ta.undo_chars, next_char);
+		last_ta.after_action_cursor = ta.after_action_cursor;
+		compressed_action_with_previous = true;
+	} 
+
+	if !compressed_action_with_previous {
+		assert(file_string.action_write_index < file_string.text_action_history.count);
+		next_action : *TextAction = *file_string.text_action_history[file_string.action_write_index];
+		next_action.cursor_before_action = ta.cursor_before_action;
+		next_action.after_action_cursor = ta.after_action_cursor;
+		next_action.action_type = ta.action_type;
+		array_reset_keeping_memory(*next_action.undo_chars);
+		array_reserve(*next_action.undo_chars, action_string.count);
+		memcpy(next_action.undo_chars.data, action_string.data, action_string.count);
+		next_action.undo_chars.count = action_string.count;
+
+		file_string.action_write_index = PosMod(file_string.action_write_index + 1, file_string.text_action_history.count);
+		//TODO We can reuse this if we are adding multiple actions at once later.
+		// WriteToCircleBuffer(TextAction.[action], 
+		// 	file_string.text_action_history, 
+		// 	*file_string.action_write_index);
+
+		//This keeps track of the total undo_buffer_length
+		file_string.undo_buffer_length += 1;
+		if file_string.undo_buffer_length > file_string.text_action_history.count {
+			file_string.undo_buffer_length = file_string.text_action_history.count;
+		}
+	}
+
+	//We always reset this since we use this since we check if total_buffer_length == undo_buffer_length for redo
+	//because if they are equal then we have nothing to redo since we have not undone anything.
+	//This also restarts the action history since we did an action, so if we were undoing then we restart the action
+	//from the current position since the total length is the same.
+	file_string.total_buffer_length = file_string.undo_buffer_length;
+}
+
+//TODO We could also do this with a [..] u8 and remove total_allocated_bytes
+//since we have allocated in the resizable array itself and
+//which would also allow us to use a specific allocator for this specific dynamic string
+//in the resizable array. Could make a separate one called ResizableString
+DynamicString :: struct {
+	text_string : string;
+	total_allocated_bytes : int;
+}
+InitDynamicString :: inline (ds : *DynamicString, total_bytes : int) {
+	ds.total_allocated_bytes = total_bytes;
+	ds.text_string = alloc_string(ds.total_allocated_bytes);
+	ds.text_string.count = 0;
+}
+MaybeResizeDynamicString :: inline (new_size : int, ds : *DynamicString) {
+	if new_size >= ds.total_allocated_bytes {
+		old_string : string = ds.text_string;
+		ds.total_allocated_bytes = 2*new_size;
+		ds.text_string = alloc_string(ds.total_allocated_bytes);
+		memcpy(ds.text_string.data, old_string.data, old_string.count);
+		ds.text_string.count = old_string.count;
+		//TODO Use an underlying [..] u8 if we have problesm with free
+		free(old_string);
+	}	
+}
+SetDynamicStringFromStart :: inline (s : string, ds : *DynamicString) -> string {
+	MaybeResizeDynamicString(s.count, ds);
+	memcpy(ds.text_string.data, s.data, s.count);
+	ds.text_string.count = s.count;
+	return string.{s.count, ds.text_string.data};
+}
+//DOC : We return the string in case we want to set it somewhere else like an array of string
+AddDynamicString :: inline (s : string, ds : *DynamicString) -> string {
+	previous_size : int = ds.text_string.count;
+	new_size : int = s.count + ds.text_string.count;
+	MaybeResizeDynamicString(new_size, ds);
+	add_string_data : *u8 = ds.text_string.data + previous_size;
+	memcpy(add_string_data, s.data, s.count);
+	ds.text_string.count = new_size;
+	return string.{s.count, add_string_data};
+}
+
+//TODO I think text files should have their own allocator
+/*DOC : This is only really used for tests so could rename to MakeTestTextFile
+and just use it there since we create TextFile separate in the base game.
+*/
+MakeTextFile :: inline (
+	all_next_ids : *AllNextIds,
+	file_name : string,
+	total_allocated_bytes : int,
+	file_short_name : string = "",
+	file_type : TextFileType = TextFileType.DEFAULT,
+	write_file_string : string = "")
+-> TextFile 
+{
+	text_file : TextFile;
+	text_file.id = all_next_ids.NEXT_TEXT_FILE_ID;
+	all_next_ids.NEXT_TEXT_FILE_ID += 1;
+	//TODO Should we store these file names together somewhere
+	//or is this fine?
+	text_file.file_type = file_type;
+	text_file.file_name = copy_string(file_name);
+	//We set this for convenience since we are ony using this function for tests right now.
+	// text_file.absolute_path_name = text_file.file_name;
+	text_file.total_allocated_bytes = total_allocated_bytes;
+	text_file.text_string = alloc_string(total_allocated_bytes);
+	text_file.text_string.count = 0;
+	WriteFileString(*text_file, write_file_string);
+	//TODO Should this be an input parameter or maybe we should pull out 
+	//text editor variables from the TextFile struct.
+	// text_file.end_file_line_index = OP_SPACE_VIEWABLE_LINE_COUNT;
+	//TODO REMOVE THIS AND COMPUTE IT EXTERNALLY BASED ON specific
+	//OP SPACE data not AS A CONSTANT
+	// text_file.file_tabs[text_op.ftab_i].tab_cursor.end_file_line_index = OP_SPACE_VIEWABLE_LINE_COUNT;
+
+	if file_short_name.count == 0 {
+		text_file.file_short_name = text_file.file_name;
+	} else {
+		text_file.file_short_name = copy_string(file_short_name);
+	}
+
+	return text_file;
+}
+//DOC : This will overwrite the entire file string
+//TODO We could just move this into MakeTextFile if that is the only place we use it
+//and also rename that to MakeTestTextFile Or just move it all into CreateTestTextFile
+//OR leave it to be able to make a text file in gave if needed without saving it so they can save it
+WriteFileString :: inline (
+	text_file : *TextFile,
+	write_string : string)
+{
+	//TODO We can remove this assertion once we automatically increase the main_file_string.
+	assert(text_file.total_allocated_bytes > write_string.count);
+
+	memcpy(text_file.text_string.data, write_string.data, write_string.count);
+	text_file.text_string.count = write_string.count;
+
+	//TODO Can set this directly if we use a specific allocator for a text file
+	//and then make our own SplitToArray function that splits directly to an array
+	lines := String.split(text_file.text_string, cast(u8) #char "\n",, temp);
+	array_reset_keeping_memory(*text_file.file_loc);
+   for lines array_add(*text_file.file_loc, it);
+}
+
+//TODO Can put TAB_CHAR_COUNT in an editable settings file
+//OR Could set it in text editor data for now
+TAB_CHAR_COUNT : int : 2;
+//TODO We could pull this out as a function so we can test if mouse_line_char is correct in unit tests
+//for something like < op_mouse x diff although we are checking that based on how much it moves over
+//TODO We could store this in text_editor_data as well and then make a function to GetCharCountWorld
+GetCharCount :: inline (c : u8) -> int {
+	if c == "\t" return TAB_CHAR_COUNT;
+	return 1;
+}
+StringCharCount :: inline (c : u8, s : string) -> int {
+	char_count : int = 0;
+	i : int = String.find_index_from_left(s, c, 0);
+	while i != -1 {
+		char_count += 1;
+		i += 1;
+		i = String.find_index_from_left(s, c, i);
+	}
+	return char_count;
+}
+//TODO Should this be connected to TextFile
+//and be fetched implicitly or do we just pass in
+//freely for now in case we want multiple cursor
+//editing eventually.
+//TODO We can likely reduce these values to s32/u32 and then
+//reduce this struct by half for the undo system
+/*REMINDER IMPORTANT : If we make these all s32/u32 then we could
+reduce the size of the undo system. We could leave char_point as int
+and everything else as u32. That would limit the size of files to
+2^32bytes ~ 4Gb
+*/
+TextCursor :: struct {
+	/*Note : This char_point implies before the character
+	so that that the cursor starts before the first char
+	and ends after the last char. Therefore, char_point
+	can be == text_string.count+1 which would be placed
+	after the last character.
+	*/
+	//TODO Should rename this to cursor_file_char_index
+	//TODO Would this be more convenient as a *u8? Maybe not
+	char_point : int;
+	cursor_line_number : int;
+	//Note : This is the cached cursor_point but in floating point
+	//Can be computed with 1 multiplication now that text is constant
+	//TODO We should only have 1 of these so we don't have to recompute
+	//or have function but I think only having 1 is better.
+	// cursor_diff_x : float;
+	//NOTE : Now we multiple this by perm.text_editor_data.code_font_1_char_width_world
+	//whenever we need it in the world which keeps it consistent everywhere with only 1 update.
+	//TODO Could renmae to cursor_line_char_index
+	cursor_line_char : int;
+	//TODO Should we store the height in here?
+	//Right now we recompute every frame in PushTypeCursor since it is based on line_height and font_height.
+
+	//Used to fix a cursor for selection.
+	//Should we call it something else?
+	cursor_is_selecting : bool;
+	fixed_select_char_point : int;
+	fixed_select_line_number : int;
+	fixed_select_line_char : int;
+
+	cursor_left_mouse_holding : bool;
+
+	//TODO Could rename these now that the
+	//TODO Should this be in FileString instead?
+	//What if we want multiple cursors eventually?
+	/*NOTE : This is used for the bounds of the cursor. We adjust
+	for rendering while actually rendering. This is worth remembering,
+	because this is adjusted for here for viewable bounds and then
+	also adjusted while rendering and in the input to prevent going over
+	the bounds even if we have less loc than the full view.
+	SO THIS IS A COMBO OF THIS + RENDERING + INPUT to keep
+	the cursor and the lines in balance.
+	This is important to remember when updating everything.
+	So in the case of loc < end_file_line_index we prevent the cursor
+	from being > loc and so the start->end is always = viewable lines
+	and the cursor is either between start->loc or start->end.
+	*/
+	start_file_line_index : int;
+	end_file_line_index : int;
+	/*DOC : These are char_bounds because they represent the number of single chars.
+	So if a tab is 2 chars then the tab would coung for 2 chars in these bounds.
+	*/	
+	left_char_bound : int;
+	right_char_bound : int;
+}
+
+ResetTextCursor :: inline (tc : *TextCursor, $reset_bounds : bool = true) {
+	tc.char_point = 0;
+	tc.cursor_line_char = 0;
+	tc.cursor_line_number = 0;
+	tc.cursor_is_selecting = false;
+	tc.cursor_left_mouse_holding = false;
+
+	#if reset_bounds {
+	char_bound_diff : int = tc.right_char_bound - tc.left_char_bound;
+	tc.left_char_bound = 0;
+	tc.right_char_bound = char_bound_diff;
+	}
+}
+/*DOC : This does not create a new string but just takes a view on the input text string
+We can take from the count instead of right char bound because then we
+always get the string even if right_char_bound > text.count
+*/
+SingleLineTextInBounds :: (text : string, cursor : TextCursor) -> string {
+	//TODO can do right_char_bound - left_char_bound instead if that seems better
+	text_in_bounds : string = String.slice(text, cursor.left_char_bound,
+		text.count - cursor.left_char_bound);
+	return text_in_bounds;
+}
+
+//TODO Can pass in cursor height = 0 here if we don't need to adjust for cursor height
+MouseYDiff :: inline (start_y : float, mouse_y : float, cursor_height : float) -> float {
+	mouse_y_diff : float = start_y - mouse_y - YAdjustCursorHeight(cursor_height);
+	return mouse_y_diff;
+}
+MouseLineNumber :: inline (
+	//Get this from the function above to adjust for cursor height
+	mouse_y_diff : float,
+	line_height : float,
+	start_line_index : int,
+	max_line_count : int) 
+-> int 
+{
+	mouse_line_diff_float : float = mouse_y_diff / line_height;
+	mouse_line_diff_int : int = round_to_int(mouse_line_diff_float);
+	mouse_line_number : int = mouse_line_diff_int + start_line_index;
+	if mouse_line_number < 0 {
+		mouse_line_number = 0;
+	} else if mouse_line_number >= max_line_count {
+		mouse_line_number = max_line_count-1;
+	}
+	return mouse_line_number;
+}
+MouseLineChar :: inline (
+	mouse_x : float,
+	start_x : float,
+	char_width_world : float,
+	max_line_char_count : int)
+-> int 
+{
+	op_mouse_x_diff : float = mouse_x - start_x;
+	before_mouse_x_diff : float = op_mouse_x_diff / char_width_world;
+	mouse_line_char : int = round_to_int(before_mouse_x_diff);
+	// mouse_line_char : int = round_to_int(before_mouse_x_diff / perm.text_editor_data.code_font_1_char_width_world);
+	if mouse_line_char < 0 {
+		mouse_line_char = 0;
+	} else if mouse_line_char > max_line_char_count {
+		mouse_line_char = max_line_char_count;
+	}
+	return mouse_line_char;
+}
+//TODO FROM HERE start testing and think about this
+//and don't forget to remove extra rendering compiled out code on bottom
+//TODO FROM HERE we could have a general mouse holding flag
+//in AllData so we can check that anywhere in case to avoid
+//holding patterns but reset it every frame if needed
+//Do that first or just start testing text file tabs
+//and then do that after. Iunno maybe think about it a bit
+//first before doing that with holding
+//try it out with op spaces to see how that is
+//TODO MAYBE rename this to IsMouseSpecificHolding
+//and then can have a general one. Let's test that when we
+//do the terminal and then other op spaces
+IsMouseSpecificHolding :: inline (
+	specific_hold : bool,
+	game_input : GameInput) 
+-> bool
+{
+	mouse_holding : bool = specific_hold &&
+		IsInputDown(.MOUSE_BUTTON_LEFT, game_input) &&
+		!IsKeyboardPress(.MOUSE_BUTTON_LEFT, .DOWN_THIS_FRAME, game_input);
+	return mouse_holding;
+}
+/*TODO We could check if !IsInputDown && !down_this_frame for extra
+safety but I think this is enough. We could imagine a case where
+the mouse kind of gets stuck but then pressing the mouse will undo that.
+The other way we could have issues with the IsInputDown maybe... probably not
+so we could add that check if needed.
+*/
+MouseOffSpecificHold :: inline (
+	specific_hold : *bool,
+	game_input : GameInput)
+-> bool
+{
+	off_hold : bool = specific_hold.* &&
+		IsKeyboardPress(.MOUSE_BUTTON_LEFT, .UP_THIS_FRAME, game_input);
+	if off_hold {
+		specific_hold.* = false;
+	}
+	return off_hold;
+}
+TextSplitLineMouseHolding :: inline (
+	mouse_line_char : int,
+	mouse_line_number : int,
+	tsl : *TextSplitLine,
+	game_input : GameInput) 
+{
+	same_mouse_line_char : bool = tsl.cursor_line_char == mouse_line_char &&
+		tsl.cursor_line_number == mouse_line_number;
+	if IsMouseSpecificHolding(tsl.cursor_left_mouse_holding, game_input) &&
+		!same_mouse_line_char
+	{
+		if !tsl.cursor_is_selecting {
+			tsl.cursor_is_selecting = true;
+			// tsl.fixed_select_char_point = tsl.char_point;
+			tsl.fixed_select_line_number = tsl.cursor_line_number;
+			tsl.fixed_select_line_char = tsl.cursor_line_char;
+		}
+
+		// tsl.char_point = mouse_char_point;
+		tsl.cursor_line_char = mouse_line_char;
+		tsl.cursor_line_number = mouse_line_number;
+
+		//TODO Should we just store this in terminal_tsl instead to show bounds of the highlight?
+		//That would also be translatable afterwards but then also maybe confusing
+		// end_line_index : int = min(tsl.split_lines.count-1,
+		// 	tsl.start_file_line_index + tsl.viewable_lines_from_zero);
+		end_line_index : int = tsl.start_file_line_index + tsl.viewable_lines_from_zero;
+		if tsl.cursor_line_number < tsl.start_file_line_index {
+			tsl.start_file_line_index = tsl.cursor_line_number;
+		} else if tsl.cursor_line_number > end_line_index {
+			tsl.start_file_line_index += tsl.cursor_line_number - end_line_index;
+		}
+
+		same_fixed_line_char : bool = tsl.cursor_line_char == tsl.fixed_select_line_char &&
+			tsl.cursor_line_number == tsl.fixed_select_line_number;
+		if tsl.cursor_is_selecting && same_fixed_line_char {
+			//Remove the selection if the cursor was brought back to the fixed selection.
+			//Checking this here avoids any issues like missing a backspace or text input because
+			//we still have that cursor is selected but the selection is 0 char width so nothing happens for 1 keypress.
+			tsl.cursor_is_selecting = false;
+		}	
+		// print("cursor=%\n", tsl.cursor);
+	} 
+	MouseOffSpecificHold(*tsl.cursor_left_mouse_holding, game_input);
+}
+/*DOC : This needs to be called outside of the rectangle checking because we can be holding the mouse
+anywhere when highlighting and also this registers the up_this_frame to unhold the mouse
+so we need to make sure this gets called no matter what
+
+TODO SHOULD WE RESET cursor_left_mouse_holding if we click off the text op_space on the same frame?
+ACTUALLY I dont think so since it wont move if we are off it 
+and then itll get reset anyways when we click back on the op space
+since itll get an up_this_frame and then reset it here anyways in any case
+since this is always called if we have selected the text op space
+*/
+CheckCursorMouseHolding :: inline (
+	mouse_char_point : int,
+	//line_number == 0 for single line input
+	mouse_line_number : int,
+	cursor : *TextCursor,
+	file_string : FileString,
+	game_input : GameInput,
+	$single_line : bool = false) 
+-> bool
+{
+	is_mouse_input : bool = false;
+	/*DOC : We press outside this function and then if we are holding
+	and pressed and the char point is not the same, then we highlight.
+	We undo the left mouse holding below on an up this frame in any case
+	if we had the flag on which should undo it even if we press away
+	to a different pane or a different window/empty space and come back after
+	one of the up this frame will trigger it.
+	Putting the up on the bottom is necessary to reset it if we get a
+	down and up on the same frame to make sure we register the up and remove
+	the mouse hold.
+	Since we only cursor select when mouse char point != cursor char point
+	then we are ok because we cannot have 2 different mouse positions on the same frame.
+	*/
+	// if cursor.cursor_left_mouse_holding &&
+	// 	IsInputDown(.MOUSE_BUTTON_LEFT, game_input) &&
+	// 	!IsKeyboardPress(.MOUSE_BUTTON_LEFT, .DOWN_THIS_FRAME, game_input) &&
+	if IsMouseSpecificHolding(cursor.cursor_left_mouse_holding, game_input) &&
+		mouse_char_point != cursor.char_point
+	{
+		if !cursor.cursor_is_selecting {
+			cursor.cursor_is_selecting = true;
+			cursor.fixed_select_char_point = cursor.char_point;
+			cursor.fixed_select_line_number = cursor.cursor_line_number;
+			cursor.fixed_select_line_char = cursor.cursor_line_char;
+		}
+
+		cursor.char_point = mouse_char_point;
+		//We update this below now, just leaving here as a reminder in case there is an issue
+		// cursor.cursor_line_char = mouse_line_char;
+		cursor.cursor_line_number = mouse_line_number;
+		UpdateCursorLineCharAndBounds(cursor, file_string, single_line);
+		is_mouse_input = true;
+	} 
+	/*DOC : I THINK we don't want an else if here because if we get a down
+	and up on the same frame then we want them to cancel out otherwise 
+	we can get down and up on same frame and then it would still be holding
+	so we do down on the next frame, it would highlight since it never
+	reset the mouse holding flag.
+	This way we always reset on a mouse up even no matter what.
+	*/
+	MouseOffSpecificHold(*cursor.cursor_left_mouse_holding, game_input);
+	// if cursor.cursor_left_mouse_holding &&
+	// 	IsKeyboardPress(.MOUSE_BUTTON_LEFT, .UP_THIS_FRAME, game_input) 
+	// if CheckMouseOffSpecificHold(cursor.cursor_left_mouse_holding, game_input) {
+	// 	cursor.cursor_left_mouse_holding = false;
+	// 	//TODO Should we set is mouse input or since it's off now then we don't actually have input this frame?
+	// 	//Probably not since we are not holding anything down and just resetting
+	// }
+	/*DOC : Always setting this to true here says there is mouse input whenever we were holding on some text
+	which prevents keyboard input with text input. Even though this likely works fine in general, it avoids any
+	invalid cursor and text states that I very likely did not think of.
+	If we have a specific mouse and keyboard together, then I can code that precise input explicitly.
+	*/
+	// if cursor.cursor_left_mouse_holding {
+	// 	is_mouse_input = true;
+	// }
+	//TODO I Think we can remove returning this now and just check this instead
+	return cursor.cursor_left_mouse_holding;
+}
+
+//This is in here because the external files dont access the platform code. If we separate out the
+//dynamic library code from platform file, then we can put this there instead.
+// Type_ExternalUpdate :: #type (
+// 	all_data : *AllData,
+// 	renderer_data : *RendererData,
+// 	input : GameInput) -> ();
+Type_ExternalUpdate :: #type (
+	shared_lib : *SharedLibraryData) -> ();
+/*TODO Not sure we need this stub anymore since we have
+  a table for the external files so we just don't put
+  an entry in the table then.
+
+  TODO MAYBE we can use thise stub instead of setting a null pointer OR just check for null.
+  Will leave this here as a reminder just in case that is a better idea.
+*/
+Stub_ExternalUpdate :: (
+	all_data : *AllData,
+	renderer_data : *RendererData,
+	input : GameInput)
+{ 
+    log("We are running Stub_ExternalUpdate\n");
+}
+
+#if 0 {
+InputCheck :: struct {
+	is_writing_code : bool;
+}
+ValidateInputPress :: inline (
+	input_state : bool,
+	input_check : InputCheck)
+-> bool
+{
+	result : bool = input_state &&
+		!input_check.is_writing_code;
+	return result;
+}
+}
+
+CircleOrientation :: struct {
+	clockwise : bool;
+	rotate_rad : float;
+}
+
+ChordSpace2 :: struct {
+	#as using chord_space2 : Space2D;
+
+	//TODO Should this really be here or somewhere else?
+	//Will we need this when we create spaces with code?
+	op_space_id : int;
+
+	next_group_order : int;
+
+	space_pt_render_order : int;
+	music_pt_render_order : int;
+	vl_pt_render_order : int;
+
+	vl_order_text : bool;
+	vl_order_color : bool;
+
+	cs_filters : [..] CSFilter;
+	cs_filter_aggregate : ChordSpaceFilterAggregate;
+
+	//TODO maybe separate these out since invariant_ids will be related to dspaces
+	invariant_ids : [2] int;
+	random_color_0 : Vector4F;
+	random_color_1 : Vector4F;
+	scale_world_unit : float;
+	//TODO this could be a cached *SpacePoint eventually
+	//TODO could cache hover world_rect here as well
+	//TODO I think we can remove this altogether since we only use
+	//it in the OLDChordSpace2 and not in the new one.
+	hover_space_point_id : int;
+
+	chosen_point : bool;
+	boundary_start_space_point_id : int;
+	boundary_start_world_pos : Vector2F;
+	start_space_point_id : int;
+
+	accumulated_vl_size : Vector2I;
+
+	//MusicPt : if true then use swapped matrix, otherwise false
+	swapped_matrix_flag : bool;
+	/*TODO
+		i am leaving this here for now for mathematical clarity
+		ultimately we only need 2 of these and can swap the
+		second column vector coordinates x = y, y = x to have
+		the same effect but only while storing 2 matrices
+
+		we explicitly leave 4 matrices for now to show that
+		we can change in basis relative to the original transformation
+		or to the swapped transformation whenever we cross a boundary
+	*/
+	invariant_to_world_matrix : Matrix2F;
+	world_to_invariant_matrix : Matrix2F;
+	swapped_invariant_to_world : Matrix2F;
+	swapped_world_to_voice : Matrix2F;
+	//TODO could store reflected matrix here since we use regularly
+
+	/*TODO
+		placing the input and output spaces here seems more in line
+		with the written logic at this point.
+		they would be separate from the other spaces and could
+		be more easily considered when dealing with chord_s2.
+		we are leaving it out for now so we can be more flexible
+		with our input/output spaces in case something changes
+		logically or conceptually at some point.
+
+		Eventually these may not even be normal linear spaces
+		and just be completely different visually so then it
+		would make even more sense since the code would also
+		be separate.
+
+		The music_pt voices in the input and output space are also
+		not supposed to be played so we will separate those with
+		a boolean for now but can also put them in a separate array 
+		later if we full implement this version of the solution.
+	*/
+	//TODO should we store the input and output space directly here?
+	//TODO or should we just leave it as a connection?
+	// input_dspace_id : int;
+	// output_dspace_id : int;
+
+	/*MusicPt : position of chord with voice values (0,0)
+	  Technically there are 2 of these but we take the 0-sum one as
+	  a 2D reference point for converting from fundamental region to world position
+	*/
+	zero_pos : Vector2F;
+
+	music_pt_count : int;
+	tuning_system_id : int;
+
+	//REMINDER : This is does not work with op space zooming.
+	//I will leave it so we can play around with it but I don't think
+	//I'll update that for now.
+	is_sound_float : bool;
+
+	//We only need 1 of these since presumably we will only listen to 1 point at a time with the mouse.
+	/*TECHNICALLY This should not be part of the geometry but it is convenient for now.
+	This should likely be fetched from a separate synth or maybe even op_space
+	where we set a specific sound per op_space to listen to the things in that op_space as
+	or per dspace to explore and listen each op_space/dspace.
+	*/
+	//TODO Can likely replace this later with a synthesizer per dspace or per op_space
+	osc_waves : [2] OscWave;
+	//TODO Could have an enum with simple synth and subtractive synth
+	//AND also custom synth for external function pointer calls.
+	//Then can make a dspace_simple_synths and dspace_sub_synths array
+	//for separate processing from the neume synth arrays.
+	synth : SimpleSynth;
+
+
+	//MusicPt : temporary data for space edges
+	crossed_edge : bool;
+	edge_mouse : Vector2F;
+	rotate180_edge_mouse : Vector2F;
+
+	reflect_edge : bool;
+	reflect_mouse : Vector2F;
+}
+AsmChordS2Data :: struct {
+	//return values
+	ret_dspace_id : int;
+
+	op_space_id : int;
+	world_pos : Vector2F64;
+	scale_world_unit : float64;
+   point_dim : Vector2F64;
+	//TODO Should we allo both or is tuning_system_id enough since this is a chord_space.
+	//I guess I am thinking what if we want the geometry without the sound... but then someone can make it.
+	//We need lp_count in case we have different tuning syste
+   lp_count : int;
+	tuning_system_id : int;
+	is_sound_float : AsmBool;
+
+	vl_order_text : AsmBool = #run ToAsmBool(true);
+	vl_order_color : AsmBool = #run ToAsmBool(true);
+
+	asm_cs_filters : AsmArray(AsmCSFilter);
+	cs_filter_aggregate : ChordSpaceFilterAggregate;
+
+	osc_wave_type : OscWaveType;
+
+   //TODO Maybe we only allow this in dynamic libraries
+   //OR MAYBE we can add it later if we add matrices to the language
+   //MAYBE 2d is ok but maybe its going overboard and will be too slow
+	// transform : Matrix2F64;
+} @LibraryAsmGen
+CreateChordS2Data :: struct {
+	world_pos : Vector2F;
+	scale_world_unit : float = 2.0;
+   point_dim : Vector2F = .{0.7,0.7};
+   //This is the default transform from the book. Should we put it somewhere else instead?
+	transform : Matrix2F = #run (ROTATE_NEG90 * ROTATE_NEG45 * REFLECT_90);
+
+	//TODO Should we allo both or is tuning_system_id enough since this is a chord_space.
+	//I guess I am thinking what if we want the geometry without the sound... but then someone can make it.
+   lp_count : int = 12;
+	tuning_system_id : int = 0; //12-ET is default 0
+	is_sound_float : bool = false;
+
+	vl_order_text : bool = true;
+	vl_order_color : bool = true;
+
+	//This defaults to all points with just the ALL filter
+	new_cs_filters : [] CSFilter = .[CSFilter.{filter_type=.ALL}];
+	cs_filter_aggregate : ChordSpaceFilterAggregate;
+
+	osc_wave_type : OscWaveType;
+}
+
+CreateChordSpace2 :: inline (
+	create_cs2 : CreateChordS2Data,
+   op_spec_data : *OpSpaceSpecData)
+-> *ChordSpace2 
+{
+	chord_s2 : *ChordSpace2 = array_add(*op_spec_data.all_op_chord_s2);
+	// chord_s2.space_name = copy_string(space_name);
+	//TODO Could use this later for efficiency and then add to SpacePoint as well for efficient op_space rendering.
+	// chord_s2.op_space_id = op_space_id;
+	//TODO We can grab these ids from op_spec data if that is needed although maybe having unique ids for now is better
+	chord_s2.dspace_id = ALL_NEXT_IDS.DSPACE_ID;
+	defer ALL_NEXT_IDS.DSPACE_ID += 1;
+	chord_s2.dspace_world_center = create_cs2.world_pos;
+	chord_s2.dspace_point_dim = create_cs2.point_dim;
+	// chord_s2.invariant_ids = int.[0,1];
+	chord_s2.random_color_0 = RandomColorAlpha1();
+	chord_s2.random_color_1 = RandomColorAlpha1();
+	//TODO Could pass in a render order and then add these values to it.
+	//Which might be a bit confusing though
+	chord_s2.space_pt_render_order = 6;
+	chord_s2.music_pt_render_order = 9;
+	chord_s2.vl_pt_render_order = chord_s2.music_pt_render_order-1;
+	chord_s2.vl_order_text = create_cs2.vl_order_text;
+	chord_s2.vl_order_color = create_cs2.vl_order_color;
+	chord_s2.music_pt_count = create_cs2.lp_count;
+	chord_s2.tuning_system_id = create_cs2.tuning_system_id;
+	chord_s2.is_sound_float = create_cs2.is_sound_float;
+
+	chord_s2.synth.wave_type = create_cs2.osc_wave_type;
+	chord_s2.synth.envelope = MakeVolumeEnvelope();
+	// for 0..1 AddSimpleWaveFromFrequency(0, *chord_s2.synth, audio_data);
+
+	//MusicPt : currently this goes to middle of the outer squares (will we ever use it without adding the other half square)
+	//Note : This now goes to a bit outside the rectangles. What if we allow rotation of the chord_s2?
+	// chord_s2.dspace_dim = 1.5 * scale_world_unit * PointwiseProduct(point_dim, MakeV2F(create_cs2.lp_count+1, create_cs2.lp_count+1)); //TODO should be a quad
+	chord_s2.scale_world_unit = create_cs2.scale_world_unit;
+	chord_s2.dspace_dim = create_cs2.scale_world_unit * PointwiseProduct(create_cs2.point_dim, MakeV2F(create_cs2.lp_count+1, create_cs2.lp_count+1)); //TODO should be a quad
+	chord_s2.transform = create_cs2.transform;
+	// chord_s2.invariant_0_unit_length = create_cs2.transform * (scale_world_unit * Vector2F.{1.0, 0});
+	// chord_s2.invariant_1_unit_length = create_cs2.transform * (scale_world_unit * Vector2F.{0, 1.0});
+	//TODO change this to column matrix even though its the same in this case
+	x_axis : Vector2F = chord_s2.scale_world_unit * Vector2F.{1,0};
+	x_axis = create_cs2.transform * x_axis;
+	y_axis : Vector2F = chord_s2.scale_world_unit * Vector2F.{0,1};
+	y_axis = create_cs2.transform * y_axis;
+	chord_s2.invariant_to_world_matrix = NewBasisToStandardBasisMatrix(x_axis, y_axis);
+	chord_s2.world_to_invariant_matrix = Inverse(chord_s2.invariant_to_world_matrix);
+	chord_s2.swapped_invariant_to_world = NewBasisToStandardBasisMatrix(y_axis, x_axis);
+	chord_s2.swapped_world_to_voice = Inverse(chord_s2.swapped_invariant_to_world);
+	
+	//This is middle from the bottom with a non-transformed chord_s2. 
+	//It is a fun_region_pos and NOT a world_pos. 
+	middle_chord_fun_region_pos := Vector2F.{0, 0.5*create_cs2.lp_count};
+	//The zero_pos is where the {0,0} point is without a world offset which we use in 
+	//FunRegionPosToWorldPos to move points about the chord_s2 like with voice leadings.
+	zero_rel_pos : Vector2F = chord_s2.scale_world_unit*(Vector2F.{0,0} - middle_chord_fun_region_pos);
+	chord_s2.zero_pos = create_cs2.transform * zero_rel_pos;
+	// chord_s2.zero_pos = chord_s2.dspace_world_center + transform * zero_rel_pos;
+
+	//DOC : On clear op space, we reset this allocator and reset the chord_s2 arrays.
+	//When adding new chord_s2, this array is new and then allocates its data in the cleared allocator again
+	//so we are just resuing it completely. We leave it resizable just in case we want it to be changeable later
+	//from a dynamic library otherwise it could be just an array view.
+	chord_s2.cs_filters.allocator = op_spec_data.spec_2D_alloc;
+	for create_cs2.new_cs_filters {
+		csf : *CSFilter = array_add(*chord_s2.cs_filters);
+		csf.* = it;
+		csf.value_set = array_copy(it.value_set,,op_spec_data.spec_2D_alloc);
+	}
+
+	return chord_s2;
+}
+//REMIDNER THIS DOES NOT ACTUALLY WORK WITH THE ZOOM FACTOR PUTTING HERE AS A REMINDER
+#if 0 {
+UpdateChordS2Matrices :: inline (zoom_factor : float, chord_s2 : *ChordSpace2) {
+	x_axis : Vector2F = (chord_s2.scale_world_unit/zoom_factor) * Vector2F.{1,0};
+	x_axis = chord_s2.transform * x_axis;
+	y_axis : Vector2F = (chord_s2.scale_world_unit/zoom_factor) * Vector2F.{0,1};
+	y_axis = chord_s2.transform * y_axis;
+	chord_s2.invariant_to_world_matrix = NewBasisToStandardBasisMatrix(x_axis, y_axis);
+	chord_s2.world_to_invariant_matrix = Inverse(chord_s2.invariant_to_world_matrix);
+	chord_s2.swapped_invariant_to_world = NewBasisToStandardBasisMatrix(y_axis, x_axis);
+	chord_s2.swapped_world_to_voice = Inverse(chord_s2.swapped_invariant_to_world);
+	
+	//This is middle from the bottom with a non-transformed chord_s2. 
+	//It is a fun_region_pos and NOT a world_pos. 
+	middle_chord_fun_region_pos := Vector2F.{0, 0.5*chord_s2.music_pt_count};
+	//The zero_pos is where the {0,0} point is without a world offset which we use in 
+	//FunRegionPosToWorldPos to move points about the chord_s2 like with voice leadings.
+	zero_rel_pos : Vector2F = (chord_s2.scale_world_unit/zoom_factor)*(Vector2F.{0,0} - middle_chord_fun_region_pos);
+	chord_s2.zero_pos = chord_s2.transform * zero_rel_pos;
+}
+}
+
+GetOrCreateCS2Points :: inline (
+	lp_count : int, //linear_point_count
+	all_cs2_points_2D : *[..] ChordS2Points2D)
+-> *ChordS2Points2D
+{
+	cs2_points, found_csp := ArrayFindFirstByNameId(all_cs2_points_2D.*, lp_count, "lp_count");
+	if found_csp return cs2_points;
+
+	csp : *ChordS2Points2D = array_add(all_cs2_points_2D);
+	csp.id = ALL_NEXT_IDS.NEXT_CS2_POINTS_ID;
+	ALL_NEXT_IDS.NEXT_CS2_POINTS_ID += 1;
+	csp.lp_count = lp_count;
+
+	for x1 : -lp_count..lp_count for x2 : -lp_count..lp_count {
+		if x1 <= x2 && x2 <= x1 + lp_count && 
+			// x1 + x2 == 0
+			// x1 + x2 >= 0 && x1 + x2 < lp_count
+			x1 + x2 >= 0 && x1 + x2 <= lp_count //includes duplicate music_pt_swapping side
+		{
+			shape : *SpaceShape = array_add(*csp.chord_sp_2D);
+			shape.fun_region = NewArray(2, float64);
+			shape.fun_region[0] = cast(float64) x1;
+			shape.fun_region[1] = cast(float64) x2;
+			shape.pitch_set = FunRegionPosToPitchSet(shape.fun_region, lp_count, 2);
+			shape.shape_text = sprint("%,%", shape.pitch_set[0], shape.pitch_set[1]);
+		}
+	}
+
+	return csp;
+}
+
+//DOC : We pass in the op space allocator to set the arrays for fun region and pitch set with the proper op space allocator
+FilterCS2D :: inline (
+	//TODO I think eventually we can remove this and just have rects maybe we can clean it up eventually first
+	//and then see if it's possible because we still use the matrices for world pos for example
+	chord_s2 : ChordSpace2,
+	csp : ChordS2Points2D,
+	ass : *AllSpaceShapes,
+	cs_filters : [] CSFilter,
+	cs_filter_aggregate : ChordSpaceFilterAggregate)
+{
+	for c_shape : csp.chord_sp_2D if FilterChordSpacePoints(c_shape.fun_region, csp.lp_count, cs_filters, cs_filter_aggregate) {
+		s_rect : *SpaceRect = array_add(*ass.all_space_rects);
+		s_rect.shape = c_shape;
+		s_rect.dspace_id = chord_s2.dspace_id;
+		s_rect.color = LIGHT_BROWN;
+		//TODO Should we pass in the render order instead so we can set overlapping points/geometries?
+		s_rect.render_order = chord_s2.space_pt_render_order;
+		//TODO We can pass this in as well as a group id for easier deletion later, although maybe the dspace_id is enough
+		//Also I generally prefer just clearing and recreating the whole op to clear the allocator
+		// s_rect.dspace_shape_group = chord_s2.next_group_order;
+
+		world_pos : Vector2F = FunRegionPosToWorldPosMatrix(c_shape.fun_region, chord_s2);
+		s_rect.rect = RectCenterDim(world_pos, chord_s2.dspace_point_dim);
+		UpdateChordS2Shape(*s_rect.shape, c_shape.fun_region, chord_s2.music_pt_count);
+		//TODO Could add an option where we can add the text for each point here as SpaceText when needed.
+	}
+	//TODO Should we pull this out, then we can make chord_s2 : ChordSpace2 instead of pointer *ChordSpace2
+	// chord_s2.next_group_order += 1;
+}
+//DOC : We pass in the allocator here from the op space spec data
+//to store the pitch set and string
+UpdateChordS2Shape :: inline (
+	s : *SpaceShape,
+	fun_region : [] float64,
+	lp_count : int)
+{
+	s.pitch_set = FunRegionPosToPitchSet(fun_region, lp_count, 2);
+	s.shape_text = sprint("%,%", s.pitch_set[0], s.pitch_set[1]);
+}
+
+MapChordS2Data :: struct {
+	dspace_id : int;
+	op_space_id : int;
+	vl_start_chord : AsmArray(float64);
+	vl_deltas : AsmArray(float64);
+	//TODO Should we add a color here to identify specific voice leadings?
+} @LibraryAsmGen
+
+CreateVoiceLeadingShapes2D :: inline (
+	op_space_id : int,
+	chord_s2 : *ChordSpace2,
+	//TODO These name are terrible need to make them clearer
+	vl_end_points : [] VLEndPoint,
+	vl_points : [] VLPointNoDim,
+	ass : *AllSpaceShapes)
+{
+	vl_point_index : int = 0;
+	for vl_end_points {
+		space_rect : *SpaceRect = array_add(*ass.all_space_rects);
+		space_rect.op_space_id = op_space_id;
+		space_rect.dspace_id = chord_s2.dspace_id;
+		space_rect.color = FGREEN_V;
+		//TODO We could pass in custom render order per space and add it here and to vl points so we can
+		//set the values for custom geometries above or below it.
+		space_rect.render_order = chord_s2.music_pt_render_order + it.order;
+		space_rect.dspace_shape_group = chord_s2.next_group_order;
+
+		vl_op_pos : Vector2F = FunRegionPosToWorldPosMatrix(it.fun_region_float, chord_s2);
+		space_rect.rect = RectCenterDim(vl_op_pos, chord_s2.dspace_point_dim);
+
+		UpdateChordS2Shape(*space_rect.shape, it.fun_region_float, chord_s2.music_pt_count);
+
+		if chord_s2.vl_order_text {
+			space_text : *SpaceText = array_add(*ass.all_space_text);
+			space_text.op_space_id = op_space_id;
+			space_text.dspace_id = chord_s2.dspace_id;
+			//TODO I think we could store this render_order OR I guess this i the default text op render order
+			//Maybe we could store that somewhere as default instead.
+			space_text.render_order = 10003;
+			//TODO Maybe this should be a different group in case we want to erase it later.
+			space_text.dspace_shape_group = chord_s2.next_group_order;
+			space_text.color = LOW_WHITE_V;
+
+			space_text.op_pos = vl_op_pos;
+			space_text.op_pos.y -= chord_s2.dspace_point_dim.y;
+			space_text.op_pos.x -= 0.5*chord_s2.dspace_point_dim.x;
+
+			space_string : string = tprint("%", it.order);
+			//Sanity check but we could just put an if here but max s64 is < 32 chars anyways
+			assert(space_string.count <= space_text.text_chars.count);
+			space_text.text.data = space_text.text_chars.data;
+			space_text.text.count = space_string.count;
+			memcpy(space_text.text.data, space_string.data, space_string.count);
+		}
+	}
+
+	//TODO We could do this in the loop above for each VLSpacePoint which would assume we have the same order.
+	//This method is order independent so is more resilient. ALSO If we don't have an vl_points, we just skip this loop.
+	//TODO We could also rotate these rects now so they look more like a line in chord_s2, although that would
+	//not work properly for points that teleport around the space.
+	for vl_points {
+		end_point : VLEndPoint = ArrayFindFirstByNameId(vl_end_points, it.vl_id, "id");
+		space_rect : *SpaceRect = array_add(*ass.all_space_rects);
+		space_rect.op_space_id = op_space_id;
+		space_rect.dspace_id = chord_s2.dspace_id;
+		//DOC : We add order here to avoid having overlap and render the vl points different on different frames
+		space_rect.render_order = chord_s2.vl_pt_render_order + end_point.order;
+		space_rect.dspace_shape_group = chord_s2.next_group_order;
+		space_rect.not_selectable = true;
+
+		//TODO Could pass in the size of vl_point_dim with chord_s2 instead of fixing it to 0.3.
+		op_pos : Vector2F = FunRegionPosToWorldPosMatrix(it.fun_region_float, chord_s2);
+		space_rect.rect = RectCenterDim(op_pos, 0.3*chord_s2.dspace_point_dim);
+
+		UpdateChordS2Shape(*space_rect.shape, it.fun_region_float, chord_s2.music_pt_count);
+
+		//I prefer color interpolation over arrow. I think having the option between text or this or arrow is ok.
+		if chord_s2.vl_order_color {
+			interp := cast(float) it.order / (0.5*end_point.vl_point_count); 
+			if interp > 1 interp = 1;
+			space_rect.color.rgb = Lerp(GREY_BLACK_V.rgb, interp, 0.85*WHITE_V.rgb);
+			space_rect.color.a = 1.0;
+		} else {
+			space_rect.color = GREY_DARK_V;
+		}
+	}
+	//TODO We could separate these for the SpaceRects of vl_points and vl_line_points if needed
+	//That could be an option so we could even have 1 group per end_point so then we can associate
+	//specific points to specific memory_Ranges/units
+	chord_s2.next_group_order += 1;
+}
+//This looked and felt bad on the space so I am removing it but can add it back later as an option if needed.
+//TODO This could be optional so then we can decide between triangle or text to see voice leading order
+//TODO I really don't like the way this triangle looks... maybe better to just lerp or do vl order.
+//Could leave as an option if somebody wants it i guess. OR Move it out and put it back in if needed.
+//That way put the order and then lerp from start to end.
+#if 0 {
+if it.is_last_vl_point {
+	space_tri : *SpaceTriangle = array_add(all_space_triangles);
+	space_tri.op_space_id = op_space_id;
+	space_tri.dspace_id = chord_s2.dspace_id;
+	//TODO I don't know what color to make this. This seems clear enough...
+	// space_tri.color = LOW_WHITE_V;
+	// space_tri.color = GREY_V;
+	space_tri.color = DBLUE_V;
+	// space_tri.color = GREY_DARK_V;
+	//TODO Maybe we should store this in chord_s2 as well.
+	space_tri.render_order = chord_s2.music_pt_render_order+3;
+	space_tri.dspace_shape_group = chord_s2.next_group_order;
+
+	//We orient the triangle from the last point to the next point
+	vl_line_point := ArrayFindFirstByNameId(vl_line_point_2D, it.vl_id, "id");
+	vl_line_point_pos : Vector2F = FunRegionPosToWorldPosMatrix(vl_line_point.fun_region_float, chord_s2);
+	next_vl_line_point_order : int = vl_line_point.order + 1;
+	next_vl_line_point, found_next_vl_line_point := 
+		ArrayFindFirstByNameId(vl_line_point_2D, next_vl_line_point_order, "order");
+	assert(found_next_vl_line_point); //sanity check since we need to have a next vl_line_point after the vl_point
+	next_vl_line_point_pos : Vector2F = FunRegionPosToWorldPosMatrix(next_vl_line_point.fun_region_float, chord_s2);
+	line, arrow := MakeQuadArrow(vl_line_point_pos, next_vl_line_point_pos, 0.14*chord_s2.dspace_point_dim.x);
+	space_tri.triangle = arrow;
+}
+}
+
+AddChordS2ToOpSpace :: inline (
+	op_space_id : int,
+	cs2 : ChordSpace2,
+	all_op_collision_entities : *[..] CollisionEntity,
+	//TODO Can remove this once we no longer use it
+	all_dspace_to_op_space_id : *[..] DSpaceToOpSpaceIndex) 
+{
+	coll : *CollisionEntity = array_add(all_op_collision_entities);
+	coll.entity_id = cs2.dspace_id;
+	coll.entity_type = EntityType.CHORD_S2;
+	coll.op_space_id = op_space_id;
+	coll.shape = CollisionShape.QUAD;
+
+	//Note : Add dspace_world_center after so it does not affect the rotation.
+	coll.quad.a.x -= 0.5*cs2.scale_world_unit*cs2.music_pt_count+1;
+	coll.quad.a = cs2.transform * coll.quad.a;
+	coll.quad.a += cs2.dspace_world_center;
+
+	coll.quad.b.y += 0.5*cs2.scale_world_unit*cs2.music_pt_count+1;
+	coll.quad.b = cs2.transform * coll.quad.b;
+	coll.quad.b += cs2.dspace_world_center;
+
+	coll.quad.c.x += 0.5*cs2.scale_world_unit*cs2.music_pt_count+1;
+	coll.quad.c = cs2.transform * coll.quad.c;
+	coll.quad.c += cs2.dspace_world_center;
+
+	coll.quad.d.y -= 0.5*cs2.scale_world_unit*cs2.music_pt_count+1;
+	coll.quad.d = cs2.transform * coll.quad.d;
+	coll.quad.d += cs2.dspace_world_center;
+
+	#if 0 {
+	dspace_to_op : *DSpaceToOpSpaceIndex = array_add(all_dspace_to_op_space_id);
+	dspace_to_op.dspace_id = cs2.dspace_id;
+	dspace_to_op.op_dspace_type = OpDSpaceType.CHORD_S2;
+	dspace_to_op.op_space_id = op_space_id;
+	}
+}
+
+/*TODO Should add values somewhere to relate space_points
+to fun_region_pos / other pitch sizes. So circles could
+have > 1 note value like in 3.5.3 abstract model of diatonic counterpoint
+*/
+DEFAULT_CIRCLE_ORIENT :: CircleOrientation.{true, PI/2.0};
+MakeCircleSpace :: (
+	base_circle_pos : Vector2F, radius : float, 
+	num_of_points : int, point_dim : Vector2F,
+	all_space_points : *[..] SpacePoint,
+	orient : CircleOrientation = DEFAULT_CIRCLE_ORIENT)
+-> Space2D 
+{
+	//TODO For unequal spaces, we would have to compute each polar coordinate separately.
+	//TODO Could generalize and compute points separately based on tuning_system
+	//and then keep this method if we are making a circle_space from an array for memory_indices.
+	roots_of_unity := RootsOfUnity(num_of_points, orient.clockwise, orient.rotate_rad, Vector2F,, temp);
+
+	space : Space2D;
+	space.dspace_id = ALL_NEXT_IDS.DSPACE_ID;
+	defer ALL_NEXT_IDS.DSPACE_ID += 1;
+	space.dspace_point_dim = point_dim;
+	space.dspace_dim = MakeV2F(0, radius); //put radius in dspace_dim.y for now since #place y = radius
+	space.dspace_dim_int = MakeV2I(num_of_points, 0);
+	space.dspace_world_pos = base_circle_pos;
+	space.dspace_world_center = base_circle_pos;
+	for circle_pos, circle_index : roots_of_unity {
+		point : SpacePoint;
+		point.id = ALL_NEXT_IDS.POINT_ID;
+		defer ALL_NEXT_IDS.POINT_ID += 1;
+		point.dspace_id = space.dspace_id;
+		point.rel_pos = space.dspace_dim.radius * circle_pos;
+		point.world_pos = space.dspace_world_pos + point.rel_pos;
+		point.rect_mesh = RectCenterDim(point.world_pos, point_dim);
+		point.dspace_pos = point.rel_pos;
+		point.int_pos.x = circle_index;
+
+		point.color = GREY_DARK_V;
+		if circle_index == 1 || circle_index == 3 || circle_index == 6 || circle_index == 8 || circle_index == 10 {
+			point.color = LIGHT_BROWN;
+		}
+
+		array_add(all_space_points, point);
+	}
+	return space;
+}
+
+ComputeCircleRadius :: inline (input_radius : int) -> float {
+	radius : float = 0.5 * (1 + input_radius);
+	return radius;
+}
+
+MakeCircularPitchClassSpaceAndPoints :: (
+	base_circle_pos : Vector2F, radius : float, 
+	num_of_points : int, point_dim : Vector2F,
+	all_space_points : *[..] SpacePoint,
+	orient : CircleOrientation = DEFAULT_CIRCLE_ORIENT) 
+-> Space2D 
+{
+	roots_of_unity := RootsOfUnity(num_of_points, orient.clockwise, orient.rotate_rad, Vector2F,, temp);
+
+	space : Space2D;
+	space.dspace_id = ALL_NEXT_IDS.DSPACE_ID;
+	defer ALL_NEXT_IDS.DSPACE_ID += 1;
+	space.dspace_point_dim = point_dim;
+	space.dspace_dim = MakeV2F(0, radius); //put radius in dspace_dim.y for now since #place y = radius
+	space.dspace_dim_int = MakeV2I(num_of_points, 0);
+	space.dspace_world_pos = base_circle_pos;
+	space.dspace_world_center = base_circle_pos;
+	for circle_pos, circle_index : roots_of_unity {
+		point : SpacePoint;
+		point.id = ALL_NEXT_IDS.POINT_ID;
+		defer ALL_NEXT_IDS.POINT_ID += 1;
+		point.dspace_id = space.dspace_id;
+		point.rel_pos = space.dspace_dim.radius * circle_pos;
+		point.world_pos = space.dspace_world_pos + point.rel_pos;
+		point.rect_mesh = RectCenterDim(point.world_pos, point_dim);
+		point.dspace_pos = point.rel_pos;
+		point.int_pos.x = circle_index;
+
+		point.color = GREY_DARK_V;
+		if circle_index == 1 || circle_index == 3 || circle_index == 6 || circle_index == 8 || circle_index == 10 {
+			point.color = LIGHT_BROWN;
+		}
+
+		array_add(all_space_points, point);
+	}
+	return space;
+}
+
+MakeRowLinearPitchSpace :: inline (
+	world_base_pos : Vector2F,
+	octave_height : float,
+	dspace_height : float,
+	dspace_width : float)
+-> LinearPitchSpace
+{
+	linear : LinearPitchSpace;
+	linear.dspace_id = ALL_NEXT_IDS.DSPACE_ID;
+	defer ALL_NEXT_IDS.DSPACE_ID += 1;
+
+	linear.base_world_pos = world_base_pos;
+
+	//Note : We use base_world_pos as it is more consistent
+	//and keeps both eq and non-eq scrolling clean.
+	// linear.dspace_world_pos = world_base_pos;
+	//TODO How do we pass in this point or do we even have to?
+	//TODO This is updated later since we need the first point
+	// linear.dspace_world_pos.y += 0.5;
+
+	linear.dspace_world_center = world_base_pos;
+	linear.dspace_world_center.y += 0.5*dspace_height;
+
+	linear.octave_dim = MakeV2F(dspace_width, octave_height);
+	linear.dspace_dim = MakeV2F(dspace_width, dspace_height);
+
+	return linear;
+}
+
+/*New Space and points Code
+*/
+MakeLinearPitchSpace :: inline (
+	world_pos : Vector2F, 
+	system_point_count : int,
+	all_space_points : *[..] SpacePoint,
+	orientation : LinearPitchSpaceOrientation = LinearPitchSpaceOrientation.VERTICAL)
+-> LinearPitchSpace
+{
+	linear_point_dim : Vector2F = DEFAULT_LINEAR_POINT_SIZE;
+	linear_point_dim.y = DEFAULT_LINEAR_SPACE_SIZE.y / system_point_count;
+
+	//TODO rotate based on Matrix2F transform instead of y_up
+	linear : LinearPitchSpace;
+	linear.dspace_id = ALL_NEXT_IDS.DSPACE_ID;
+	defer ALL_NEXT_IDS.DSPACE_ID += 1;
+	linear.dspace_world_center = world_pos;
+
+	linear.dspace_world_pos = world_pos;
+	linear.dspace_world_pos.y -= 0.5 * DEFAULT_LINEAR_SPACE_SIZE.y;
+	linear.dspace_world_pos.y += 0.5 * linear_point_dim.y;
+
+	linear.base_world_pos = world_pos;
+	linear.base_world_pos.y -= 0.5 * DEFAULT_LINEAR_SPACE_SIZE.y;
+
+	linear.dspace_point_dim = linear_point_dim;
+	linear.octave_text = "0";
+	linear.orientation = orientation;
+	linear.transform = Matrix2F_IDENTITY;
+	linear.dspace_dim_int.y = system_point_count;
+	linear.dspace_dim = DEFAULT_LINEAR_SPACE_SIZE;
+
+	return linear;
+	//TODO Keeping vertical and horizontal for now in case we use horizontal later
+	//But would likely make a separate function for that anyways since it would be a different mode
+	// if linear.orientation == LinearPitchSpaceOrientation.VERTICAL {
+	// } else if linear.orientation == LinearPitchSpaceOrientation.HORIZONTAL {
+	// 	linear.transform = ROTATE_NEG90;
+		//TODO can we remove one of these if we always start from the base of the rectangle?
+	// 	linear.dspace_world_pos.x -= 0.5 * (system_point_count * linear_point_dim.x);
+	// 	linear.dspace_world_pos.x += 0.5 * linear_point_dim.x;
+	// 	linear.base_world_pos = linear.dspace_world_pos;
+	// 	linear.base_world_pos.x -= 0.5 * linear_point_dim.x;
+	// 	linear.dspace_dim_int.x = system_point_count;
+	// 	linear.dspace_dim.y = linear_point_dim.y;
+	// 	linear.dspace_dim.x = linear_point_dim.x * (system_point_count);
+	// }
+}
+
+GetRowNumOfPoints :: inline (
+	tuning_system_count : int,
+	create_row_data : CreateRowData)
+-> int
+{
+	num_of_points : int = tuning_system_count;
+	if create_row_data.use_num_of_points {
+		num_of_points = create_row_data.num_of_points;
+	}
+	return num_of_points;
+}
+
+ComputeRowHeight :: inline (
+	tuning_system : TuningSystem,
+	array_tuning_pitches : [] TuningPitch,
+	create_row_data : CreateRowData)
+-> float
+{
+	num_of_points : int = GetRowNumOfPoints(tuning_system.music_pt_count, create_row_data);
+
+	row_height : float;
+	//TODO This should not be based on EQUAL_TEMPERAMENT but just on EQUAL in CreateRowData
+	//since we want to allow unequal temperaments but with same sized rectangle points for convenience
+	if tuning_system.type == TuningSystemType.EQUAL_TEMPERAMENT {
+		row_height = create_row_data.octave_height * num_of_points / tuning_system.music_pt_count;
+	}
+	else {
+		row_height = ComputeRowHeightFromRatios(num_of_points, tuning_system,
+			array_tuning_pitches, create_row_data.octave_height);
+	}
+
+	return row_height;
+}
+
+//TODO Pass in compass interval to compute ratios properly with non octave-based tuning systems
+ComputeRowHeightFromRatios :: inline (
+	num_of_points : int,
+	tuning_system : TuningSystem,
+	ordered_tuning_pitches_in_system : [] TuningPitch,
+	octave_height : float)
+-> float
+{
+	total_height : float = 0;
+	pitch_index : int = 0;
+	while pitch_index < num_of_points
+	{
+		mod_pitch_index : int = pitch_index % ordered_tuning_pitches_in_system.count;
+		tuning_pitch : TuningPitch = ordered_tuning_pitches_in_system[mod_pitch_index];
+
+		//TODO update to consider the base of the tuning_system
+		length_ratio : float = LogRatioToLinear(tuning_pitch.ratio_to_next_music_pt, tuning_system.compass_interval);
+		point_height : float = length_ratio * octave_height;
+		total_height += point_height;
+
+		pitch_index += 1;
+	}
+
+	return total_height;
+}
+
+//TODO Is there somewhat to restric thte type of $S to 2 types?
+AdjustSpacePointsBaseNote :: inline (
+	//TODO This should be based on linear_pitch_space view and not TuningSystemType
+	tuning_system_type : TuningSystemType,
+	points_in_space : [] $S,
+	base_note : int,
+	base_world_pos : Vector2F,
+	row_height : float)
+{
+	#assert(S == SpacePoint || S == *SpacePoint);
+
+	//TODO This should be based on something else in case we have non_equal temperaments but that look equal
+	if tuning_system_type == TuningSystemType.EQUAL_TEMPERAMENT {
+		AdjustSpacePointsEqualTemperament(points_in_space, base_world_pos, base_note);
+	} else {
+		AdjustSpacePointsNonEqualTemperament(points_in_space, base_world_pos, base_note, row_height);
+	}
+}
+
+AdjustSpacePointsEqualTemperament :: inline (
+	points_in_space : [] $S,
+	base_world_pos : Vector2F,
+	base_note : int)
+{
+	#assert(S == SpacePoint || S == *SpacePoint);
+
+	for * pointer, point_index : points_in_space
+	{
+		point : *SpacePoint;
+		#if S == *SpacePoint point = <<pointer;
+		else #if S == SpacePoint point = pointer;
+
+		//TODO Could just update world_pos and create the rect in the renderer
+		//But obviously this is more efficient in the renderer
+		rect_center_y : float = point.rect_dim.y * PosMod(point_index - base_note, points_in_space.count);
+		point.world_pos = base_world_pos;
+		point.world_pos.y += rect_center_y;
+		point.rect_mesh = RectMinCenterDim(point.world_pos, point.rect_dim);
+	}
+}
+
+AdjustSpacePointsNonEqualTemperament :: inline (
+	points_in_space : [] $S,
+	base_world_pos : Vector2F,
+	base_note : int,
+	row_height : float)
+{
+	#assert(S == SpacePoint || S == *SpacePoint);
+	// Cannot fmod_cycling with denominator 0
+	assert(row_height > 0); 
+
+	mod_base_note : int = base_note % points_in_space.count;
+	pos_shift : float = points_in_space[mod_base_note].rel_pos.y;
+	for * pointer : points_in_space
+	{
+		point : *SpacePoint;
+		#if S == *SpacePoint point = <<pointer;
+		else #if S == SpacePoint point = pointer;
+
+		//TODO Could just update world_pos and create the rect in the renderer
+		//Obviously this is more efficient for the renderer
+		rect_center_y : float = fmod_cycling(point.rel_pos.y - pos_shift, row_height);
+		point.world_pos = base_world_pos;
+		point.world_pos.y += rect_center_y;
+		point.rect_mesh = RectMinCenterDim(point.world_pos, point.rect_dim);
+	}
+}
+
+//TODO We can remove this one if we never use it since the new one accounts for all cases
+//and works for more notes and all tuning_systems
+#if 1 {
+MakeRatioProportionalPoints :: inline (
+	linear : LinearPitchSpace,
+	tuning_system : TuningSystem,
+	all_tuning_pitches : [] TuningPitch,
+	white_color : Vector4F = GREY_DARKER_V,
+	black_color : Vector4F = GREY_BLACK_V)
+-> [] SpacePoint
+{
+	array_tuning_pitches : [] TuningPitch =
+		ArrayFindAllVarName(all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
+	assert(tuning_system.music_pt_count == array_tuning_pitches.count);
+
+	points_in_space : [] SpacePoint = NewArray(array_tuning_pitches.count, SpacePoint, false,, temp);
+	for tuning_pitch, point_index : array_tuning_pitches 
+	{
+		point : SpacePoint;
+		point.id = ALL_NEXT_IDS.POINT_ID;
+		ALL_NEXT_IDS.POINT_ID += 1;
+		point.dspace_id = linear.dspace_id;
+		point.color = white_color;
+		//TODO what to do for other tuning systems and music_pt counts?
+		if tuning_system.music_pt_count == 12 {
+			if point_index == 1 || point_index == 3 || point_index == 6 || point_index == 8 || point_index == 10 {
+				point.color = black_color;
+			}
+		} else if point_index % 2 == 1 {
+			point.color = black_color;
+		}
+
+		start_ratio : float = RatioToOctaveLinear(tuning_pitch.ratio_from_start);
+		length_ratio : float = RatioToOctaveLinear(tuning_pitch.ratio_to_next_music_pt);
+
+		point.int_pos.x = tuning_pitch.music_pt_pos;
+		point.world_pos = linear.base_world_pos;
+		point.world_pos.y += start_ratio * DEFAULT_LINEAR_SPACE_SIZE.y;
+		point_dim : Vector2F = MakeV2F(DEFAULT_LINEAR_SPACE_SIZE.x, DEFAULT_LINEAR_SPACE_SIZE.y * length_ratio);
+		point.rect_mesh = RectMinCenterDim(point.world_pos, point_dim);
+
+		// We get the rel_pos from the center of the bottom point
+		point.rel_pos = point.world_pos - linear.dspace_world_pos;
+		point.dspace_pos = point.rel_pos;
+
+		points_in_space[point_index] = point;
+	}
+	return points_in_space;
+}
+}
+
+//TODO Where should we put these color compile-time arrays?
+//TODO Can make default for other default implemented tuning systems as well like PYTHAGORUS and other eq temps.
+//Maybe one for 19 and 24 and 48 and 53 or anything thats used more.
+EQ_12_POINT_COLORS :: Vector4F.[
+	GREY_DARKER_V, 
+	GREY_BLACK_V, 
+	GREY_DARKER_V,
+	GREY_BLACK_V,
+	GREY_DARKER_V,
+	GREY_DARKER_V,
+	GREY_BLACK_V,
+	GREY_DARKER_V, 
+	GREY_BLACK_V, 
+	GREY_DARKER_V,
+	GREY_BLACK_V,
+	GREY_DARKER_V
+];
+//TODO How do we use this and the above for 12 system? Could pass in a default shape type for example
+//or an extra int value as a type to differentiate between default.
+EQ_12_POINT_COLORS_CIRCLE :: Vector4F.[
+	LIGHT_BROWN, 
+	GREY_DARKER_V, 
+	LIGHT_BROWN,
+	GREY_DARKER_V,
+	LIGHT_BROWN,
+	LIGHT_BROWN,
+	GREY_DARKER_V,
+	LIGHT_BROWN, 
+	GREY_DARKER_V, 
+	LIGHT_BROWN,
+	GREY_DARKER_V,
+	LIGHT_BROWN
+];
+PointColorType :: enum u8 {
+	DEFAULT;
+	CUSTOM;
+}
+PointColorShape :: enum u8 {
+	LINEAR;
+	CIRCLE;
+}
+PointColorData :: struct {
+	type : PointColorType;
+	shape : PointColorShape;
+	white_color : Vector4F = GREY_DARKER_V;
+	black_color : Vector4F = GREY_BLACK_V;
+	point_colors : [] Vector4F;
+}
+
+CIRCLE_COLOR_DEFAULT :: PointColorData.{shape=.CIRCLE,white_color=LIGHT_BROWN,black_color=GREY_BLACK_V};
+
+GetPointColor :: inline (
+	p_index : int, 
+	tuning_system : TuningSystem,
+	color_data : PointColorData)
+-> Vector4F 
+{
+	color : Vector4F;
+	if color_data.type == {
+	case PointColorType.DEFAULT;
+		//TODO CAn we make default PointColorData so we can just
+		//have it all be the same below by default and only 
+		//alternate in cases which we don't have specific colors for.
+		if tuning_system.music_pt_count == 12 {
+			if color_data.shape == {
+			case .LINEAR; color = EQ_12_POINT_COLORS[p_index];
+			case .CIRCLE; color = EQ_12_POINT_COLORS_CIRCLE[p_index];
+			}
+		} else {
+			if p_index % 2 == 1 color = color_data.black_color;
+			else color = color_data.white_color;
+		}
+	case PointColorType.CUSTOM;
+		assert(p_index < color_data.point_colors.count);
+		color = color_data.point_colors[p_index];
+	}
+	return color;
+}
+
+MakeRatioProportionalPoints :: inline (
+	num_of_points : int,
+	linear : LinearPitchSpace,
+	//TODO Can have a generalized version of this with just linear_diff data between points
+	//and then call that function with a tuning_system.
+	tuning_system : TuningSystem,
+	all_tuning_pitches : [] TuningPitch,
+	color_data : PointColorData = .{})
+-> [] SpacePoint
+{
+	array_tuning_pitches : [] TuningPitch;
+	if linear.view != LinearPitchSpaceView.FORCE_EQUAL {
+		array_tuning_pitches = 
+			ArrayFindAllVarName(all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
+		assert(tuning_system.music_pt_count == array_tuning_pitches.count);
+	}
+
+	total_height : float;
+	equal_point_height : float = linear.octave_dim.y / tuning_system.music_pt_count;
+	points_in_space : [] SpacePoint = NewArray(num_of_points, SpacePoint, false,, temp);
+	for p_index : 0..num_of_points-1 {
+		point : *SpacePoint = *points_in_space[p_index];
+		point.id = ALL_NEXT_IDS.POINT_ID;
+		ALL_NEXT_IDS.POINT_ID += 1;
+		point.dspace_id = linear.dspace_id;
+		point.color = GetPointColor(p_index, tuning_system, color_data);
+		point.int_pos.x = p_index;
+
+		/*TODO We only use dspace_pos anymore for relative rendering so maybe that's the only thing we should set now
+		for linear scissor and have separate points for that.
+		Will leave it for now but we can definitely do that and separate from the old function here.
+		Will keep the same for consistency for now.
+		*/
+		//Forcing equal is needed for unequal temperaments where we want them to look equal.
+		//TODO We may not need this at all if we force in rendering instead.
+		//Although I guess this allows it to work here without any changes in rendering code.
+		if linear.view == LinearPitchSpaceView.FORCE_EQUAL {
+			//NOTE : ONLY THE dspace_pos is actually being used here
+			//Everything else is left for convenience but does not do anything
+			//We need to make it proportional here so we can multiple by octave_height at runtime.
+			//This makes it consistent with ratio points and also allows octave adjustments more easily.
+			//TODO This is all we use now so we could use TuningPitch directly for the base world linear scissor space.
+			//Would just need to separate out color and then we could us it instead.
+			//Just use TuningPitch and color then.
+			point.dspace_pos = Vector2F.{
+				p_index/cast(float)tuning_system.music_pt_count,
+				1.0/tuning_system.music_pt_count};
+			//NOTE : This does not do anything. Maybe I should comment out for clarity.
+			point.world_pos = linear.base_world_pos;
+			point.world_pos.y += p_index * equal_point_height;
+			point.rect_dim = MakeV2F(linear.octave_dim.x, equal_point_height);
+			point.rect_mesh = RectMinCenterDim(point.world_pos, point.rect_dim);
+			point.rel_pos.y = point.world_pos.y - linear.base_world_pos.y;
+		} else {
+			octave_index, mod_index := ComputeQuotientAndRemainder2(p_index, tuning_system.music_pt_count);
+			tuning_pitch : TuningPitch = array_tuning_pitches[mod_index];
+
+			//TODO This is all we use now so we could use TuningPitch directly for the base world linear scissor space.
+			//Would just need to separate out color and then we could us it instead.
+			//Just use TuningPitch and color then.
+			point.dspace_pos = Vector2F.{tuning_pitch.linear_from_start, tuning_pitch.linear_to_next};
+			// point.dspace_pos = Vector2F.{total_height, length_ratio};
+			// print("total_height = %\n, linear = %\n", total_height, tuning_pitch.linear_from_start);
+
+			//TODO NONE OF THIS IS USED ANYMORE We can remove eventually or maybe we will reuse for op_space linear spaces
+			//NOTE : We can do everything from length_ratio with accumulation. Leaving here for reference.
+			// ratio_with_octave : float = RatioWithOctaveBase(tuning_pitch.ratio_from_start, octave_index, tuning_system.compass_interval);
+			// start_ratio : float = LogRatioToLinear(ratio_with_octave, tuning_system.compass_interval);
+			// length_ratio : float = LogRatioToLinear(tuning_pitch.ratio_to_next_music_pt, tuning_system.compass_interval);
+			length_ratio : float = tuning_pitch.linear_to_next;
+
+			//TODO We don't use any of these for linear scissor, only dspace_pos and color. So maybe that is worth optimizing
+			//for to no longer use SpacePoint since we only need 6 floats now for each point.
+			point.world_pos = linear.base_world_pos;
+			// point.world_pos.y += start_ratio * linear.octave_dim.y;
+			point.world_pos.y += total_height * linear.octave_dim.y;
+			point.rect_dim = MakeV2F(linear.octave_dim.x, linear.octave_dim.y * length_ratio);
+			//NOTE : From min_center so we only have to adjust the height on the top
+			point.rect_mesh = RectMinCenterDim(point.world_pos, point.rect_dim);
+
+			// if p_index == 0 {
+			// 	linear.dspace_world_pos.y = linear.base_world_pos.y + 0.5*point.rect_dim.y;
+			// }
+			// point.rel_pos.y = point.world_pos.y + (0.5*point.rect_dim.y) - linear.dspace_world_pos.y;
+			point.rel_pos.y = point.world_pos.y - linear.base_world_pos.y;
+			// point.dspace_pos = Vector2F.{tuning_pitch.linear_from_start, length_ratio};
+			// point.fun_region_float[0] = total_height;
+			// point.fun_region_float[1] = length_ratio;
+
+			total_height += length_ratio;
+		}
+	}
+
+	return points_in_space;
+}
+
+MakeEqualLinearPoints :: inline (
+	linear : LinearPitchSpace,
+	tuning_system : TuningSystem,
+	orientation : LinearPitchSpaceOrientation = LinearPitchSpaceOrientation.VERTICAL,
+	white_color : Vector4F = WHITE_V,
+	black_color : Vector4F = GREY_DARKER_V)
+-> [] SpacePoint
+{
+	points_in_space : [..] SpacePoint;
+	for point_index : 0..tuning_system.music_pt_count-1 {
+		point : SpacePoint;
+		point.id = ALL_NEXT_IDS.POINT_ID;
+		ALL_NEXT_IDS.POINT_ID += 1;
+		point.dspace_id = linear.dspace_id;
+		point.color = white_color;
+		//TODO what to do for other tuning systems and music_pt counts?
+		if tuning_system.music_pt_count == 12 {
+			if point_index == 1 || point_index == 3 || point_index == 6 || point_index == 8 || point_index == 10 {
+				point.color = black_color;
+			}
+		} else if point_index % 2 == 1 {
+			point.color = black_color;
+		}
+
+		//TODO could set int_pos in here since it is likely consistent
+		if linear.orientation == LinearPitchSpaceOrientation.VERTICAL {
+			point.world_pos = linear.dspace_world_pos;
+			point.world_pos.y += point_index * linear.dspace_point_dim.y;
+			//TODO could increase the boundary around the rectangles
+			point.rect_mesh = RectCenterDim(point.world_pos, linear.dspace_point_dim - Vector2F.{0,0});
+		} 
+		else if linear.orientation == LinearPitchSpaceOrientation.HORIZONTAL {
+			point.world_pos = linear.dspace_world_pos;
+			point.world_pos.x += point_index * linear.dspace_point_dim.x;
+			point.rect_mesh = RectCenterDim(point.world_pos, linear.dspace_point_dim - Vector2F.{0,0});
+		}
+
+		point.rel_pos = point.world_pos - linear.dspace_world_pos;
+		point.dspace_pos = point.rel_pos;
+		array_add(*points_in_space, point);
+	}
+	return points_in_space;
+}
+
+/*End of New Space and points Code
+*/
+
+/*TODO Old Space and points code can move out at some point with all other old code 
+*/
+UpdateLinearPitchSpaceData :: struct {
+	update_world_pos : bool;
+	world_pos : Vector2F;
+
+	update_points : bool;
+}
+
+/*TODO 
+	passing tuning_system_music_pt_count in here for now but this should depend on linear space
+	current size or current tuning system depending on the current linear user settings
+
+	should we split this function in 2 where one function is update points and space and 
+	the other is just update linear pitch space
+
+	right now we update the rect_mesh, but once we have a separate rendering mesh,
+	we should just update the linear_pitch_space position since the rendering mesh should
+	just be drawn relative to the linear_pitch_space
+
+	THIS SHOULD BE DONE AS A DATABASE AND NOT AS A POINTER
+*/
+UpdateLinearPitchSpace :: inline (
+	linear : *LinearPitchSpace,
+	tuning_system_music_pt_count : int,
+	update : UpdateLinearPitchSpaceData,
+	all_space_points : [] SpacePoint)
+{
+	if update.update_world_pos {
+		linear.dspace_world_center = update.world_pos;
+		linear.dspace_world_pos = update.world_pos;
+		if linear.orientation == LinearPitchSpaceOrientation.VERTICAL {
+			linear.transform = Matrix2F_IDENTITY;
+			linear.dspace_world_pos.y -= 0.5 * (tuning_system_music_pt_count * linear.dspace_point_dim.y);
+			linear.dspace_world_pos.y += 0.5 * linear.dspace_point_dim.y;
+			linear.base_world_pos = linear.dspace_world_pos;
+			linear.base_world_pos.y -= 0.5 * linear.dspace_point_dim.y;
+		} else if linear.orientation == LinearPitchSpaceOrientation.HORIZONTAL {
+			linear.transform = ROTATE_NEG90;
+			//TODO can we remove one of these if we always start from the base of the rectangle?
+			linear.dspace_world_pos.x -= 0.5 * (tuning_system_music_pt_count * linear.dspace_point_dim.x);
+			linear.dspace_world_pos.x += 0.5 * linear.dspace_point_dim.x;
+			linear.base_world_pos = linear.dspace_world_pos;
+			linear.base_world_pos.x -= 0.5 * linear.dspace_point_dim.x;
+		}
+	}
+
+	if update.update_points {
+		points_in_space : [] *SpacePoint = ArrayFindAllPointersByNameId(all_space_points, linear.dspace_id, "dspace_id");
+		for point, point_index : points_in_space {
+			if linear.orientation == LinearPitchSpaceOrientation.VERTICAL 
+			{
+				point.world_pos = linear.dspace_world_pos;
+				point.world_pos.y += point_index * linear.dspace_point_dim.y;
+				point.rect_mesh = RectCenterDim(point.world_pos, linear.dspace_point_dim);
+			} 
+			else if linear.orientation == LinearPitchSpaceOrientation.HORIZONTAL 
+			{
+				point.world_pos = linear.dspace_world_pos;
+				point.world_pos.x += point_index * linear.dspace_point_dim.x;
+				point.rect_mesh = RectCenterDim(point.world_pos, linear.dspace_point_dim);
+			}
+			point.rel_pos = point.world_pos - linear.dspace_world_pos;
+			point.dspace_pos = point.rel_pos;
+		}
+	}
+}
+
+MakeContinuousLinearSpace :: (
+	world_pos : Vector2F,
+	dspace_dim : Vector2F,
+	tuning_system : TuningSystem,
+	orientation : LinearPitchSpaceOrientation = LinearPitchSpaceOrientation.VERTICAL)
+-> LinearPitchSpace
+{
+	//TODO rotate based on Matrix2F transform instead of y_up
+	linear : LinearPitchSpace;
+	linear.dspace_id = ALL_NEXT_IDS.DSPACE_ID;
+	defer ALL_NEXT_IDS.DSPACE_ID += 1;
+	linear.dspace_world_center = world_pos;
+	linear.dspace_world_pos = world_pos;
+	linear.dspace_dim = dspace_dim;
+	linear.dspace_point_dim = Vector2F.{0.4,0.4};
+	linear.octave_text = "0";
+	linear.orientation = orientation;
+	if linear.orientation == LinearPitchSpaceOrientation.VERTICAL {
+		linear.transform = Matrix2F_IDENTITY;
+	} else if linear.orientation == LinearPitchSpaceOrientation.HORIZONTAL {
+		linear.transform = ROTATE_NEG90;
+	}
+	return linear;
+}
+
+/*TODO could potentially remove the VERTICAL/HORIZONTAL
+	for grouped piano spaces for examples since we know that theyll
+	always be vertical spaces
+*/
+WorldPosToLinearPitchSpacePointIndex :: inline (
+	world_pos : Vector2F,
+	linear : LinearPitchSpace)
+-> int
+{
+	point_index_float : float = ---;
+	if linear.orientation == LinearPitchSpaceOrientation.VERTICAL {
+		delta_y : float = world_pos.y - linear.base_world_pos.y;
+		point_index_float = delta_y / linear.dspace_point_dim.y;
+	}
+	else if linear.orientation == LinearPitchSpaceOrientation.HORIZONTAL {
+		delta_x : float = world_pos.x - linear.base_world_pos.x;
+		point_index_float = delta_x / linear.dspace_point_dim.x;
+	}
+	point_index_int : int = cast(int) point_index_float;		
+	return point_index_int;
+}
+
+LinearPitchPointIndexToWorldRect :: inline (
+	point_index : int,
+	linear : LinearPitchSpace)
+-> Rectangle2
+{
+	world_pos : Vector2F = ---;
+	if linear.orientation == LinearPitchSpaceOrientation.VERTICAL {
+		world_y : float = linear.dspace_world_pos.y + (point_index * linear.dspace_point_dim.y);
+		world_pos = MakeV2F(linear.dspace_world_pos.x, world_y);
+	}
+	else if linear.orientation == LinearPitchSpaceOrientation.HORIZONTAL {
+		world_x : float = linear.dspace_world_pos.x + (point_index * linear.dspace_point_dim.y);
+		world_pos = MakeV2F(world_x, linear.dspace_world_pos.y);
+	}
+	world_rect : Rectangle2 = RectCenterDim(world_pos, linear.dspace_point_dim);
+	return world_rect;
+}
+
+
+
+//TODO I think id like to remove these types eventually.
+//Maybe could have an extra array with extra spirals... but iunno
+//I find proper ones the most intuitive and flexible and clearest to code for.
+SpiralType :: enum {
+	PROPER;
+	CONCENTRIC_CIRCLE;
+	BOOK;
+} @LibraryAsmGen
+SpiralSpace :: struct {
+	dspace_id : int;
+	op_space_id : int;
+	//TODO I kind of want to remove these types and just have a PROPER spiral.
+	//Concentric circle feels weird and has inconsistent float instrument
+	//and the book one is downright confusing.
+	spiral_type : SpiralType;
+
+	world_center_pos : Vector2F;
+
+	rotate : float = PI/2.0;
+	is_clockwise : bool = true;
+
+	start_radius : float; //Not-settable, computed in InitSpiralSpace
+	//These sets the spiral_delta so how much we move out per radius index value
+	radius_size : float = 3;
+	//start_radius_factor to adjust the inner radius size start size
+	sr_factor : float = 2;
+
+	total_radius : float;
+
+	pitch_zero_freq : float64;
+	tuning_system_id : int;
+	//TODO Rename these to point_count and loop_count maybe? Should be generalized just for Spiral
+	//instead of for music since we want the spiral geometry to be independent of music.
+	//Maybe tuning_count is ok though... circle_delineation_count? not sure...
+	tuning_count : int;
+	//TODO This could be a float64 so we could have not whole spirals
+	//I don't know if that matters since we can just add + 1 here if needed more for example.
+	//Why would we need a precise offset from whole is the question in this case?
+	//TODO Could be turn_count...
+	chord_count : int;
+
+	//TODO We could have an additional value to increase the size of the points on the spiral which we could
+	//store here and then also store total point count. This would allow for more instrument exploration for example.
+
+	spiral_delta : float;
+	//TODO The factor here can replace bool branch
+	//in_out = 1.0 and out_in = -1.0
+	in_out_factor : float = 1.0;
+	is_in_out : bool = true;
+
+	is_loop : bool = true;
+	show_values : bool = true;
+
+	sound_float : bool;
+
+	point_dim : Vector2F = .{0.5,0.5};
+	point_color : Vector4F = LIGHT_BROWN;
+
+	base_shape_group : int;
+	base_render_order : int = 7;
+
+	/*After some consideration, for now, we will leave the spiral as having 1 base.
+	And then we can add other points around the spiral separately if needed.
+	Can make some convenience functions to add some in order like with base.
+	These values also tell us what the float spiral instrument should be based on.
+	*/
+	// has_base_points : bool;
+	// base_space_point_id : int;
+	base_index : int;
+	base_chord : [] float64;
+
+	//TODO This will likely just be calling a synthesizer eventually
+	//So it does not matter where we put the data for now.
+	osc_waves : [] OscWave;
+	synth : SimpleSynth;
+}
+
+AsmCreateSpiral :: struct {
+	//return values
+	ret_dspace_id : int;
+
+	op_space_id : int;
+	spiral_type : SpiralType;
+	world_pos : Vector2F64;
+	tuning_system_id : int;
+	pitch_zero_freq : float64;
+	//TODO Should we rename these?
+	tuning_count : int;
+	chord_count : int;
+	rotate : float64 = PI64/2;
+	is_clockwise : AsmBool = #run ToAsmBool(true);
+	radius_size : float64; // Use to adjust spiral_delta size going out
+	sr_factor : float64; // Use to adjust inner radius size (although it does effect overall spiral size as well)
+	is_in_out : AsmBool = #run ToAsmBool(true);
+	sound_float : AsmBool;
+	is_loop : AsmBool = #run ToAsmBool(true);
+	show_values : AsmBool = #run ToAsmBool(true);
+	point_dim : Vector2F64;
+	//TODO Do this with a Vector4F64
+	// point_color : Vector4F = LIGHT_BROWN;
+	osc_wave_type : OscWaveType;
+
+	base_chord : AsmArray(float64);
+	base_index : int;
+} @LibraryAsmGen
+AsmMapSpiral :: struct {
+	op_space_id : int;
+	dspace_id : int;
+	dspace_shape_group : int;
+	//This will get grouped by the SpiralSpace.chord_count
+	//TODO Reorder this in case we use an array in the game code data
+	map_chords : AsmArray(float64);
+	//TODO It might be better to just have the player draw these lines
+	//themselves with a general draw line function and associate it to
+	//dspace and op_space themselves instead of automatically like this.
+	//That would avoid the looping problem.
+	draw_vl_lines : AsmBool; //bool to draw_vl_lines between each chord.
+} @LibraryAsmGen
+MapSpiralData :: struct {
+	op_space_id : int;
+	dspace_id : int;
+	dspace_shape_group : int;
+
+	//This will get grouped by the SpiralSpace.chord_count
+	//TODO Reorder this in case we use an array in the game code data
+	chord_data : int;
+	chord_count : int;
+
+	//TODO It might be better to just have the player draw these lines
+	//themselves with a general draw line function and associate it to
+	//dspace and op_space themselves instead of automatically like this.
+	//That would avoid the looping problem.
+	draw_vl_lines : int; //bool to draw_vl_lines between each chord.
+	//TODO Can add this to finish a loop or leave it up to the user to add.
+	// loop_vls_lines : int;
+}
+
+/*NOTE : Could generalize this for all 2d voice_leadings in general
+maybe except for chord_s2. But still from 1 dspace to another is very interesting.
+Like a 2D spiral space voice leading to a chord_s2 voice leading.
+Or a circle space to a linear space kind of thing.
+*/
+SpiralVoiceLeading :: struct {
+	dspace_id : int;
+	// start_spiral_index : float64;
+	// end_spiral_index : float64;
+	start_pos : Vector2F;
+	end_pos : Vector2F;
+}
+
+/*NOTE : This is a convenience function both for consistent reuse AND
+also for code abstraction in case we change the way spirals are made by default.
+BUT we can still create them with InitSpiralSpace for example.
+
+We return SpiralSpace because then we can just pass in values directly
+to the function and not have to worry about it as a pointer.
+*/
+CreateSpiralInSpace :: inline (
+	sp : SpiralSpace,
+	op_spec_data : *OpSpaceSpecData) 
+-> *SpiralSpace
+{
+	spiral : *SpiralSpace = array_add(*op_spec_data.all_op_spirals);
+	spiral.* = sp;
+	spiral.op_space_id = op_spec_data.op_space_id;
+	InitSpiralSpace(spiral);
+
+	coll : *CollisionEntity = array_add(*op_spec_data.all_op_collision_entities);
+	coll.entity_id = spiral.dspace_id;
+	coll.entity_type = EntityType.SPIRAL;
+	coll.op_space_id = op_spec_data.op_space_id;
+	coll.shape = CollisionShape.CIRCLE;
+	coll.circle.pos = spiral.world_center_pos;
+	coll.circle.radius = spiral.total_radius;
+
+	return spiral;
+}
+
+InitSpiralSpace :: inline (sp : *SpiralSpace) {
+	sp.dspace_id = ALL_NEXT_IDS.DSPACE_ID;
+	ALL_NEXT_IDS.DSPACE_ID += 1;
+	if sp.spiral_type == SpiralType.PROPER sp.radius_size *= 1.75 / 2;
+	if sp.is_in_out {
+		sp.in_out_factor = 1.0;
+		sp.start_radius = sp.sr_factor*sp.radius_size;
+		//TODO Maybe we should just use in_out_factor in the code
+		//instead of having the negative mapped in 2 places?
+		sp.spiral_delta = sp.radius_size / sp.tuning_count;
+	} else {
+		sp.in_out_factor = -1.0;
+		//sr_factor is for center (like in in_out below) and then chord_count for spiral
+		sp.start_radius = (sp.sr_factor+sp.chord_count)*sp.radius_size;
+		/*NOTE : Computing this here makes it convenient particular for computing
+		spiral pos but also we have to remember to multiple all radius values
+		if we need to make some kind of collision adjustment.
+		*/
+		sp.spiral_delta = -sp.radius_size / sp.tuning_count;
+	}
+	sp.total_radius = (sp.sr_factor+sp.chord_count)*sp.radius_size + sp.point_dim.y;
+}
+
+ValidateSpiral :: inline (
+	base_chord : [] float64,
+	sp : SpiralSpace)
+-> success : bool, error_msg : string
+{
+	if base_chord.count != sp.chord_count {
+		return false, "Error : base_chord.count != sp.chord_count";
+	}
+	//Otherwise there is no spiral. Can return this as an error eventually.
+	if sp.chord_count * sp.tuning_count <= 0 {
+		return false, "Error : sp.chord_count * sp.tuning_count <= 0";
+	}	
+	return true, "";
+}
+SetSpiralBase :: inline (
+	base_chord : [] float64,
+	base_index : int,
+	sp : *SpiralSpace,
+	op_spec_data : *OpSpaceSpecData)
+-> success : bool, error_msg : string
+{
+	success, error_msg := ValidateSpiral(base_chord, sp.*);
+	if !success return success, error_msg;
+
+	//TODO To set multiple base points we just create more and then just need to update the
+	//base_space_point_id and base_index to whatever we want.
+	//NOTE : We then just need to grab the space_point that has this dspace_id and int_pos.x == base_index
+	// sp.has_base_points = true;
+	// sp.base_space_point_id = ALL_NEXT_IDS.POINT_ID;
+	sp.base_index = base_index;
+
+	sorted_base_chord := array_copy(base_chord,,temp);
+	quick_sort(sorted_base_chord, (f1,f2) => f1 - f2);
+	//DOC : To ensure that we have positive values in range for now as the base chord
+	//especially in case valid negative values are passed in
+	for * sorted_base_chord {
+		if it.* < 0 {
+			it.* = fmod_cycling(it.*, cast(float64)sp.tuning_count);
+		}
+	}
+
+	sp.base_chord = array_copy(sorted_base_chord,, op_spec_data.spec_2D_alloc);
+
+	//TODO Should this be temp or context.allocator?
+	point_chord := array_copy(sorted_base_chord,, temp);
+	roots_of_unity := RootsOfUnity(sp.tuning_count, sp.is_clockwise, sp.rotate, Vector2F,, temp);
+	//TODO We could add a value here to increase size of spiral so we
+	//could use it more as an instrument. Could add a value but then
+	//we would laso have to adjust the radius and number of points everywhere.
+	//Also would have to consider how we map music pts to this geometry then.
+	for 0..(sp.chord_count*sp.tuning_count)-1 {
+		it_mod : int = it % sp.chord_count;
+		if it_mod == base_index {
+			// point : *SpacePoint = array_add(all_space_points);
+			// point.id = ALL_NEXT_IDS.POINT_ID;
+			// ALL_NEXT_IDS.POINT_ID += 1;
+			// point.dspace_id = sp.dspace_id;
+			// point.world_pos = IndexToSpiralPos(it, sp, roots_of_unity);
+			// point.rect_mesh = RectCenterDim(point.world_pos, sp.point_dim);
+			// point.color = sp.point_color;
+			// // point.int_pos.x = it;
+			// point.int_pos.x = 7; //This is 7 for the rendering order
+			// //Storing these here for covenience on printing 1-2 values even though spiral point can be n-dimensional
+			// point.fun_region_float[0] = point_chord[0];
+			// if point_chord.count > 1 {
+			// 	point.fun_region_float[1] = point_chord[1];
+			// }
+			world_pos : Vector2F = IndexToSpiralPos(it, sp, roots_of_unity);
+
+			//ADDING SPACE RECTS DIRECTLY and then we can remove SpacePoint above once this is working.
+			rect : *SpaceRect = array_add(*op_spec_data.ass.all_space_rects);
+			rect.shape_id = ALL_NEXT_IDS.NEXT_SHAPE_ID;
+			ALL_NEXT_IDS.NEXT_SHAPE_ID += 1;
+			rect.op_space_id = op_spec_data.op_space_id;
+			rect.dspace_id = sp.dspace_id;
+			rect.dspace_shape_group = sp.base_shape_group;
+			rect.render_order = sp.base_render_order;
+			rect.color = sp.point_color;
+			rect.rect = RectCenterDim(world_pos, sp.point_dim);
+			rect.pitch_set = array_copy(point_chord,, op_spec_data.spec_2D_alloc);
+			rect.shape_text = sprint("%", point_chord,, op_spec_data.spec_2D_alloc);
+
+			space_text : *SpaceText = array_add(*op_spec_data.ass.all_space_text);
+			space_text.op_space_id = op_spec_data.op_space_id;
+			space_text.dspace_id = sp.dspace_id;
+			//TODO I think we could store this render_order OR I guess this i the default text op render order
+			//Maybe we could store that somewhere as default instead.
+			space_text.render_order = 10003;
+			//TODO Maybe this should be a different group in case we want to erase it later.
+			space_text.dspace_shape_group = sp.base_shape_group;
+			space_text.color = WHITE_V;
+			// space_text.color = LOW_WHITE_V;
+			//TODO Calculate this here if we remove SpacePoint
+			space_text.op_pos = world_pos - Vector2F.{0,sp.point_dim.y};
+
+			//TODO Make a function SetSpaceText and reuse for chord_s2, then we can also just memcpy what fits
+			//TODO Could also print a list of values here if needed. I think tprint might do it directly
+			space_string : string = tprint("%", point_chord[0]);
+			SetSpaceText(space_string, space_text);
+			//Sanity check but we could just put an if here but max s64 is < 32 chars anyways
+			// assert(space_string.count <= space_text.text_chars.count);
+			// space_text.text.data = space_text.text_chars.data;
+			// space_text.text.count = space_string.count;
+			// memcpy(space_text.text.data, space_string.data, space_string.count);
+
+			for * point_chord {
+				// rect_value : *SpaceShapeValue = array_add(*ass.all_space_shape_values);
+				// rect_value.shape_id = rect.shape_id;
+				// rect_value.float_value = it.*;
+
+				// sp_to_value : *SpacePointToValue = array_add(all_space_point_to_value);
+				// sp_to_value.space_point_id = point.id;
+				// sp_to_value.value = it.*;
+				//TODO Remove this if we remove BOOK spiral eventually
+				if sp.spiral_type == {
+				case .BOOK; it.* = PosMod(it.* - 1, cast(float64) sp.tuning_count);
+				case; it.* += 1;
+				}			
+			}
+		}
+	}
+	return true, "";
+}
+
+CreateSpiralPointAndValues :: inline (
+	chord : [] float64,
+	sp : SpiralSpace,
+	all_space_points : *[..] SpacePoint,
+	all_space_point_to_value : *[..] SpacePointToValue,
+	color : Vector4F = LIGHT_BROWN)
+{
+	assert(chord.count == sp.chord_count);
+	space_point := CreateSpiralPoint(chord[0] * sp.chord_count,
+		chord[0], sp, all_space_points, color);
+	CreateSpiralPointValues(chord, space_point.id,
+		all_space_point_to_value);
+}
+
+/*NOTE : We make this with index so we can decide how we want to make the point.
+We can externally use all_spiral_base_values or just do it directly. This way keeps
+it flexible and consistent in case we decide to change things later.
+
+I AM NOT SURE EXACTLY HOW WE WILL USE THIS, so I am keeping it flexible and general for
+now so we can do all cases that are suggested in the book and then we can see how we use it later.
+
+This allows us to put a point anywhere and then associate any values we want to it so the spiral remains flexible.
+*/
+CreateSpiralPoint :: inline (
+	index : float64,
+	display_value : float64,
+	sp : SpiralSpace,
+	all_space_points : *[..] SpacePoint,
+	color : Vector4F = LIGHT_BROWN,
+	order : int = 8)
+-> *SpacePoint
+{
+	point : *SpacePoint = array_add(all_space_points);
+	point.id = ALL_NEXT_IDS.POINT_ID;
+	ALL_NEXT_IDS.POINT_ID += 1;
+	point.dspace_id = sp.dspace_id;
+	//TODO Could use IndexToSpiralPos but with float and euler's formula instead if we allow that... hmmmm
+	//TODO Can grab base_chord from all_spiral_base_values if we need to compute offset values.
+	// point.world_pos = ChordToSpiralPoint(float_chord, float_base, 0, sp);
+	point.world_pos = FloatIndexToSpiralPos(index, sp);
+	point.rect_mesh = RectCenterDim(point.world_pos, sp.point_dim);
+	point.color = color;
+	//Storing these here for covenience on printing 1-2 values even though spiral point can be n-dimensional
+	point.fun_region_float[0] = display_value;
+	point.int_pos.x = order;
+	return point;
+}
+
+CreateSpiralPointValues :: inline (
+	chord : [] float64,
+	space_point_id : int,
+	all_space_point_to_value : *[..] SpacePointToValue)
+{
+	for chord {
+		sp_to_value : *SpacePointToValue = array_add(all_space_point_to_value);
+		sp_to_value.space_point_id = space_point_id;
+		sp_to_value.value = it;
+	}
+}
+
+//TODO Can have a separate table that indexes these values eventually
+//and then we can remove the space_point_id. Or just have an SoA.
+//SoA or separate table index should make this good.
+SpacePointToValue :: struct {
+	// dspace_id : int;
+	space_point_id : int;
+	value : float64;
+
+	//TODO Could add an order if needed but we can just sort
+	//by value for now since we are using this for fun_region_pos
+	//for spirals for now. This generalizes for chord space dimensions
+	//as well though.
+	// order : int;
+}
+
+/*TODO This is not efficient. For example, we could have a separate loop for each type and then
+no need for if and can likely remove some calculations as well. Let's see how everything else progresses.
+IT IS convenient for different types for now since we have to compute the previous point beforehand to
+close the spiral loops.
+
+I THINK ULTIMATELY I MAY JUST WANT PROPER spiral and then we 
+can remove a lot of this and maybe put some in the regular code
+
+TODO What if we make the index a float which is what we do in ChordToSpiralPoint
+Then we could use euler's formula instead of roots_of_unity and then
+we don't have to pass that in.
+*/
+IndexToSpiralPos :: inline (index : int, sp : SpiralSpace, roots_of_unity : [] Vector2F) -> Vector2F {
+	radius_index, point_index := ComputeQuotientAndRemainder2(index, sp.tuning_count);
+
+	//TODO Can allow each method depending on some input params if we want positive or negative to be clockwise
+	//and can also can possibly allow rotation by PI/sp.tuning_count or just PI/2
+	radius : float;
+	if sp.spiral_type == {
+	case SpiralType.PROPER;
+		//TODO Maybe we should remove spiral_delta altogether and just
+		//(sp.in_out_factor * sp.radius_size / sp.tuning_count)
+		// spiral_delta : float = sp.radius_size / sp.tuning_count;
+		//This draws a proper spiral with radius changing at each step but I don't find it very clear overall
+		radius = sp.start_radius + index * sp.spiral_delta;
+	case SpiralType.CONCENTRIC_CIRCLE;
+		//TODO This does not really work with out_in, since
+		//we have to change the radius_size and sr_factor
+		//but at least it works for now in all cases with that change
+		//This draws positive clockwise
+		radius = sp.start_radius + 
+			sp.in_out_factor * sp.radius_size * radius_index;
+	case SpiralType.BOOK;
+		start_radius_index : int = 0;
+		max_radius_index : int = sp.chord_count;	
+		//Radius from top of circle with positive counter-clockwise like the book
+		current_radius_index : int = PosMod(start_radius_index - radius_index, max_radius_index);
+		// current_radius_index : int = PosMod(start_radius_index - radius_index - 1, max_radius_index);
+		radius = sp.start_radius + sp.radius_size * current_radius_index;
+	}
+
+	//TODO We could use eulers formula here to ge the vector without roots of unity instead
+	rel_pos   : Vector2F = radius * roots_of_unity[point_index];
+	world_pos : Vector2F = sp.world_center_pos + rel_pos;
+	return world_pos;
+}
+
+//TODO Maybe name this FloatIndexToSpiralPos
+//TODO Also likely do both float and float64 for convenience
+FloatIndexToSpiralPos :: inline (index : $T, sp : SpiralSpace) -> Vector2F {
+//TODO Could just make this float. It is for convenience but relative
+//pos is likely always to be 32-bit anyways
+#assert(T == float || T == float64);
+	// spiral_delta : float = sp.radius_size / sp.tuning_count;
+	c : float = 1.0;
+	if sp.is_clockwise c = -1.0;
+	theta := sp.rotate + c * TAU * (index / sp.tuning_count);
+	// theta : float = (PI/2.0) - TAU * (index / sp.tuning_count);
+	circle_pos : Vector2F = EulersFormula(cast(float) theta).vector;
+	radius : float;
+	if sp.spiral_type == SpiralType.PROPER {
+	//TODO Each of these points is slightly more out or in. Does it matter?
+	#if 1 {
+	//TODO Should we mod this one like we do the int one below?
+	radius = sp.start_radius + cast(float) index * sp.spiral_delta;
+	} else {
+	diff_int : int = cast(int) index;
+	diff_int = PosMod(diff_int, sp.tuning_count * sp.chord_count);
+	radius = sp.start_radius + diff_int * sp.spiral_delta;
+	}
+	} else {
+	tuning_int : int = cast(int) (index / sp.tuning_count);
+	tuning_int = PosMod(tuning_int, sp.chord_count);
+	radius = sp.start_radius + 
+		sp.in_out_factor * sp.radius_size * tuning_int;
+	}
+	spiral_point : Vector2F = sp.world_center_pos + radius * circle_pos;
+	return spiral_point;
+}
+
+/*I prefer this over chords. I think I am starting to see that chords
+are separate from spiral. Just focus on the index and only use the chords
+for audio. Can convert a chord to spiral index but that would just be based
+on the base note anyways whic would reduce to this case.
+Especially if the base chord is always 0 based then this linear equation
+would always be the base case.
+*/
+BaseValueToSpiralIndex :: inline (
+	base_value : float64,
+	chord_count : int, 
+	base_index : int = 0) 
+-> float64 
+{
+	spiral_index : float64 = base_value * chord_count + base_index;
+	return spiral_index;
+}
+
+ChordToSpiralIndex :: inline (
+	chord : [] $T,
+	base_chord : [] T,
+	//TODO We could just pass in base_chords and then check the deltas between the notes.
+	//I guess we would have to do that anyways outside to find the actual index.
+	//TODO Could calculate the base_index from inter_onsets later if needed OR even just pass in the inter-onsets
+	//instead so we can just compare those directly. Let's see what is more convenient during usage.
+	base_index : int)
+-> T
+{
+#assert(T == int || T == float || T == float64);
+	//TODO This is not necessary but sanity check for now.
+	assert(chord.count == base_chord.count);
+	assert(base_index < chord.count);
+
+	//TODO This allows us to adjust based on base_chord and base_index but will the base_chord always be 0
+	//and the base_index always be given externally? Eg If base_chord is always 0, then we don't need it.
+	vl_diff : T = chord.count * (chord[0] - base_chord[0]) + base_index;
+	return vl_diff;
+}
+
+
+ChordToSpiralPoint :: inline (
+	chord : [] $T,
+	base_chord : [] T,
+	base_index : int, //TODO This is stored in spiral so no need to add both...
+	sp : SpiralSpace)
+-> Vector2F
+{
+#assert(T == float || T == float64);
+	vl_diff := ChordToSpiralIndex(chord, base_chord, base_index);
+	spiral_point := FloatIndexToSpiralPos(vl_diff, sp);
+	return spiral_point;
+}
+
+
+PitchSpace2D :: struct {
+	dspace_id : int;
+	//TODO Should this be float64 eventually for all world_pos?
+	bottom_left_point_pos : Vector2F;
+	base_point_count : int;
+	octave_count : int;
+	inter_point_gap : Vector2F;
+	point_dim : Vector2F;
+	osc_waves : [2] OscWave;
+}
+
+//RenameTo ChordSpacePoints3D2D and the 3D one to ChordSpacePoints3D
+FunRegionData2D :: struct {
+	linear_point_count : int;
+	start_index : int;
+	fun_region_pos_count : int;
+}
+ChordS2Points2D :: struct {
+	id : int;
+	//tuning_system_count / linear_point_count because we can have multiple chord spaces 
+	//with the same points but different tuning systems
+	lp_count : int;
+	chord_sp_2D : [..] SpaceShape;
+}
+
+//TODO should this be in separate tables?
+ChordSpace2State :: enum {
+	NONE;
+	VOICE_LEADING;
+}
+
+#if 0 {
+WorldBasisCoordinates :: struct {
+	axis_0, axis_1 : Vector2F;
+}
+ChangeBasis :: inline (
+	v : Vector2F,
+	basis : WorldBasisCoordinates)
+-> Vector2F 
+{
+	change_basis : Vector2F = v.x * basis.axis_0 + v.y * basis.axis_1;
+	return change_basis;
+}
+
+WorldPosDiffToVoiceSizeUnit :: inline (
+	world_pos_0 : Vector2F,
+	world_pos_1 : Vector2F,
+	world_to_voice : WorldBasisCoordinates)
+-> [2] float 
+{
+	world_diff : Vector2F = world_pos_1 - world_pos_0;
+	diff_voice : Vector2F = ChangeBasis(world_diff, world_to_voice);
+	return diff_voice.component;
+}
+}
+
+WorldPosDiffToVoiceSize :: inline (
+	world_pos_0 : Vector2F,
+	world_pos_1 : Vector2F,
+	world_to_voice : Matrix2F)
+-> Vector2F 
+{
+	world_diff : Vector2F = world_pos_1 - world_pos_0;
+	diff_voice : Vector2F = world_to_voice * world_diff;
+	return diff_voice;
+}
+
+GetCurrentWorldToVoiceMatrix :: inline (chord_s2 : ChordSpace2) -> Matrix2F {
+	if chord_s2.swapped_matrix_flag {
+		return chord_s2.swapped_world_to_voice;
+	}
+	return chord_s2.world_to_invariant_matrix;
+}
+
+GetWorldToVoiceMatrixSwapFlag :: inline (chord_s2 : ChordSpace2, should_swap : bool) -> Matrix2F {
+	if should_swap {
+		return chord_s2.swapped_world_to_voice;
+	}
+	return chord_s2.world_to_invariant_matrix;
+}
+
+//TODO Should we use this everywhere now? When we change x_index
+//to float64 then it will be easier to update for sure.
+MemoryUnit :: struct {
+	x_index : int;
+	//TODO We want this eventually so we can set things to be
+	//in between memory units to simplify rhythmic structures.
+	// x_index : float64;
+	row_index : int;
+}
+
+//TODO Should this be specific to ChordS2?
+//TODO Should this be merge with MemoryUnitToDSpace?
+//TODO OR replace MemoryUnitToDSpace with this since this 
+//considers voice_leadings. We may not use vls for linear and circle
+//but probably will want something for spirals so we could
+//just have 1 array with all MemoryUnitToDSpace
+//and then maybe add a dspace_type here later if needed.
+//TODO Rename MemoryOrderedToSpace and can likely use for spirals
+MemoryUnitToChordSpace :: struct {
+	dspace_id : int;
+
+	//TODO Should this be memory_index instead?
+	//Curently we use x and row index because this allows
+	//for easier checks in Voice leading algorithms.
+	//However, it is less efficient since we have an
+	//extra int in here.
+	// memory_index : int;
+	x_index : int;
+	row_index : int;
+
+	//Note : order is used in case we have we want multiple
+	//memory_units for the same vl point in the chord_space
+	//This is dealt with by MemoryUnitsToVoiceLeadings
+	order : int;
+	//vl_index is used for multiple voice_leadings per chord_space
+	vl_index : int;
+}
+
+//TODO Should likely replace this with MemoryUnitToDSpace
+MakeMemoryUnitToChordSpace :: inline (
+	dspace_id : int,
+	row_index : int,
+	x_index : int,
+	order : int,
+	vl_index : int = 0) 
+-> MemoryUnitToChordSpace
+{
+	mem_to_chord : MemoryUnitToChordSpace = ---;
+	mem_to_chord.dspace_id = dspace_id;
+	mem_to_chord.x_index = x_index;
+	mem_to_chord.row_index = row_index;
+	mem_to_chord.order = order;
+	mem_to_chord.vl_index = vl_index;
+	return mem_to_chord;
+}
+
+MakeMemoryUnitToChordSpaceMemIndex :: inline (
+	dspace_id : int,
+	memory_index : int,
+	row_size : int,
+	order : int) 
+-> MemoryUnitToChordSpace
+{
+	memory_unit_to_chord_s2 : MemoryUnitToChordSpace = ---;
+	memory_unit_to_chord_s2.dspace_id = dspace_id;
+
+	x_index, row_index := ComputeXAndRowIndex(memory_index, row_size);
+	memory_unit_to_chord_s2.x_index = x_index;
+	memory_unit_to_chord_s2.row_index = row_index;
+
+	memory_unit_to_chord_s2.order = order;
+	return memory_unit_to_chord_s2;
+}
+
+//TODO Feels like we can genericize this kind of search based on the values we're sorting by.
+SortMapMem :: inline (m1 : MemoryUnitToChordSpace, m2 : MemoryUnitToChordSpace) -> int {
+	sv : int = m1.dspace_id - m2.dspace_id;
+	if sv == 0 sv = m1.vl_index - m2.vl_index;
+	if sv == 0 sv = m1.order - m2.order;
+	return sv;
+}
+
+MusicPtsByOrder :: struct {
+	order : int;
+	music_pts : [] MusicPoint;
+}
+
+
+/*Note : this is the code directly transfered for chord_s3
+	can be split up and moved around later once it runs in game
+*/
+#if 1 {
+/*TODO these should be moved into math or render_group
+	or eventually a separate 3D_rendering file
+*/
+//TODO should this just me stored as a temp_transform in each Cube struct?
+ComputeTempRotatedGrid3DTransform :: inline (
+	cube_data : SpacePoint3D, 
+	grid_3D : ChordSpace3) 
+-> Matrix4x3F 
+{
+	// rotate_pos : Vector3F = (grid_3D.mouse_rotate * grid_3D.temp_mouse_rotate * 
+	// 	(GetTranslation(cube_data.data.transform) - center)) + center;
+	// rotate_transform : Matrix4x3F = MultiplyTransform(grid_3D.mouse_rotate * grid_3D.temp_mouse_rotate, cube_data.data.transform);
+	/**
+		Multiply objects and grids with Quaternions up till this point and then set the rotation matrix
+		only once here before taking the inverse of the camera transform
+
+		Would also multiply the set rotation matrix by the camera transform. Therefore,
+		we would not store the camera rotation in the transform but only in the quaternion
+		and pass it at the end here
+	**/
+	rotate_pos : Vector3F = RotatedGrid3DPosition(cube_data.rel_pos, grid_3D);
+	rotate_transform := Matrix4x3F_Identity; 
+	UpdateTranslation(*rotate_transform, rotate_pos);
+	//This allows for specific cube rotation. We can make a separate one for that since it requires the storage of the rotation matrix
+	//Or set a fetch transform matrix bool and then go and get that if it is set
+	// rotate_transform : Matrix4x3F = cube_data.data.transform;
+	// UpdateTranslation(*rotate_transform, rotate_pos);
+	return rotate_transform;
+}
+
+//TODO should have a version of this that is independent of grid (ie purely mathematical)
+//Can call RotateV3AboutCenter for convience here since that is purely mathematical and the same as this in 3D.
+RotatedGrid3DPosition :: inline (cube_data : SpacePoint3D, grid_3D : ChordSpace3) -> Vector3F {
+	rotate_pos : Vector3F = (grid_3D.mouse_rotate * grid_3D.temp_mouse_rotate *
+		(cube_data.rel_pos - grid_3D.center_of_rotation)) + grid_3D.center_of_rotation;
+	return rotate_pos;	
+}
+
+RotatedGrid3DPosition :: inline (rel_pos : Vector3F, grid_3D : ChordSpace3) -> Vector3F {
+	rotate_pos : Vector3F = (grid_3D.mouse_rotate * grid_3D.temp_mouse_rotate *
+		(rel_pos - grid_3D.center_of_rotation)) + grid_3D.center_of_rotation;
+	return rotate_pos;	
+}
+
+//TODO should move this to thegame_math.jai and test it
+RotateV3AboutCenter :: inline (pos : Vector3F, rotate : Matrix3F, center : Vector3F) -> Vector3F {
+	rotate_pos : Vector3F = (rotate * (pos - center)) + center;
+	return rotate_pos;	
+}
+
+RotatedRelPosInChordS3 :: inline (
+	rel_pos : Vector3F,
+	chord_s3 : ChordSpace3)
+-> Vector3F 
+{
+	rotate_pos : Vector3F = (chord_s3.mouse_rotate * chord_s3.temp_mouse_rotate *
+		(rel_pos - chord_s3.center_of_rotation)) + chord_s3.center_of_rotation;
+	return rotate_pos;	
+}
+	
+//UPDATE if changed in Library
+//TODO Remove all unused types from here once we cleanup 
+//chord space filters for 2d and 3d spaces
+ChordSpaceFilterType :: enum {
+	//Default for chord_s3 is all points
+	//Default for chord_s4 is 3D cross-sections by equal sum
+	DEFAULT;
+	ALL;
+	DIMENSIONAL;
+	SUM;
+
+	//TODO Collapse these into 1 type
+	EQUAL_AND_ONE_VL;
+	VL_DISTANCE;
+	LOCAL_VL_DISTANCE_TO_CHORD;
+	INTER_CHORD_DELTA;
+
+	SAME_VALUE_COUNT;
+
+	NO_DUPLICATE_PITCHES;
+	IN_VALUE_SET;
+	//Currently only valid for chord_s3
+	DIATONIC;
+	CHROMATIC;
+
+	//TODO Use multiple filters instead of this
+	CHROMATIC_SUM; //For 3D
+	EQUALS_AND_ONE_VL_SUM; //For 4D
+} @LibraryAsmGen
+
+ChordSpaceFilterAggregate :: enum {
+	INTERSECTION;
+	UNION;
+	//TODO Implement if we want later
+	// DIFFERENCE;
+} @LibraryAsmGen
+
+/*TODO I think we should just use 3 64-bit values here anyways so we can reuse
+the same struct for asm. Just check when we do 3d spaces as well if it works
+and then we can switch it to just having ChordSpaceFilter.
+*/
+//TODO We could add a negation to the filter so we can do everything that is not that filter
+//and then we just have to swap the point_in_filter in FilterChordSpacePoints for each filter point
+CSFilter :: struct {
+	filter_index : int;
+	filter_value : float64;	
+	value_set : [] float64;
+	filter_type : ChordSpaceFilterType;
+}
+AsmCSFilter :: struct {
+	filter_index : int;
+	filter_value : float64;	
+	value_set : AsmArray(float64);
+	filter_type : ChordSpaceFilterType;	
+} @LibraryAsmGen
+AsmFiltersToTempFilters :: inline (
+	asm_cs_filters : [] AsmCSFilter,
+	ram_memory : RAMMemory)
+-> [] CSFilter, CPUError
+{
+	//TODO We could pass in temp as the allocator but we always copy this over
+	//after anyways for chord_s2 and chord_s3 so putting this here now to keep it consistent.
+	cs_filters := NewArray(asm_cs_filters.count, CSFilter,,temp);
+	for asm_cs_filters {
+		cs_filters[it_index].filter_index = it.filter_index;
+		cs_filters[it_index].filter_value = it.filter_value;
+		cs_filters[it_index].filter_type = it.filter_type;
+		err : CPUError;
+		cs_filters[it_index].value_set, err = GetAsmArray(it.value_set, ram_memory);
+		if err.is_error return .[], err;
+	}
+	return cs_filters, NO_CPU_ERROR;
+}
+
+/*Filter by checking if in the chords we pass in through
+chord_fun_regions. For example this works with the diatonic
+triads but can be used for any set.
+*/
+FilterByChordSetFunRegions :: inline (
+	fun_region_pos : [] int,
+	chord_fun_regions : [][$chord_dim] int)
+-> bool
+{
+	assert(chord_fun_regions.count > 0);
+	assert(fun_region_pos.count >= chord_dim);
+
+	for chord : chord_fun_regions {
+		arrays_equal : bool = true;
+		for d_pos,d_index : chord if d_pos != fun_region_pos[d_index] {
+			arrays_equal = false;
+			break;
+		}
+
+		if arrays_equal {
+			return true;
+		}
+	}
+	return false;
+}
+
+/*Filter by all chord that are within max_vl_distance of the chords_to_check array.
+
+TODO This is interesting because we can update the available
+chords within a certain vl_distance every time we change a 
+chord in a set or every time a new chord plays, for example.
+*/
+FilterLocalVLDistanceFromChords :: inline (
+	max_vl_distance : int,
+	space_point_fun_region_pos : [$fr_dim] int,
+	tsc : int,
+	chords_to_check : [][chord_dim] int,
+	$chord_dim : int)
+-> bool
+{
+	pitch_set : [] int = FunRegionPosToPitchSet(space_point_fun_region_pos, tsc, chord_dim);
+	is_within_vl_distance : bool = false;
+	for chord : chords_to_check {
+		//TODO Also filter for 2-note chord space in 3d, and 2 and 3 in 4d
+		//TODO FROM HERE CHANGE THIS NAME PULL THIS OUT AND MOVE TO 4D AND ALLOW MULTIPLE FILTERS
+		//EG THIS ONE AND CHROMATIC TO SEE CLOSEST CHROMATIC OR THIS AND DIATONIC TO SEE CLOSEST DIATONIC
+		total_vl_distance : int = 0;
+		for note, note_index : chord {
+			total_vl_distance += abs(note - pitch_set[note_index]);
+		}
+
+		fun_region_distance : int = 0;
+		chord_fun_region_pos := OrderedPitchSetToFundamentalRegion(chord, tsc);
+		for note, note_index : chord {
+			fun_region_distance += abs(chord_fun_region_pos[note_index] - space_point_fun_region_pos[note_index]);
+		}
+
+		if fun_region_distance <= max_vl_distance || total_vl_distance <= max_vl_distance {
+			return true;
+		}
+	}
+	return false;
+}
+FilterLocalVLDistanceFromChords :: inline (
+	max_vl_distance : float64,
+	space_point_fun_region_pos : [] float64,
+	tsc : int,
+	chord : [] float64)
+-> bool
+{
+	pitch_set : [] float64 = FunRegionPosToPitchSet(space_point_fun_region_pos, tsc, chord.count);
+	is_within_vl_distance : bool = false;
+	total_vl_distance : float64 = 0;
+	for note, note_index : chord {
+		total_vl_distance += abs(note - pitch_set[note_index]);
+	}
+
+	fun_region_distance : float64 = 0;
+	chord_fun_region_pos := OrderedPitchSetToFundamentalRegion(chord, cast(float64) tsc);
+	for note, note_index : chord {
+		fun_region_distance += abs(chord_fun_region_pos[note_index] - space_point_fun_region_pos[note_index]);
+	}
+
+	if fun_region_distance <= max_vl_distance || total_vl_distance <= max_vl_distance {
+		return true;
+	}
+	return false;
+}
+
+IsChordSpaceFilterSum :: inline (
+	fun_region_pos : [] int,
+	filter_value : int,
+	chord_dim : int)
+-> bool
+{
+	sum : int = 0;
+	for 0..chord_dim-1 sum += fun_region_pos[it];
+	if sum == filter_value return true;
+	return false;
+}
+
+IsChordSpaceFilterSum :: inline (
+	fun_region_pos : [] $T,
+	filter_value : T,
+	chord_dim : int) 
+-> bool
+{
+#assert(T == float || T == float64);
+	sum : T = 0;
+	for 0..chord_dim-1 sum += fun_region_pos[it];
+	if FloatBothEqual(sum, filter_value) return true;
+	return false;
+}
+
+IsChordSpaceFilterDimension :: inline (
+	fun_region_pos : [] $T,
+	filter_index : s32, filter_value : s32,
+	tuning_system_count : int) 
+-> bool
+{
+	dim_value := cast(int) fun_region_pos[filter_index];
+	if PosMod(dim_value,tuning_system_count) == filter_value {
+		return true;		
+	}
+	return false;
+}
+
+InValueSet :: inline (
+	fr_pos : [] float64,
+	value_set : [] float64,
+	tuning_system_count : int) 
+-> bool
+{
+	for fun_pos, f_index : fr_pos {
+		//fun mod is the pitch since the fundamental region modulo tuning count is the pitch
+		fun_mod : float64 = PosMod(fun_pos, cast(float64) tuning_system_count);
+		in_set : bool = false;
+		for value_set if Float64Equal(it, fun_mod) {
+			in_set = true;
+			break;
+		}
+		if !in_set return false;
+	}
+	return true;
+}
+
+//TODO Pass in cs_filter and then we can systematize
+//the filters and use the continuously by id if we pull
+//the filters out of
+FilterByInterDistance :: inline (
+	fr_pos : [] int,
+	tsc : int, //tuning_system_count
+	inter_distance : int,
+	input_smallest_distance : int,
+	min_diff_count : int)
+-> bool
+{
+	equidistance : int = tsc / fr_pos.count;
+	fun_pos_diffs : [] int = FunRegionToPitchSetDeltas(fr_pos, tsc,,temp);
+
+	smallest_distance : int = input_smallest_distance;
+	diff_count : int = 0;
+	for fun_diff : fun_pos_diffs {
+		is_within_distance : bool = false;
+		for equidistance-inter_distance..equidistance+inter_distance {
+			is_within_distance ||= it == fun_diff;
+		}
+		if is_within_distance {
+			diff_count += 1;
+		}
+		if fun_diff < smallest_distance {
+			smallest_distance = fun_diff;
+		}
+	}
+
+	//TODO We can check only if a subset meet it here easily
+	if diff_count >= min_diff_count && 
+	   smallest_distance >= input_smallest_distance 
+	{
+		return true;
+	}
+	return false;
+}
+//TODO Pass in cs_filter and then we can systematize
+//the filters and use the continuously by id if we pull
+//the filters out of
+//TODO Remove this one once we remove the older filtering points
+FilterByInterDistance :: inline (
+	fun_region_pos : [] int,
+	tsc : int, //tuning_system_count
+	inter_distance : int,
+	input_smallest_distance : int,
+	min_diff_count : int,
+	$chord_dim : int)
+-> bool
+{
+	equidistance : int = tsc / chord_dim;
+	fun_pos_diffs : [chord_dim] int = FunRegionToPitchSetDeltas(fun_region_pos, tsc, chord_dim);
+
+	smallest_distance : int = input_smallest_distance;
+	diff_count : int = 0;
+	for fun_diff : fun_pos_diffs {
+		is_within_distance : bool = false;
+		for equidistance-inter_distance..equidistance+inter_distance {
+			is_within_distance ||= it == fun_diff;
+		}
+		if is_within_distance {
+			diff_count += 1;
+		}
+		if fun_diff < smallest_distance {
+			smallest_distance = fun_diff;
+		}
+	}
+
+	//TODO We can check only if a subset meet it here easily
+	if diff_count >= min_diff_count && 
+	   smallest_distance >= input_smallest_distance 
+	{
+		return true;
+	}
+	return false;
+}
+
+//TODO Can likely remove the FilterByInterDistance since we can just pass in
+//augmented triad or diminished 7th into here which will have the same result.
+FilterByInterChordDistance :: inline (
+	max_diff : int,
+	fun_region_pos : [] int,
+	tsc : int, //tuning_system_count
+	//TODO This needs to be precomputed so we don't have recompute every time we call this function
+	input_chord_diffs : [][chord_dim] int,
+	$chord_dim : int)
+-> bool
+{
+	pitch_set_deltas : [chord_dim] int = FunRegionToPitchSetDeltas(fun_region_pos, tsc, chord_dim);
+	quick_sort(pitch_set_deltas, (p1,p2) => p1-p2);
+	is_within_diff : bool = false;	
+	for chord_diffs : input_chord_diffs {
+		is_within_distance : bool = false;
+		total_delta_diff : int = 0;
+		for c_diff, c_index : chord_diffs {
+			total_delta_diff += abs(c_diff - pitch_set_deltas[c_index]);
+		}
+		if total_delta_diff <= max_diff {
+			is_within_diff = true;
+			break;
+		}
+	}
+
+	if is_within_diff return true;
+	return false;
+}
+
+//TODO Add this back to filtering without chord_dim and just use
+//fun region pos so we can 
+FilterSameValueCount :: inline (
+	same_value_count : int,
+	fun_region_pos : [] int,
+	tsc : int, //tuning_system_count
+	$chord_dim : int,
+	//We pass these in so we can reuse instead of instantiating
+	//new arrays for every points
+	equal_values : *[..] int,
+	equal_count : *[..] int)
+-> bool
+{
+	//Note : FunRegionPosToPitchSet is sorted which is why we can check sequentially
+	//for same pairs
+	pitch_set := FunRegionPosToPitchSet(fun_region_pos, tsc, chord_dim,,temp);
+	for fun_index : 1..chord_dim-1 {
+		if pitch_set[fun_index] == pitch_set[fun_index-1] {
+			already_equal : bool = false;
+			for <<equal_values if it == pitch_set[fun_index] {
+				(<<equal_count)[it_index] += 1;
+				already_equal = true;
+			}
+			if !already_equal {
+				array_add(equal_values, pitch_set[fun_index]);
+				array_add(equal_count, 2);
+			}
+		}
+	}
+
+	// dim_reduction : int = ArraySum(<<equal_count);
+
+	is_valid_dim : bool = false;
+	//TODO This can == or >= depending if we want the precise same_value_count 
+	// or also any count >= like in 3D, same_value_count == 2 will also give
+	//single notes with all 3 same values.
+	// for <<equal_count if it == same_value_count {
+	for <<equal_count if it >= same_value_count {
+		is_valid_dim = true;
+		break;
+	}
+
+	//Reset memory here so we can reuse to check other points
+	array_reset_keeping_memory(equal_values);
+	array_reset_keeping_memory(equal_count);
+
+	return is_valid_dim;
+	// if dim_reduction >= input_dim_reduction {
+	// if max_dim == input_dim_reduction {
+	// 	return true;
+	// }			
+	// return false;
+}
+
+//TODO update the variable names in here, especially grid ones
+//TODO Leaving 3D here for now since this models the mapping
+//into 3D specifically
+/*TODO If we reuse this as a general 3D space, then we could rename it
+*/
+//TODO Rename this to Space3D once we clear the old 3d code out
+//and then remove all the unused data like osc waves and also these positions
+//and also technically dspace and op space id since those are op space specific now
+//TODO RENAME TO Space3D once we update everything
+ChordSpace3 :: struct {
+	// grid_world_center : Vector2F;
+	//TODO should we rename to dspace_world_center?
+	//TODO I think we can REMOVE THIS now since we just use the op_space.world_offset
+	chord_s3_world_pos : Vector2F;
+	//TODO Can we remove this or the viewport?
+	chord_s3_dim : Vector2F; //TODO should this be an int vector?
+
+	dspace_id : int;
+	//TODO Could move this out and use DSpaceToOpSpace to fetch it like with 2D.
+	//Then we could reuse this chord_s3 in other op_spaces... OR maybe not in which case we could just leave it...
+	//We could just move the camera to this op_space and keep the text fixed if we want to be able to see it for example
+	op_space_id : int;
+
+	//We could pull these out as constants instead if needed
+	base_group_id : int = 0;
+	vl_group_id : int = 1;
+
+	//NOTE : We can get lp_count from music_pt_count in tuning_system
+	//but we keep here both for caching but also because it is the linear point count of the space.
+	//So we need to update both of them whenever we set the tuning_system.
+	/*DOC : These are the defaults for this 3d space. We can set different ones if we want
+	with a separate custom geometry now.
+	*/
+	lp_count : int;
+	//TODO we can rename default tuning system
+	tuning_system_id : int; 
+
+	/*Note : We have just a boolean for chord_s4 because everything
+	is the same in terms of rendering and most input except for
+	moving through the 4th dimension and possibly some filtering
+	of vertices later on.
+	*/
+	//TODO Could make this an enum so we could even map
+	//5,6 and higher dim spaces which can then be explored
+	//in 3D space and programatically at the same time.
+	higher_dim : int;
+	//TODO could put filters in a separate table
+	cs_filter_aggregate : ChordSpaceFilterAggregate;
+	new_cs_filters : [..] CSFilter;
+
+	//TODO This will likely just be calling a synthesizer eventually
+	//So it does not matter where we put the data for now.
+	//TODO Can remove this now
+	osc_waves : [] OscWave;
+	synth : SimpleSynth;
+	default_wave_type : OscWaveType;
+
+	//TODO Need to make a point creating system like we did
+	//with filter system.
+	octave_count : int;
+
+	lerp_vl_colors : bool;
+	render_vl_order_as_int : bool;
+	//TODO can put 6 more bools here since we have an enum u8 in ChordSpaceFilter 
+
+	//TODO implement invariant ids with arrows and arrow changes
+	// invariant_ids : [3] int;
+
+	//TODO move this out into separate array for points
+	// points_dyn : [] SpacePoint3D;
+
+	//TODO move this out into separate array for edges
+	// edges : [..] GridEdge3D;
+
+	/*TODO Should we put all this in the op_space for space_3ds eventually?
+	Then we can also have generalized shapes like we do for 2D and have
+	cubes, icosahedrons, pyramids and anything else with low number of triangles.
+	Then we can treat the 3d spaces the same way as the 2d spaces and probably
+	also optimize in very similar ways.
+	*/
+	depth : float = DEFAULT_3D_DEPTH;
+	n : float = DEFAULT_3D_N;
+	f : float = DEFAULT_3D_F;
+
+	viewport : Viewport;
+	p_frustum : Matrix4F;
+
+	/*TODO should we keep using Matrix4x3F here? or split up into
+	Matrix3F for transformation and Vector3F for position.
+	this depends on efficiency and how they are accessed otherwise
+	*/
+	//TODO could remove temp if we did mouse delta and normalized rotation matrix (or used quaternions) every frame
+	cam_trans : Matrix4x3F = DEFAULT_CAM_TRANS;
+	//TODO can we pull this out and simply recompute every frame?
+	temp_cam_rotate : Matrix3F = Matrix3F_Identity;
+	is_mouse_rotating : bool;
+	mouse_cam_is_moving : bool;
+
+	//TODO can we pull this out and simply recompute every frame?
+	mouse_rotate : Matrix3F = Matrix3F_Identity;
+	temp_mouse_rotate : Matrix3F = Matrix3F_Identity;
+
+	mouse_start : Vector2F = MOUSE_DEFAULT;
+
+	center_of_rotation : Vector3F;
+
+	//TODO WHY NOTE REPLACE THIS WITH The SpacePoint3D
+	//instead of point_index OR at least the space_point_id for now
+	//and then fetch it instead of doing points_in_grid...
+	//TODO maybe this can also be removed and only be placed per frame
+	chosen_cube : TriangleInGrid3F;
+	click_cube : TriangleInGrid3F;
+}
+
+/*DOC : Reminder we don't need to split up lines since we an do it programatically
+and just change the y value in 3d so it works like multiple lines.
+
+TODO We could increase this to 64 bytes if 32 is not enough but this is supposed to be a label
+so we don't want it to be too big
+*/
+SpaceText3D :: struct {
+	//TODO Can just use the op space 3d allocator once we implement that
+	text : string;
+	text_chars : [32] u8;
+	op_pos : Vector3F;
+	//We can use this later to add or remove things altogether from a 3d space
+	group_id : int;
+	//TODO We could add a color here as well if needed
+}
+//TODO Eventually we can just allocated the string with the op space allocator
+//similarly to the space point fun region pos
+SetSpaceText3D :: inline (s : string, space_text : *SpaceText3D) {
+	count : int = min(s.count, space_text.text_chars.count);
+	space_text.text.data = space_text.text_chars.data;
+	space_text.text.count = count;
+	memcpy(space_text.text.data, s.data, count);
+}
+//TODO We could 
+Text3DBackgroundRect :: inline (
+	text : string, 
+	text_pos : Vector2F,
+	pixels_per_square : float, 
+	ted : TextEditorData) 
+-> Rectangle2 
+{
+	rect_dim := Vector2F.{text.count*ted.code_font_1_char_width_world,
+		ted.char_height / pixels_per_square};
+	text_adjusted_pos : Vector2F = text_pos + Vector2F.{0.5*rect_dim.x,-0.15*rect_dim.y};
+	//0.45 seemed more centered for 1 char but I think its good enough like this
+	// text_adjusted_pos : Vector2F = text_formatted_pos + Vector2F.{0.45*rect_dim.x,-0.15*rect_dim.y};
+	rect_formatted : Rectangle2 = RectCenterDim(text_adjusted_pos, rect_dim);
+	// rect_formatted = RectCenterDim(text_formatted_pos + Vector2F.{0.3,-0.15}, Vector2F.{1,1});
+	return rect_formatted;
+}
+ChordSpacePoints3D :: struct {
+	id : int;
+	tuning_system_count : int;
+	chord_dim : int;
+	//TODO We could make this not resizable and just copy
+	//the points over if that is more efficient
+	//Maybe we can change the struct and just the the vector 3
+	//and the pitch set for generalized version
+	//maybe with an id for convenience
+	chord_sp_3D : [..] SpacePoint3D;
+}
+FindChordSpacePoints3D :: inline (
+	chord_dim : int,
+	tuning_system_count : int,
+	all_chord_space_points : [] ChordSpacePoints3D) 
+-> *ChordSpacePoints3D, found : bool
+{
+	for * all_chord_space_points {
+		if it.chord_dim == chord_dim && 
+			it.tuning_system_count == tuning_system_count 
+		{
+			return it, true;
+		}
+	}
+	return null, false;
+}
+//DOC In the renderer we check if .x >= 0 otherwise we set multicolor
+DEFAULT_CUBE_MULTI_COLOR :: Vector4F.{-1,-1,-1,-1};
+/*TODO so maybe these can remane SpacePoints like the others
+but then we have different mesh_ids (3D for cube and rectangle for 2D)
+although keeping them separate for now makes sense since we are not sure
+exactly or even if they truly have things in common
+
+TODO most of the stuff is no longer used in the new 3d model so we can likely remove it like
+dspace id and int pos and all the stack arrays and cube
+*/
+SpacePoint3D :: struct {
+	//TODO Do we really need this id since the points are always used a dspace, maybe for selection?
+	//This might be useful for dynamic libraries later
+	id : int;
+	//DOC : Convenience to group things together and add/delete together later.
+	group_id : int;
+
+	rel_pos : Vector3F;
+	pitch_set : [] float64;
+	fun_region : [] float64;
+	//DOC : This is good for setting any text. Someone could set traditional music values
+	//or alternative values. By default we set the pitch set but allowing any text
+	//allows the point to represent anything and we could add extra info for different geometries
+	//within the same 3d space.
+	shape_text : string;
+
+	draw_wire_mesh : bool;
+	is_selectable : bool = true;
+	//TODO Should we name this remove with filter instead? All custom points won't be added
+	do_not_remove_with_filter : bool;
+	color := DEFAULT_CUBE_MULTI_COLOR;
+	//TODO Can have a transformed cube or just have 3x3 for all cubes...
+	//TODO Can have this for all 3d shapes and a separate one with 3x3 for arbitrary transforms
+	scale_value : float = 1.0;
+
+	render_solid_cube : bool = true;
+	// dspace_id : int;
+}
+
+#if 0 {
+SortVisibleSpacePoints :: inline (s1 : SpacePoint3D, s2 : SpacePoint3D) -> int {
+	sort_value : int = s1.dspace_id - s2.dspace_id;
+	if sort_value == 0 sort_value = cast(int) s2.render_solid_cube - cast(int) s1.render_solid_cube;
+	return sort_value;
+}
+}
+
+OrderedPitchSetToSpacePoint3D :: inline (
+	ordered_pitch_set : [$chord_dim] int,
+	tuning_system : TuningSystem,
+	visible_space_points_3D : [] SpacePoint3D)
+-> SpacePoint3D, found_space_point_3D : bool
+{
+	fun_region_pos := OrderedPitchSetToFundamentalRegion(ordered_pitch_set, tuning_system.music_pt_count);
+	space_point_3D, found_space_point_3D := FunRegionPosToSpacePoint3D(fun_region_pos, visible_space_points_3D);
+	return space_point_3D, found_space_point_3D;
+}
+
+FunRegionPosToSpacePoint3D :: inline (
+	fun_region_pos : [$chord_dim] int,
+	visible_space_points_3D : [] SpacePoint3D)
+-> SpacePoint3D, found_space_point_3D : bool
+{
+	space_point_3D : SpacePoint3D = ---;
+	found_space_point_3D : bool = false;
+	for point_3D : visible_space_points_3D {
+		arrays_equal : bool = true;
+		for 0..chord_dim-1 if point_3D.fun_region_pos[it] != fun_region_pos[it] {
+			arrays_equal = false;
+			break;
+		}
+		if arrays_equal {
+			found_space_point_3D = true;
+			space_point_3D = point_3D;
+			break;
+		}
+	}
+	return space_point_3D, found_space_point_3D;
+}
+
+GetOrCreateChordSpacePoints3D :: inline (
+	chord_dim : int,
+	tuning_system_count : int, //tuning_system_count
+	all_chord_space_points : *[..] ChordSpacePoints3D)
+-> *ChordSpacePoints3D
+{
+	csp, found_csp := FindChordSpacePoints3D(chord_dim, tuning_system_count, all_chord_space_points.*);
+	if found_csp return csp;
+	// for * all_chord_space_points.* if it.chord_dim == chord_dim && it.tuning_system_count == tuning_system_count {
+	// 	//Early out since we already have these chord space poitns
+	// 	return it;
+	// }
+
+	chord_space_points : *ChordSpacePoints3D = array_add(all_chord_space_points);
+	chord_space_points.id = ALL_NEXT_IDS.NEXT_CHORD_SPACE_POINT_ID;
+	ALL_NEXT_IDS.NEXT_CHORD_SPACE_POINT_ID += 1;
+	chord_space_points.tuning_system_count = tuning_system_count;
+	chord_space_points.chord_dim = chord_dim;
+
+	p_loops : PermutationLoops;
+	p_loops.loop_count = chord_dim;
+	p_loops.start_value = -tuning_system_count;
+	p_loops.end_value = tuning_system_count;
+	new_fun_pos := NewArray(chord_dim, float64,,temp);
+	for x : p_loops {
+		//TODO Pass in tuning_system_count
+		is_non_descending_order : bool = true;
+		for 0..p_loops.loop_count-2 {
+			is_non_descending_order &&= x[it] <= x[it+1];
+		}
+		is_non_descending_order &&= x[p_loops.loop_count-1] <= x[0] + tuning_system_count;
+
+		x_sum : int = ArraySum(x);
+		sum_in_bounds : bool = x_sum >= 0 && x_sum < tuning_system_count;
+
+		//TODO Can use this to filter out specific cross section although we 
+		//do these with the generalized filters now.
+		// cross_section_sum : bool = x_sum == 0;
+
+		// for x1 : -tsc..tsc for x2 : -tsc..tsc for x3 : -tsc..tsc 
+		// if x[0] <= x[1] && x[1] <= x[2] && x[2] <= x[0] + tsc &&
+		// 	// x[0] + x[1] + x[2] == 0
+		// 	x[0] + x[1] + x[2] >= 0 && x[0] + x[1] + x[2] < tsc
+		// {
+		if is_non_descending_order && sum_in_bounds {
+			sp3 : *SpacePoint3D = array_add(*chord_space_points.chord_sp_3D);
+			for x new_fun_pos[it_index] = cast(float64) it;
+			//DOC : We don't need an allocator here since we will reuse the chord space points everywhere.
+			//This is more efficient if we have multiple chord spaces in different 3d op spaces for example and for filtering.
+			UpdateSpacePoint3D(sp3, tuning_system_count, new_fun_pos);
+		}
+	}
+	// print("chord space size = %\n", chord_space_points.chord_sp_3D.count);
+
+	return chord_space_points;
+}
+
+/*DOC : We pass in an allocator here to allocate all the values needed for the 3d space points fr poses and pitch sets.
+
+TODO Ultimately, we can just put this for the dynamic library and then people can reuse the loop and update it as they
+like and likely that would provide a more efficient way to filter through dimension >= 7 in 12 equal temperament for example
+*/
+ChordSpacePoints3DWithFilter :: inline (
+	chord_dim : int,
+	tuning_system_count : int,
+	cs_filters : [] CSFilter,
+	cs_filter_aggregate : ChordSpaceFilterAggregate,
+	csp : *[..] SpacePoint3D)
+{
+	p_loops : PermutationLoops;
+	p_loops.loop_count = chord_dim;
+	p_loops.start_value = -tuning_system_count;
+	p_loops.end_value = tuning_system_count;
+	new_fun_pos := NewArray(chord_dim, float64,,temp);
+	for fr_pos : p_loops {
+		is_non_descending_order : bool = true;
+		for 0..p_loops.loop_count-2 {
+			is_non_descending_order &&= fr_pos[it] <= fr_pos[it+1];
+		}
+		is_non_descending_order &&= fr_pos[p_loops.loop_count-1] <= fr_pos[0] + tuning_system_count;
+
+		x_sum : int = ArraySum(fr_pos);
+		sum_in_bounds : bool = x_sum >= 0 && x_sum < tuning_system_count;
+
+		//TODO Can use this to filter out specific cross section although we 
+		//do these with the generalized filters now.
+		// cross_section_sum : bool = x_sum == 0;
+
+		// for x1 : -tsc..tsc for x2 : -tsc..tsc for x3 : -tsc..tsc 
+		// if x[0] <= x[1] && x[1] <= x[2] && x[2] <= x[0] + tsc &&
+		// 	// x[0] + x[1] + x[2] == 0
+		// 	x[0] + x[1] + x[2] >= 0 && x[0] + x[1] + x[2] < tsc
+		// {
+		if is_non_descending_order && sum_in_bounds {
+			for fr_pos new_fun_pos[it_index] = cast(float64) it;
+			if FilterChordSpacePoints(new_fun_pos, tuning_system_count, cs_filters, cs_filter_aggregate) {
+				sp3 : *SpacePoint3D = array_add(csp);
+				//TODO Do we need to set an id here anymore? Remove this if we don't use it.
+				//We could set a separate id for each
+				sp3.id = ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID;
+				defer ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID += 1;
+				UpdateSpacePoint3D(sp3, tuning_system_count, new_fun_pos);
+			}
+		}
+	}
+}
+
+/*TODO keeping this here since we
+	could return another Grid3D type for other grid_3ds such as scales, etc...
+*/
+//TODO could overload with a function that passes in transforms directly if needed
+//TODO could pass in viewport directly if we separate 2D and 3D grid structs
+MakeGrid3D :: (
+	chord_s3_world_pos : Vector2F, 
+	chord_s3_dim : Vector2F, 
+    depth : float, n : float, f : float, 
+    visible_space_points_3D : *[..] SpacePoint3D,
+    cube_poses : [] Vector3F, colors : [] Vector4F = .[],
+    cam_start : Vector3F = Vector3F.{}, 
+    center_of_rotation : Vector3F = Vector3F.{}) 
+-> ChordSpace3 
+{
+	grid_3D : ChordSpace3;
+	grid_3D.dspace_id = ALL_NEXT_IDS.NEXT_CHORD_S3_ID;
+	defer ALL_NEXT_IDS.NEXT_CHORD_S3_ID += 1;
+	grid_3D.viewport = MakeViewportFullDim(chord_s3_dim, depth);
+	//Note : without depth precision
+	// grid_3D.p_frustum = MakeFrustumProjectionWithG(grid_3D.viewport.g, grid_3D.viewport.s, n, f);
+	//Note : Depth precision adds floating point precision farther away and pre inverts z for the depth buffer
+	/*Note : VIEWPORT G AND S are used in p_frustum here in order
+	to do appropriate clipping in
+	*/
+	grid_3D.p_frustum = MakeFrustumProjectionDepthPrecisionWithG(grid_3D.viewport.g, grid_3D.viewport.s, n, f);
+	// grid_3D.cam_transform = Matrix3F_Identity;
+	grid_3D.cam_trans = MakeMatrix4x3F(Matrix3F_Identity, cam_start);
+	grid_3D.mouse_rotate = Matrix3F_Identity;
+	grid_3D.temp_mouse_rotate = Matrix3F_Identity;
+	grid_3D.temp_cam_rotate = Matrix3F_Identity;
+	grid_3D.center_of_rotation = center_of_rotation;
+	grid_3D.chord_s3_world_pos = chord_s3_world_pos;
+	grid_3D.chord_s3_dim = chord_s3_dim;
+
+	for pos, pos_index : cube_poses {
+		space_point_3D : SpacePoint3D;
+		space_point_3D.id = ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID;
+		defer ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID += 1;
+		// space_point_3D.dspace_id = grid_3D.dspace_id;
+		space_point_3D.rel_pos = pos;
+		// space_point_3D.data.mesh = CUBE_TRI_FACE;
+		// space_point_3D.data.transform = MakeMatrix4x3F(Matrix3F_Identity, pos);
+		// if colors.count > 0 for * face : space_point_3D.data.mesh.faces {
+		// 	face.color = colors[pos_index % colors.count];
+		// }
+		array_add(visible_space_points_3D, space_point_3D);
+	}		
+	return grid_3D;
+}
+
+/*Note : This is a copy MakeGrid3D specific for pitch_s3.
+
+TODO I think we can generalize this to all dimensions and just pass in chord_dim.
+This is so incomprehensible in 3D unlikely to use it anyways for anything other than showing it is incomprehensible.
+*/
+MakePitchSpace3 :: inline (
+	chord_s3_world_pos : Vector2F, 
+	chord_s3_dim : Vector2F, 
+	depth : float, n : float, f : float, 
+	visible_space_points_3D : *[..] SpacePoint3D,
+	cam_start : Vector3F = Vector3F.{}, 
+	center_of_rotation : Vector3F = Vector3F.{}) 
+-> ChordSpace3 
+{
+	pitch_s3 : ChordSpace3;
+	pitch_s3.dspace_id = ALL_NEXT_IDS.NEXT_CHORD_S3_ID;
+	defer ALL_NEXT_IDS.NEXT_CHORD_S3_ID += 1;
+	pitch_s3.viewport = MakeViewportFullDim(chord_s3_dim, depth);
+	//Note : without depth precision
+	// pitch_s3.p_frustum = MakeFrustumProjectionWithG(pitch_s3.viewport.g, pitch_s3.viewport.s, n, f);
+	//Note : Depth precision adds floating point precision farther away and pre inverts z for the depth buffer
+	/*Note : VIEWPORT G AND S are used in p_frustum here in order
+	to do appropriate clipping in
+	*/
+	pitch_s3.p_frustum = MakeFrustumProjectionDepthPrecisionWithG(pitch_s3.viewport.g, pitch_s3.viewport.s, n, f);
+	// pitch_s3.cam_transform = Matrix3F_Identity;
+	pitch_s3.cam_trans = MakeMatrix4x3F(Matrix3F_Identity, cam_start);
+	pitch_s3.mouse_rotate = Matrix3F_Identity;
+	pitch_s3.temp_mouse_rotate = Matrix3F_Identity;
+	pitch_s3.temp_cam_rotate = Matrix3F_Identity;
+	pitch_s3.center_of_rotation = center_of_rotation;
+	pitch_s3.chord_s3_world_pos = chord_s3_world_pos;
+	pitch_s3.chord_s3_dim = chord_s3_dim;
+	pitch_s3.higher_dim = 3;
+	pitch_s3.osc_waves = NewArray(3, OscWave,, context.allocator);
+
+	//TODO Need to pass this in and store in ChordSpace3
+	bp_count : int = 12;
+	//TODO We could add a filter here too like with ChordSpace3
+	for x : 0..bp_count-1 for y : 0..bp_count-1 for z : 0..bp_count-1 {
+		point_3D : *SpacePoint3D = array_add(visible_space_points_3D);
+		point_3D.id = ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID;
+		defer ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID += 1;
+		// point_3D.dspace_id = pitch_s3.dspace_id;
+		// point_3D.fun_region_size = 3;
+		point_3D.fun_region = NewArray(3, float64);
+		point_3D.fun_region[0] = cast(float64) x;
+		point_3D.fun_region[1] = cast(float64) y;
+		point_3D.fun_region[2] = cast(float64) z;
+		point_3D.rel_pos = FunRegionFloatPosToRelPos(point_3D.fun_region, bp_count);
+		// point_3D.data.transform = MakeMatrix4x3F(Matrix3F_Identity, point_3D.rel_pos);
+		//TODO fun_region_pos should be permutation index and then
+		//can calculate based on dimension and index
+		//TODO fun_region_float then we cant, so we need to store
+		//it in a separte array since it can be anything
+		// for point_3D.fun_region point_3D.fun_region_float[it_index] = it;
+
+		//TODO Can set this but this was completely incomprehensible imo.
+		//Could be good as a demonstration i guess...
+		#if 0 {
+		if IsOnAxis(float64.[1.0,3.0,6.0,8.0,10.0], point_3D.fun_region, cast(float64) bp_count) {
+			point_3D.color = GREY_BLACK_V;
+		} else {
+			point_3D.color = GREY_DARKER_V;
+		}
+		}
+
+		//TODO Need to remove the Cube from SpacePoint3D
+		// point_3D.data.mesh = CUBE_TRI_FACE;
+		// point_3D.data.transform = MakeMatrix4x3F(Matrix3F_Identity, pos);
+		// for * face : point_3D.data.mesh.faces {
+		// 	face.color = color;
+		// }
+	}		
+	return pitch_s3;
+}
+
+MapChordS3Data :: struct {
+	op_space_id : int;
+	//TODO This will be fetched by higher_dim for now and then eventually
+	//the input will also need to be a generalized array
+	vl_start_chord : AsmArray(float64);
+	vl_deltas : AsmArray(float64);
+
+	//TODO add dspace_shape_group/ref to vl_input and each vl here so we can use it later if needed
+	//for memory ranges and also for specific deletion. Could put a ref for the LineEndpoint and the InterPoint.
+	vl_index_ref : int;
+	//TODO I think we can just remove this as well as we are no longer using it
+	// dspace_id : int;
+
+	//TODO Remove this once we clean up 3d data and generalize the asm code library generation
+	// old_vl_input_data : int;
+	// vl_data : int;
+	// vl_count : int;
+
+	//TODO we should add this so that the vls can be either selectable or not
+	// vl_points_selectable : AsmBool;
+} @LibraryAsmGen
+
+//Analogous to CreateSpace3D in Library
+//TODO Rename to AsmS3Data
+//@LibraryGen
+AsmSpace3Data :: struct {
+	op_space_id : int;
+	tuning_system_id : int;
+	higher_dim : int;
+	asm_cs_filters : AsmArray(AsmCSFilter);
+
+	//Putting this here so we can set the camera to see the entire 3d space but maybe
+	s3_cam_start_type : S3CamStartType;
+	cam_start_pos : Vector3F64;
+
+	//TODO We can eventually add an option to send to midi
+	//but that would involve registering midi note off somehow
+	//can do with either a button press or when we change frequency/pitch values
+	osc_wave_type : OscWaveType;
+
+	/*DOC : We should make it clear that all values have to be set
+	and what the current defaults are. If 3d rotation feels wonky
+	then generally increasing the depth to between 26-40 should feel better.
+	This also depends on the size of the op space.
+	Can play around with n and f as well but those are more finicky.
+	*/
+	set_3d_perspective : AsmBool;
+	depth : float64 = DEFAULT_3D_DEPTH; 
+	n : float64 = DEFAULT_3D_N; 
+	f : float64 = DEFAULT_3D_F;
+} @LibraryAsmGen
+
+DEFAULT_CHORD_S3_ROTATION : Matrix3F : #run MakeRotationZ(PI/3.285) * MakeRotationY(PI/4);
+DEFAULT_CS3_DATA :: CreateChordS3Data.{
+	higher_dim = 3,
+	mouse_rotate = DEFAULT_CHORD_S3_ROTATION
+};
+DEFAULT_CHORD_S4_ROTATION : Matrix3F : #run MakeRotationZ(-PI/4);
+DEFAULT_CS4_DATA :: CreateChordS3Data.{
+	higher_dim = 4,
+	mouse_rotate = DEFAULT_CHORD_S4_ROTATION
+};
+S3CamStartType :: enum {
+	MIN_ZY;
+	USER_SET;
+	POINT_FOCUS;
+} @LibraryAsmGen
+//TODO between 25-30 might be better for larger op spaces / screens
+DEFAULT_3D_DEPTH : float : 24.0;
+// DEFAULT_3D_DEPTH : float : 25.0;
+DEFAULT_3D_N : float : 1.0;
+DEFAULT_3D_F : float : 240.0;
+//UPDATE CreateSpaceS3 in Library
+CreateChordS3Data :: struct {
+	//TODO I think we can remove these 2 now since they are not used and we just use the op_space instead
+	chord_s3_world_pos : Vector2F;
+	chord_s3_dim : Vector2F = OP_SPACE_DEFAULT_SIZE;
+
+	//TODO should we set these defaults somewhere else or is having them here good enough?
+	depth : float = DEFAULT_3D_DEPTH;
+	n : float = DEFAULT_3D_N; 
+	f : float = DEFAULT_3D_F;
+
+	s3_cam_start_type : S3CamStartType;
+	cam_focus_fun_region_pos : [] float64;
+	cam_trans : Matrix4x3F = DEFAULT_CAM_TRANS;
+	center_of_rotation : Vector3F = DEFAULT_CENTER_OF_ROTATION;
+
+	//TODO This rotates the points. Maybe we should rename to space_rotate? 
+	//It is because we use the mouse to rotate the space, so I will leave this here
+	//for clarity for now so we remember and to be consistent with other names.
+	mouse_rotate : Matrix3F;
+
+	//TODO Use this with tuning_system and also for audio wave generation.
+	//Test if this is working in 3D and 4D.
+	//This can differ from tuning system since we can have 12 point tuning system
+	//that is not equal temperament but offset. We still draw them equally space right now
+	//since we will not be doing offset 3d geometries. People can implement those on their own if needed.
+	lp_count : int = 12; //linear_point_count
+	//default tuning system id
+	tuning_system_id : int = 0;//12-ET is default 0
+
+	//For now 3 or 4 and eventualy >= 3 once we generalize for all dimensions.
+	higher_dim : int = 3;
+
+	op_space_id : int;
+
+	osc_wave_type : OscWaveType;
+	lerp_vl_colors : bool;
+
+	//TODO Should just pass in a filter table here and grab filters
+	//or an array of filters and add them to a filter table separately
+	new_cs_filters : [] CSFilter = .[CSFilter.{filter_type=.ALL}];
+	cs_filter_aggregate : ChordSpaceFilterAggregate;
+}
+
+//TODO MAybe we should rename this just OpSpace3DData
+DEFAULT_CENTER_OF_ROTATION :: Vector3F.{0,0,25}; 
+DEFAULT_CAM_TRANS : Matrix4x3F : #run MakeMatrix4x3F(Matrix3F_Identity, Vector3F.{0,0,0});
+CreateSpace3D :: inline (
+	op_world_size : Vector2F,
+	create_cs3 : CreateChordS3Data, 
+	op_3D : *OpSpecData3D)
+{
+	//TODO We could return an error hear instead of asserting
+	assert(create_cs3.higher_dim >= 3);
+
+	// chord_s3 : ChordSpace3;
+	op_3D.op_space_3D.dspace_id = ALL_NEXT_IDS.DSPACE_ID;
+	defer ALL_NEXT_IDS.DSPACE_ID += 1;
+	op_3D.op_space_3D.op_space_id = create_cs3.op_space_id;
+
+	op_3D.op_space_3D.higher_dim = create_cs3.higher_dim;
+	op_3D.op_space_3D.mouse_rotate = create_cs3.mouse_rotate;
+	op_3D.op_space_3D.temp_mouse_rotate = Matrix3F_Identity;
+	op_3D.op_space_3D.temp_cam_rotate = Matrix3F_Identity;
+	op_3D.op_space_3D.cam_trans = DEFAULT_CAM_TRANS;
+	op_3D.op_space_3D.center_of_rotation = create_cs3.center_of_rotation;
+	//TODO Can we remove these and just use op_space world pos and dim?
+	op_3D.op_space_3D.chord_s3_world_pos = create_cs3.chord_s3_world_pos;
+	op_3D.op_space_3D.chord_s3_dim = create_cs3.chord_s3_dim;
+
+	//TODO We don't need to do this since we can just reuse the 3d spec data
+	// op_3D.op_space_3D.new_cs_filters.allocator = op_3D.spec_3D_alloc;
+	for create_cs3.new_cs_filters {
+		csf : *CSFilter = array_add(*op_3D.op_space_3D.new_cs_filters);
+		csf.* = it;
+		//This should get cleared with the allocator if we clear or delete the op spaces
+		//and then we can just copy the arrays again when we create the new one.
+		csf.value_set = array_copy(it.value_set,,op_3D.spec_3D_alloc);
+		// array_add(*op_3D.op_space_3D.new_cs_filters, it);
+	}
+
+	//TODO Can pass this is as a setting. Also should likely be settable while running.
+	op_3D.op_space_3D.render_vl_order_as_int = true;
+	op_3D.op_space_3D.lerp_vl_colors = create_cs3.lerp_vl_colors;
+	// op_3D.op_space_3D.osc_waves = NewArray(op_3D.op_space_3D.higher_dim, OscWave,, context.allocator);
+
+	//TODO This can be arbitrary now so we should set the osc waves at runtime based on size of chord
+	op_3D.op_space_3D.default_wave_type = create_cs3.osc_wave_type;
+	op_3D.op_space_3D.synth.wave_type = create_cs3.osc_wave_type;
+	op_3D.op_space_3D.synth.envelope = MakeVolumeEnvelope();
+	// for 0..op_3D.op_space_3D.higher_dim-1 {
+	// 	AddSimpleWaveFromFrequency(0, *op_3D.op_space_3D.synth, audio_data);
+	// }
+
+	op_3D.op_space_3D.lp_count = create_cs3.lp_count;
+	op_3D.op_space_3D.tuning_system_id = create_cs3.tuning_system_id;
+
+
+	//Resize op space and set 3d perspective variables
+	//TODO We can allow these to be update
+	op_3D.op_space_3D.n = create_cs3.n;
+	op_3D.op_space_3D.f = create_cs3.f;
+	op_3D.op_space_3D.depth = create_cs3.depth;
+
+	#if 1 {
+	ResizeOpSpace3D(op_world_size, *op_3D.op_space_3D);
+	} else {
+	//TODO coudl move this down and create an update function so we can update when we resize or just resize 3d op space function
+	op_3D.op_space_3D.viewport = MakeViewportFullDim(create_cs3.chord_s3_dim, create_cs3.depth);
+	//Note : without depth precision
+	// op_3D.op_space_3D.p_frustum = MakeFrustumProjectionWithG(op_3D.op_space_3D.viewport.g, op_3D.op_space_3D.viewport.s, n, f);
+	//Note : Depth precision adds floating point precision farther away and pre inverts z for the depth buffer
+	/*Note : VIEWPORT G AND S are used in p_frustum here in order to do appropriate clipping in
+	*/
+	//TODO Recompute this and viewport above if we change the size of the window to change 3D clipping viewport
+	op_3D.op_space_3D.p_frustum = MakeFrustumProjectionDepthPrecisionWithG(op_3D.op_space_3D.viewport.g, op_3D.op_space_3D.viewport.s, 
+		create_cs3.n, create_cs3.f);
+	}
+	// return op_3D.op_space_3D;
+}
+ResizeOpSpace3D :: inline (
+	new_op_size : Vector2F,
+	s3 : *ChordSpace3)
+{
+	// s3.depth = DEFAULT_3D_DEPTH * OP_SPACE_DEFAULT_SIZE.y / new_op_size.y;
+	// s3.f = DEFAULT_3D_F * new_op_size.y / OP_SPACE_DEFAULT_SIZE.y;
+	// s3.n = DEFAULT_3D_N * new_op_size.y / OP_SPACE_DEFAULT_SIZE.y;
+	// print("s3.depth=%\n", s3.depth);
+	s3.viewport = MakeViewportFullDim(new_op_size, s3.depth);
+	//Note : without depth precision
+	// s3.p_frustum = MakeFrustumProjectionWithG(s3.viewport.g, s3.viewport.s, n, f);
+	//Note : Depth precision adds floating point precision farther away and pre inverts z for the depth buffer
+	/*Note : VIEWPORT G AND S are used in p_frustum here in order to do appropriate clipping in
+	*/
+	//TODO Recompute this and viewport above if we change the size of the window to change 3D clipping viewport
+	s3.p_frustum = MakeFrustumProjectionDepthPrecisionWithG(
+		s3.viewport.g, s3.viewport.s, s3.n, s3.f);
+}
+Space3DStartCamTrans :: inline (
+	s3_cam_start_type : S3CamStartType,
+	cam_focus_fun_region_pos : [] float64,
+	user_set_cam_tran : Matrix4x3F,
+	op_3D : OpSpecData3D)
+-> Matrix4x3F
+{
+	//TODO Check this works with new points and compare/test each one
+	//TODO We could pull this out so we could use it elsewhere
+	cam_trans : Matrix4x3F = DEFAULT_CAM_TRANS;
+	if s3_cam_start_type == {
+	case S3CamStartType.USER_SET;
+		cam_trans = user_set_cam_tran;
+	case S3CamStartType.MIN_ZY;
+		//TODO Do we really need this because we can do it ourselves with POINT_FOCUS now and just pass in that point instead of doing it here. 
+		//I'll leave it for now because it is convenient from user perspective.
+		min_zy_pos := Vector3F.{FLOAT32_MAX, FLOAT32_MAX, FLOAT32_MAX};
+		//TODO Can remove the render_solid_cube check once we no longer use that for audio.
+		// for op_3D.all_op_space_points_3D if it.dspace_id == chord_s3.dspace_id && it.render_solid_cube {
+		for op_3D.all_op_space_points_3D {
+			rotated_pos : Vector3F = RotatedGrid3DPosition(it.rel_pos, op_3D.op_space_3D);
+			if rotated_pos.z < min_zy_pos.z || rotated_pos.y < min_zy_pos.y {
+				min_zy_pos = rotated_pos;
+			}
+		}
+		UpdateTranslation(*cam_trans, min_zy_pos - Vector3F.{0,0,10});
+	case S3CamStartType.POINT_FOCUS;
+		//TODO If the point is not visible should we still put the camera there or just default?
+		#if 1 {
+		found_visible_point : bool = false;
+		//TODO Can remove the render_solid_cube check once we no longer use that for audio.
+		// for op_3D.all_op_space_points_3D if it.dspace_id == chord_s3.dspace_id && it.render_solid_cube {
+		for op_3D.all_op_space_points_3D  {
+			//TODO Once we don't have fixed arrays in SpacePoint3D then we can remove this.
+			// fun_region_array : [] float64 = array_view(it.fun_region,0,chord_s3.higher_dim);
+			if ArraysFloatEqual(it.fun_region, cam_focus_fun_region_pos) {
+				rotated_pos : Vector3F = RotatedGrid3DPosition(it.rel_pos, op_3D.op_space_3D);
+				UpdateTranslation(*cam_trans, rotated_pos - Vector3F.{0,0,10});
+				found_visible_point = true;
+				break;
+			}
+		}
+		if !found_visible_point {
+			cam_trans = DEFAULT_CAM_TRANS;
+		}
+		} else {
+		//TODO If we use this would need to update this function to take in [] float64.
+		rel_pos : Vector3F = FunRegionFloatPosToRelPos(cam_focus_fun_region_pos, chord_s3.lp_count);
+		rotated_pos : Vector3F = RotatedGrid3DPosition(rel_pos, chord_s3);
+		UpdateTranslation(*cam_trans, rotated_pos);
+		}
+	}
+	return cam_trans;
+}
+
+//TODO Could make a version where we pass in pitch set and it converts it for us OR just convert externally
+//since we only call this in asm directly anyways.
+//TODO FROM HERE get this all working for generalized n dimensions here and then
+//set up specific filtering for 2d and 3d and then write a test that checks this new function with the old functions
+//TODO We could do a version with ints since all chord space points are ints
+//TODO We can call this FilterFunRegion so it is clearly more generalized
+FilterChordSpacePoints :: inline (
+	fr_pos : [] float64,
+	tuning_system_count : int,
+	cs_filters : [] CSFilter,
+	cs_filter_aggregate := ChordSpaceFilterAggregate.UNION) 
+-> bool
+{
+	all_cs_filter_checks : [] bool = NewArray(cs_filters.count, bool, true,, temp);
+
+	point_in_filter : bool = false;
+	for cs_filter, filter_index : cs_filters {
+		if cs_filter.filter_type == {
+		case ChordSpaceFilterType.ALL; {
+			point_in_filter = true;
+		}
+		case ChordSpaceFilterType.SUM; {
+			//TODO We can convert fr_pos to pitch set here if that makes more sense or have sum pitch set and just sum
+			//unless people just convert externally anyways
+			point_in_filter = IsChordSpaceFilterSum(fr_pos, cast(float64) cs_filter.filter_index, fr_pos.count);
+		}
+		//TODO Replace this with a chord_set option and then pass in diatonic chords for 3d option
+		case ChordSpaceFilterType.IN_VALUE_SET; {
+			point_in_filter = InValueSet(fr_pos, cs_filter.value_set, tuning_system_count);
+		}
+		case ChordSpaceFilterType.NO_DUPLICATE_PITCHES; {
+			point_in_filter = true;
+			pitch_set : [] float64 = FunRegionPosToPitchSet(fr_pos, tuning_system_count, fr_pos.count,,temp);
+			for i0 : 0..pitch_set.count-2 {
+				for i1 : i0+1..pitch_set.count-1 {
+					if Float64Equal(pitch_set[i0], pitch_set[i1]) {
+						point_in_filter = false;
+						break i0;
+					}
+				}
+			}
+		}
+		case ChordSpaceFilterType.DIATONIC; {
+			if tuning_system_count == 12 {
+				//NOTE : We do the PosMod in InValueSet so no need to convert to pitches here anyways
+				// pitch_set : [] float64 = FunRegionPosToPitchSet(fr_pos, tuning_system_count, fr_pos.count,,temp);
+				point_in_filter = InValueSet(fr_pos, float64.[0,2,4,5,7,9,11], tuning_system_count);
+			}
+		}
+		//TODO This is a default so it's a filtered version for each chord space but we can remove it and just put chromatic or all if needed
+		case ChordSpaceFilterType.DEFAULT; #through;
+		case ChordSpaceFilterType.CHROMATIC; {
+			fr_pos_int : [] int = NewArray(fr_pos.count, int);
+			for fr_pos fr_pos_int[it_index] = round_to_int(it);
+			//TODO Leaving this here for simplified asm but maybe I can remove it once we can reuse the data
+			if tuning_system_count == 12 {
+				if fr_pos.count == {
+				case 2; point_in_filter = FilterByInterDistance(fr_pos_int, tuning_system_count, 2, 2, fr_pos.count);
+				case 3; point_in_filter = FilterByInterDistance(fr_pos_int, tuning_system_count, 2, 3, fr_pos.count);
+				//TODO This is set from 4d but check how it is there and in higher dimensions
+				case; point_in_filter = FilterByInterDistance(fr_pos_int, tuning_system_count, 1, 2, fr_pos.count);
+				}
+			} else {
+				inter_distance : int = cs_filter.filter_index;
+				diminished_equidistance : int = round_to_int(cs_filter.filter_value);
+				point_in_filter = FilterByInterDistance(fr_pos_int, tuning_system_count, inter_distance, diminished_equidistance, fr_pos.count);
+			}
+		}
+		case ChordSpaceFilterType.LOCAL_VL_DISTANCE_TO_CHORD; {
+			//DOC : We see if the value_set is filter_value total vl close
+			point_in_filter = FilterLocalVLDistanceFromChords(cs_filter.filter_value,
+				fr_pos, tuning_system_count, cs_filter.value_set);
+		}
+		}
+
+		all_cs_filter_checks[filter_index] = point_in_filter;	
+	}
+
+	//TODO We can easily do OR, AND, DIFF and other set operations now
+	//Maybe consider group operations as well based on some function like transposition
+	all_true_filters : bool = true;
+	if cs_filter_aggregate == .UNION all_true_filters = false;
+	for all_cs_filter_checks if cs_filter_aggregate == {
+	case .INTERSECTION; all_true_filters &&= it;
+	case .UNION; all_true_filters ||= it;
+	}
+		
+	return all_true_filters;
+}
+//TODO FROM HERE we need a function similar to this but that actually goes through all the chord space points
+//to see if that allows us to go to higher dimensions actually. right now only 6 can be done with significant delay for generation.
+//then add an allocator to store the values and a clear op instruction to clear everything including allocator
+FilterCS3D :: inline (
+	//TODO Should we search for this in here or externally?
+	//We could have both for a consistent error as well
+	csp : ChordSpacePoints3D,
+	op_space_points_3D : *[..] SpacePoint3D,
+	cs_filters : [] CSFilter,
+	cs_filter_aggregate : ChordSpaceFilterAggregate)
+{
+	for csp.chord_sp_3D {
+		if FilterChordSpacePoints(it.fun_region, csp.tuning_system_count, cs_filters, cs_filter_aggregate) {
+			array_add(op_space_points_3D, it);
+		}
+	}
+}
+Remove3DPointsWithFilter :: inline (op_space_points_3D : *[..] SpacePoint3D) {
+	for op_space_points_3D.* if !it.do_not_remove_with_filter {
+		remove it;
+	}
+}
+
+//TODO We could pass in op spec 3d in here and set the alloc ourselves
+//ALTHOUGH if we allow creation like this later, then people can set this themselves and use their own
+//allocators for their own sets of data and so then this would be better overall.
+UpdateSpacePoint3D :: inline (
+	sp_3d : *SpacePoint3D,
+	tuning_system_count : int,
+	fun_pos : [] float64,
+	//TODO Not sure if this is worth it but I can leave it for now
+	$round_pitches_below_octave : bool = false)
+{
+	//TODO We could store these ids in the op spec data for 3d now and just pass them in from there.
+	//Maybe not if we also do it from chord space points then... I'll leave it for now and see if we actually use this id
+	sp_3d.id = ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID;
+	ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID += 1;
+	//TODO We don't need to store the fun region, only the rel_pos and pitch_set
+	//We can always get fun_region back from pitch set BUT the generalized space point 3d
+	//should only have rel_pos and pitch_set since that's all we need for rendering and audio
+	//HOWEVER maybe having the extra array could be useful for people in general
+	//NOTE THAT all these are stored on the context allocator which should always be op_spec_3d passed into here right now
+	sp_3d.fun_region = array_copy(fun_pos);
+	sp_3d.rel_pos = FunRegionFloatPosToRelPos(fun_pos, tuning_system_count);
+	sp_3d.pitch_set = FunRegionPosToPitchSet(fun_pos, tuning_system_count, fun_pos.count, round_pitches_below_octave);
+	sp_3d.shape_text = sprint("%", sp_3d.pitch_set);
+}
+
+valid_chord_space_filters :: ChordSpaceFilterType.[.SUM];
+UpdateOpSpacePointsByFilter :: inline (
+	csp : ChordSpacePoints3D,
+	op_space_points_3D : *[..] SpacePoint3D,
+	cs_filters : [] CSFilter,
+	cs_filter_aggregate : ChordSpaceFilterAggregate)
+{
+	//TODO We do this to avoid large updates with filters that cannot be updated BUT
+	//we could just leave it and let it update anyways if that is simpler since it will
+	//still work just have to re-filter all of the values which seems unnecessary.
+	//ALSO this avoid filtering when we don't need to for example when we update filter with input mappings
+	//then this won't do anything if we don't have a valid filter but instead just have custom points for example
+	is_update_filter : bool = false;
+	for filter : cs_filters {
+		for valid_type : valid_chord_space_filters if valid_type == filter.filter_type {
+			is_update_filter = true;
+			break filter;
+		}
+	}
+	if !is_update_filter {
+		// print("Filter types % not updateable.\n", cs_filters);
+    	return;
+	}
+
+	Remove3DPointsWithFilter(op_space_points_3D);
+	FilterCS3D(csp, op_space_points_3D, cs_filters, cs_filter_aggregate);
+}
+
+FunRegionPosToRelPos :: inline (
+	fun_region_pos : Vector3I)
+-> Vector3F
+{
+	rel_pos : Vector3F = 5.0 *
+		MakeV3F(cast(float) fun_region_pos.x, 
+				cast(float) fun_region_pos.y, 
+				cast(float) fun_region_pos.z);
+
+	return rel_pos;
+}
+
+//TODO Could have an inverse RelPosToFunRegionPos,
+//but we would need x4 in the 4D case due to the mixing of multiplication.
+//TODO Can we put this in the fun_region_pos array?
+// $chord_dim : int) 
+/*TODO This subtraction is 1 way to adjust but maybe it can be done better.
+I tested with up to 53-ET with the subtraction. CAN ALSO MOVE THE CAMERA. Can try both
+Consider that we want to keep things close to 0 remove 32-bit float error.
+We only want this because the space increases so the filter seems further away.
+I think it is better to adjust the camera z based on the lp_count on creations. 
+Let's try both for a bit and see how it is.
+*/	
+FunRegionFloatPosToRelPos :: inline (
+	fun_region_pos : [$chord_dim] float,
+	//TODO I pased this in here but not sure if it does anything. Might be best to just move the camera to wherever
+	//the points end up appearing in the op_space. Could also pass in chord_s3 if needed.
+	lp_count : int)
+-> Vector3F
+{
+	// lp_offset : float = lp_count - 12.0;
+	// lp_factor : float = (lp_count - 12.0);
+	rel_pos : Vector3F = 5.0 *
+		MakeV3F(fun_region_pos[0],
+				fun_region_pos[1],
+				fun_region_pos[2]);
+			// - 2.0*Vector3F.{0,0,lp_factor};
+
+	#if chord_dim == 4 {
+	rel_pos += fun_region_pos[3] * Vector3F.{1,1,0};
+	}
+	return rel_pos;
+}
+
+//TODO Should only have 1 of these i think or also return
+//a 64-bit float vector to maintain world_pos as float64
+FunRegionFloatPosToRelPos :: inline (
+	fun_region_pos : [$chord_dim] float64,
+	lp_count : int)
+-> Vector3F
+{
+	// lp_offset : float = lp_count - 12.0;
+	// lp_factor : float = (lp_count - 12.0);
+	rel_pos : Vector3F = 5.0 *
+		MakeV3F(
+			cast(float) fun_region_pos[0],
+			cast(float) fun_region_pos[1],
+			cast(float) fun_region_pos[2]);
+		// - 2.0*Vector3F.{0,0,lp_factor};
+
+	#if chord_dim == 4 {
+	rel_pos += (cast(float) fun_region_pos[3]) * Vector3F.{1,1,0};
+	}
+	return rel_pos;
+}
+//TODO Remove the fixed functions above once this is working
+//TODO Can remove lp_count if we don't use it
+FunRegionFloatPosToRelPos :: inline (
+	fun_region_pos : [] float64,
+	lp_count : int)
+-> Vector3F
+{
+	assert(fun_region_pos.count >= 3);
+	// lp_offset : float = lp_count - 12.0;
+	// lp_factor : float = (lp_count - 12.0);
+	rel_pos : Vector3F = 5.0 *
+		MakeV3F(
+			cast(float) fun_region_pos[0],
+			cast(float) fun_region_pos[1],
+			cast(float) fun_region_pos[2]);
+		// - 2.0*Vector3F.{0,0,lp_factor};
+
+	//TODO Test generalizing this maybe set each dim after 3 to x,y,z in turn
+	//so we move it the least amount. Eventually, this could be a function that is set
+	//by the user through dl OR they just set it themselves 
+	//TODO We could make this one case so its more systematic, just the {1,1,0} looks/feels better for 4d than {3,0,0}
+	if fun_region_pos.count == 4 {
+		rel_pos += (cast(float) fun_region_pos[3]) * Vector3F.{1,1,0};
+	} 
+	else if fun_region_pos.count >= 5 {
+		offset : Vector3F;
+		for 3..fun_region_pos.count-1 {
+			if it % 3 == {
+			case 0; offset = Vector3F.{3,0,0};
+			case 1; offset = Vector3F.{0,3,0};
+			case 2; offset = Vector3F.{0,0,3};
+			}
+			rel_pos += (cast(float) fun_region_pos[it]) * offset;
+		}
+	}
+	return rel_pos;
+}
+
+FunRegionPosToRelPos :: inline (
+	fun_region_pos : Vector3F) 
+-> Vector3F
+{
+	rel_pos : Vector3F = 5.0 * fun_region_pos;
+	return rel_pos;
+}
+
+//TODO use this for chord_s3 vl_line_segment generation
+FunRegionPosToWorldPos :: inline (
+	fun_region_pos : Vector3I,
+	chord_s3 : ChordSpace3) 
+-> Vector3F
+{	
+	rel_pos : Vector3F = FunRegionPosToRelPos(fun_region_pos);
+	rotate_pos : Vector3F = RotatedRelPosInChordS3(rel_pos, chord_s3);
+	return rotate_pos;
+}
+
+FunRegionPosToWorldPos :: inline (
+	fun_region_pos : Vector3F,
+	chord_s3 : ChordSpace3) 
+-> Vector3F
+{	
+	rel_pos : Vector3F = FunRegionPosToRelPos(fun_region_pos);
+	rotate_pos : Vector3F = RotatedRelPosInChordS3(rel_pos, chord_s3);
+	return rotate_pos;
+}
+
+//TODO should this be split up and put into thegame_render_group?
+Cube :: struct {
+	//TODO should we move this all into grid_pos translation and other transforms?
+	//TODO This can be removed if we never rotate the cubes themselves
+	transform : Matrix4x3F;
+	//TODO can this just be a pointer and then we store color separately?
+	// mesh : CubeTriMesh; //for different colors if needed
+	//TODO would storing all outgoing edges here work?
+	//TODO move chord3 out once we use regular music_pts
+	//and audio_music_pts for 
+	//We can remove this if we just include 1 in ChordSpace3 instead
+	//Then I think we can remove Cube from SpacePoint3D which is a lot of memory
+	chord3 : Chord3; //TODO array for multiple octaves?
+}
+
+//TODO replace this with something like VoiceLeadingLineSegment3D
+GridEdge3D :: struct {
+	dspace_id : int;
+
+	//TODO update these to be space_point_ids like in VoiceLeadingLineSegment2D
+	vert_0 : *SpacePoint3D;
+	vert_1 : *SpacePoint3D;
+
+	//TODO this should be an id for rendering and collision
+	//TODO change name to shape or something else
+	//or replace directly with mesh_id, collision_id
+	//or just separate table entirely
+	shape : Cube;
+}
+
+TriangleInGrid3F_DEFAULT :: TriangleInGrid3F.{Triangle3F.{}, -1, S64_MIN + 100, GridTriangleType.NONE};
+TriangleInGrid3F :: struct {
+	#as using triangle : Triangle3F;
+	point_index : int = -1; //Note : start as not indexable in array
+	order : int; //TODO do we need this since we have depth buffer?
+	//TODO do we need this or can we optimize by just storing Cube struct or something else?
+	type : GridTriangleType;
+}
+
+GridTriangleType :: enum {
+	NONE;
+	VERTEX;
+	EDGE;
+}
+
+MakeTriangleInGrid3F :: inline (triangle : Triangle3F, point_index : int, order : int, type : GridTriangleType) -> TriangleInGrid3F {
+	triangle_mesh : TriangleInGrid3F = ---;
+	triangle_mesh.triangle = triangle;
+	triangle_mesh.point_index = point_index;
+	triangle_mesh.order = order;
+	triangle_mesh.type = type;
+	return triangle_mesh;
+}
+
+Chord3 :: Chord(4, Vector3F);
+Chord2 :: Chord(2, Vector2F);
+Chord1 :: Chord(1, Vector2F);
+Chord :: struct($size : int, $note_pos_type : Type) {
+	// chord_on : bool;
+	chord_size : int;
+	waves : [size] OscWave;
+	// chord_pos : note_pos_type;
+	// timer : float;
+	// text : string;
+}
+}
+
+//NOTE : This is 64-bit because we use it in asm which requires all 64-bit values right now.
+LinearPitchSpaceView :: enum {
+	RATIO_PROPORTIONAL; //default
+	FORCE_EQUAL;
+
+	//TODO I think we can remove the other options here now since we only use the 2 above. Keeping just in case for now.
+	// EQUAL;
+	// LOG_RATIO;
+
+	// //TODO could be interesting for experimentation later
+	// OVERLAY;
+	// SIDE_BY_SIDE;
+
+	// //TODO could have this as a view so we render out and select
+	// //grouped music_pts and points properly
+	// DSPACE_GROUP;
+} @LibraryAsmGen
+LinearPitchSpaceOrientation :: enum {
+	VERTICAL;
+	HORIZONTAL;
+}
+DEFAULT_LINEAR_SPACE_SIZE :: Vector2F.{2,12};
+DEFAULT_LINEAR_POINT_SIZE :: Vector2F.{2,1};
+/*TODO
+	should we store music_pt_set_id directly in here?
+	yes if we continue to only have 1 music_pt_set per dspace
+
+	TODO should we have a separate LinearSpace for music_lanes and for op_spaces?
+	this way we can optimize for each case. eg music_lanes are systematically
+	associated to rhythm by their op_grid_pos so we would not need PitchDSpaceToRhythmSection
+	for music_lanes and could use them only for op_space
+
+	***TODO Yes should have separate structs for each since
+	they will likely be very different. Likely for rows we will
+	have dspaces just to cache values and dimensions but
+	otherwise things will be stored in the rows or x_index.***
+*/
+LinearPitchSpace :: struct {
+	#as using linear_space : Space2D;
+	//music_pt_set_id : int;
+	base_world_pos : Vector2F;
+	octave_dim : Vector2F;
+	orientation : LinearPitchSpaceOrientation;
+	/*TODO not sure how we should go about doing the different views
+		for example what if we want it to be overlayed 
+		could set view to both since we'd have to manage rendering differences
+		such as color and opacity
+	*/
+	view : LinearPitchSpaceView;
+	//TODO make a separate LinearPitchSpace struct and move this in?
+	//TODO octave can be less bits of course, probably an s8 is fine
+	current_octave : int;
+	//TODO maybe we can just draw which octave we're at somehow
+	octave_text : string;
+
+	/*Note : can potentially split out LinearPitchSpace
+	in music_lane from the ones in op_space so will separate
+	the data internally for now until we actually do it
+	*/
+	//TODO can use this for music_lane offset
+	// grid_rel_pos : Vector2F;
+	// grid_pos : Vector2I;
+}
+
+CircleSpace :: struct {
+	//Note : In case we have 2 sets of SpacePoints with same tuning_system_id
+	//we put tuning_system_id in here. This way we allow flexibility.
+	//TODO Rename to dspace_id I think. Maybe can leave like this...
+	//to make it clear what this actually points to.
+	dspace_id : int;
+	//TODO Could pull this out or I think it's associated to point_dspace_id
+	//and so we can just get it from there. This would let us generalize
+	//playing points for different tuning_systems.
+	tuning_system_id : int;
+	
+	//TODO Should this be float64 for accuracy?
+	//I guess we can change it if/when we change TuningPitch to float64.
+	//I think we use a ratio here instead of just linear because we can think of things
+	//like gamma scale with is non-repeating over a non-integer interval.
+	//Can likely allow either one to be passed in with an option though for convenience
+	//but they could just do the conversion themselves from linear to log ratio
+	repeating_interval_ratio : float;
+
+	world_center : Vector2F;
+	point_dim : Vector2F;
+	//transform includes 3 matrix multiplications for convenience
+	//rotation_matrix(theta) * scale_matrix(radius)
+	//clockwise *= REFLECT_0(reflection about x_axis)
+	transform : Matrix2F;
+	radius : float;
+	start_note : int;
+	//TODO Should this be float64 accuracy for more precision with points?
+	repeating_interval_linear : float;
+	// repeating_interval_linear : float64;
+	//Circle values each between 0-1, we can set them to the world pos
+	//with CirclePointToWorldPos
+	inter_points : [..] float64;
+	//TODO REmove num_of_points once we use circle_points
+	// num_of_points : int;
+	show_pitch_text : bool;
+
+	//Example of non-repeating circle is gamma scale over 2.0 compass interval
+	//which was 34 points that are evenly spaced over a fifth(3/2) but do not repeat evenly.
+	is_repeating : bool;
+
+	// sort_music_pts : bool;
+
+	base_shape_group : int = -1;
+	base_render_order : int = 7;
+
+	/*Not sure if we need this but just in case we want to allow
+	other circles with the same tuning_system but maybe different colored points?
+	If we don't allow that though, we can remove this.
+	*/
+	is_default : bool;
+
+	is_sound_float : bool;
+	inner_circle_mute : float;
+
+	//TODO Can make this an array if needed
+	osc_wave : OscWave;
+	synth : SimpleSynth;
+}
+
+AsmMapCircle :: struct {
+	dspace_id : int;
+	op_space_id : int;
+
+	dspace_shape_group : int;
+	pitches : AsmArray(float64);
+	// point_count : int;
+	// point_data : int;
+
+	//TODO This is a convenience but maybe we only have player
+	//draw vl directly themselves with arrows eventually.
+	//TODO Should this be an enum or no?
+	draw_vl_type : DrawVLType;
+} @LibraryAsmGen
+DrawVLType :: enum {
+	NONE;
+	VL_LINE;
+	VL_ARROW;
+} @LibraryAsmGen
+
+AsmCircleData :: struct {
+	ret_dspace_id : int;
+
+	radius : float64 = 5.0;
+	//TODO Use Vector2F64 now
+	world_center : Vector2F64;
+	// world_center_x : float64;
+	// world_center_y : float64;
+	rotate_theta : float64 = PI64/2;
+	//TODO Use Vector2F64 now
+	point_dim : Vector2F64;
+	// point_dim_x : float64 = 0.6;
+	// point_dim_y : float64 = 0.6;
+	is_clockwise : AsmBool = #run ToAsmBool(true);
+	repeating_interval_ratio : float64 = 2.0;
+
+	tuning_system_id : int;
+
+	//TODO Should this be is_cyclical?
+	non_repeating : AsmBool;
+
+	//TODO Not sure if we really need this but in case we want it too look like a different note octave this works.
+	//Just need to check how it works for circle audio input as well.
+	//This case adds a bit of complexity since we need to subtract it in music_pt rendering but it allows us
+	//to do a case we cannot otherwise do, like have 1 octave from G that we can see visually in 12-eq for example.
+	start_note : int;
+
+	is_sound_float : AsmBool;
+	inner_circle_mute : float64 = 0;
+
+	op_space_id : int;
+
+	show_text : AsmBool;
+	no_base_points : AsmBool;
+} @LibraryAsmGen
+
+CreateCircleSpaceData :: struct {
+	radius : float = 5.0;
+	world_center : Vector2F;
+	rotate_theta : float = PI/2;
+	point_dim := Vector2F.{0.6,0.6};
+	is_clockwise : bool = true;
+	repeating_interval_ratio : float = 2.0;
+
+	tuning_system_id : int;
+
+	//TODO Should this be is_cyclical?
+	//TODO RENAME this to non-repeating and set properly
+	is_repeating : bool = true;
+
+	// sort_music_pts : bool = true;
+
+	//TODO Not sure if we really need this but in case we want it too look like a different note octave this works.
+	//Just need to check how it works for circle audio input as well.
+	//This case adds a bit of complexity since we need to subtract it in music_pt rendering but it allows us
+	//to do a case we cannot otherwise do, like have 1 octave from G that we can see visually in 12-eq for example.
+	start_note : int;
+
+	is_sound_float : bool;
+	inner_circle_mute : float = 0;
+
+	//We can use these if we ever have > 1 circle with the same
+	//tuning_system, compass_interval and repeating_interval_ratio for some reason.
+	//Maybe someone wants 2 with different colors? Seems like a reasonable option.
+	is_default : bool = true;
+	//if !is_default then we use point_space_id
+	point_dspace_id : int;
+
+	show_text : bool;
+	no_base_points : bool;
+}
+
+//TODO Where should put this and should we just have 1 120 roots and cycle over that?
+//Or maybe 60 is enough in general? Let's see how it is used.
+circle_roots :: #run RootsOfUnity(40);
+
+/*TODO IF WE WANTED DYNAMIC POINTS. Then we could compute cos and sin at runtime and have a separate
+   dynamic circle which could change shape while things are running more efficiently for example.
+   Then we would NOT have SpacePoint and just compute cos and sin here based on tuning_pitches
+   and how many points we want to show. This would be the same code we use to create SpacePoint now
+   but we would compute it every frame. That would be interesting! Circles changing every frame 
+   between tuning_systems for example. I am not sure how useful it is, but is likely worth trying.
+*/
+//TODO We can make a version of this that passes in num_of_points instead and then one that computes
+//num_of_points from repeating_interval_ratio OR just have it be an option in CreateCircleSpaceData
+//so that maybe that can make it easier to decide how many points we want either way.
+CreateCircleSpace :: inline (
+	c_data : CreateCircleSpaceData,
+	all_tuning_systems : [] TuningSystem,
+	op_spec_data : *OpSpaceSpecData)
+-> *CircleSpace 
+{
+	//NOTE : I think it makes more sense to do this externally since we just need 1 function conversion
+	//instead of all this extra code to have to change the entire function here...
+	//TODO Can remove this if we never use, just leaving here as a reminder right now.
+	// repeating_interval_ratio : float = c_data.repeating_interval_ratio;
+	// if c_data.use_num_of_points {
+	// 	repeating_interval_ratio = LinearToLogRatio(c_data.num_of_points, tuning_system.compass_interval, tuning_system.music_pt_count);
+	// }
+
+	//TODO all_tuning_systems should be properly indexed
+	tuning_system := ArrayFindFirstByNameId(all_tuning_systems, c_data.tuning_system_id, "id");
+
+	circle : *CircleSpace = array_add(*op_spec_data.all_op_circle_spaces);
+	//TODO Likely use a different id eventually if we don't use SpacePoint anymore especially.
+	//For now we use this so it does not conflict with other dspaces for SpacePoint in case we continue to use it
+	//for consistency and also so we can draw vls between different spaces more easily and clearly.
+	circle.dspace_id = ALL_NEXT_IDS.DSPACE_ID;
+	ALL_NEXT_IDS.DSPACE_ID += 1;
+	circle.base_shape_group = -1;
+	circle.base_render_order = 7;
+	circle.tuning_system_id = c_data.tuning_system_id;
+	circle.point_dim = c_data.point_dim;
+	circle.world_center = c_data.world_center;
+	circle.radius = c_data.radius;
+	circle.show_pitch_text = c_data.show_text;
+	circle.repeating_interval_ratio = c_data.repeating_interval_ratio;
+	// circle.repeating_interval_linear = LogRatioToLinear(c_data.repeating_interval_ratio, tuning_system.compass_interval);
+	//TODO Make a function that also does float64 so we don't have to do this directly here
+	// circle.repeating_interval_linear = (log(c_data.repeating_interval_ratio) / log(cast(float64) tuning_system.compass_interval));
+	// circle.repeating_interval_linear = LogRatioToLinear64(c_data.repeating_interval_ratio, tuning_system.compass_interval);
+	circle.repeating_interval_linear = LogRatioToLinear(c_data.repeating_interval_ratio, tuning_system.compass_interval);
+	#insert #run SetResizableArrays(CircleSpace, "circle.%.allocator = context.allocator;\n");
+	// circle.sort_music_pts = c_data.sort_music_pts;
+
+	circle.is_sound_float = c_data.is_sound_float;
+	circle.inner_circle_mute = c_data.inner_circle_mute;
+	//TODO can remove this osc_wave once we just use the simple synth
+	circle.osc_wave.type = OscWaveType.SINE;
+
+	circle.synth.wave_type = OscWaveType.SINE;
+	circle.synth.envelope = MakeVolumeEnvelope();
+	s_wave : *OscWave = array_add(*circle.synth.simple_waves);
+
+	/*OVERALL we don't really need a non-repeating circle but I am going to leave
+	it here since it is convenient for things like gamma scale over 2.0 compass interval
+	or having an octave and a fifth for example BUT it may not be totally clear.
+	Overall circles should be used as cyclic structures and if they are not repeating
+	then we should not modulo on music_pt mapping to the circle. This can be onde by the
+	user though before passing the the pt to the circle.
+	*/
+	//If the circle is repeating, then we want to make sure that we have a multiple of the
+	//compass_interval so that we are repeating exactly.
+	if c_data.is_repeating {
+		//We make sure here that repeating_interval_ratio is a multiple of the compass_interval
+		//by checking that linear is a whole number
+		remainder : float = frac(circle.repeating_interval_linear);
+		is_repeating_octave : bool = FloatBothEqual(0.0, remainder);
+		//TODO This should be returned as an error and not an assertion.
+		// assert(is_repeating_octave);
+		if !is_repeating_octave {
+			print("Circle is not actually repeating but was set to repeating : %.\n", circle);
+		}
+
+		if is_repeating_octave && c_data.is_repeating {
+			circle.is_repeating = true;
+		} else {
+			circle.is_repeating = false;
+		}
+		// circle.is_repeating = c_data.is_repeating;
+
+		//We only set start_note for repeating otherwise it does not make sense
+		//as we would just be removing a note. We could do this if needed but for now
+		//we just draw out all the points on a non-repetitive circle every time.
+		//Only setting the start_note on repeating circles here avoids any
+		//extra calculations for music_pt rendering on the circle.
+		//Therefore start_note is 0 if the circle is not repeating.
+		circle.start_note = c_data.start_note;
+	}
+
+	circle.is_default = c_data.is_default;
+	//NOTE : Using the transform like this allows us to have multiple different circles with the same tuning system
+	//but with with different directions, thetats and radii without changing anything.
+	//Alternatively, we could have a set of points for each of these if something like that is more efficient.
+	// circle.transform = Matrix2F_IDENTITY;
+	//NOTE : This will give identity matrix if rotate_theta = 0
+	circle.transform = MakeRotationMatrix2F(c_data.rotate_theta);
+	//TODO Maybe we want to keep the radius separate for the music_pt float
+	//I Think that might make more sense and then we just have multiple it everywhere and
+	//THEN WE DONT HAVE TO DIVIDE ON music_pt float for example which might be confusing later
+	//Remove this now and we use CirclePointToWorldPos to do the conversion 
+	//systematically with the transform and the radius separately now.
+	// circle.transform *= MakeScaleMatrix2F(c_data.radius,c_data.radius);
+	if c_data.is_clockwise {
+		//Note : circle clockwise is equivalent to reflection about the x-axis
+		circle.transform *= REFLECT_0;
+	}
+
+	return circle;
+}
+
+MakeCircleSpaceShapes :: inline (
+	c_space : *CircleSpace,
+	op_spec_data : *OpSpaceSpecData,
+	all_tuning_systems : [] TuningSystem,
+	all_tuning_pitches : [] TuningPitch) 
+{
+	//TODO Need to check if the tuning_system to dspace already exists first like in linear.
+	tuning_system := ArrayFindFirstByNameId(all_tuning_systems, c_space.tuning_system_id, "id");
+	tuning_pitches := ArrayFindAllVarName(all_tuning_pitches, c_space.tuning_system_id, "tuning_system_id", temp);
+	assert(tuning_system.music_pt_count == tuning_pitches.count);
+
+	/*NOTE : start_note will make space_points[0] have degree 0. This way its basically
+	starting from the note and then we continue as normal. This makes us
+	have to consider the start_note during computations to keep it relative.
+	*/
+	//Using linear here makes more sense for thinking and is more efficient than multiplying ratios and converting every loop.
+	assert(c_space.start_note < tuning_pitches.count);
+
+	tuning_octave : int = 0;
+	total_circle_linear : float64 = 0;
+	tp_index : int = 0;
+	start_linear_offset : float = 0;
+	//We only allow start_note adjustment for repeating circles.
+	//If it's non-repeating then adjusting start note would in fact
+	//remove a value since we don't repeat so we don't do that and
+	//let all the notes be displayed. We can change this later
+	//but likely not since a circle is a naturally cyclical structure
+	//and should be used as such. The non-repeating is just being placed
+	//here for convenience, for example to see the gamma scale over the
+	//2.0 compass interval even though it does not repeat.
+	if c_space.is_repeating {
+		tp_index = c_space.start_note;
+		start_linear_offset = tuning_pitches[c_space.start_note].linear_from_start;
+	}
+	// current_ratio : float = 1.0;
+	//Note : leaving here in case we want to use ratio instead.
+	// while current_ratio < repeating_interval_ratio {
+	//Need to be careful here because of floating point error
+	//we could add an extra note so we want to avoid that.
+	//This Check is essientially equal to the check below
+	/*TODO FROM HERE I THINK it is less confusing to do
+	pt_count * log(repeating) / log(compass) here and then cast/round
+	down and use that as number of points instead of this cause this
+	causes a lot of floating error. Should we just remove start_note
+	for my sanity
+	*/
+	//TODO We could pass in num_of_points instead and have a function that allows us
+	//that computes the num_of_points based on the ratio for example.
+	//TODO Do we need to round and then cast here or something like that? not sure...
+	//TODO We could also 0.000001 or something like that to avoid float errors.
+	// num_of_points := cast(int) (tuning_system.music_pt_count * c_space.repeating_interval_linear);
+	num_of_points : int = floor_to_int(tuning_system.music_pt_count * c_space.repeating_interval_linear);
+
+	//Explicitly removing 1 here so we remember that we are starting from 0
+	//Nevermind we have 20 points in 12-et 3/2 and 35 points in gamma scale over 2.0 compass interval
+	//In general non-repeating is just a bonus so it does not have to be perfect.
+	// c_space.num_of_points -= 1;
+	for 0..num_of_points-1 {
+	// while total_circle_linear < 0.999 {
+	// while total_circle_linear < 1.0 && !FloatEqual(total_circle_linear, 1.0) {
+		//TODO Can also add a filter here if we only want specific points for a specific scale for example.
+		// point : *SpacePoint = array_add(all_space_points);
+		// point.id = ALL_NEXT_IDS.POINT_ID;
+		// defer ALL_NEXT_IDS.POINT_ID += 1;
+		// point.dspace_id = c_space.point_dspace_id;
+		// point.int_pos.x = tp_index + tuning_octave * tuning_system.music_pt_count;
+		// //We need to store the linear value here so we can compute interpolated values easily.
+		// point.rel_pos.x = cast(float) total_circle_linear;
+		// point.dspace_pos = GetCirclePoint(cast(float) total_circle_linear);
+		// point.color = GetPointColor(tp_index, tuning_system, CIRCLE_COLOR_DEFAULT);
+
+
+		//ADDING SPACE RECTS DIRECTLY and then we can remove SpacePoint above once this is working.
+		rect : *SpaceRect = array_add(*op_spec_data.ass.all_space_rects);
+		rect.shape_id = ALL_NEXT_IDS.NEXT_SHAPE_ID;
+		ALL_NEXT_IDS.NEXT_SHAPE_ID += 1;
+		rect.op_space_id = op_spec_data.op_space_id;
+		rect.dspace_id = c_space.dspace_id;
+		rect.dspace_shape_group = c_space.base_shape_group;
+		rect.render_order = c_space.base_render_order;
+		rect.color = GetPointColor(tp_index, tuning_system, CIRCLE_COLOR_DEFAULT);
+		// dspace_pos : Vector2F = GetCirclePoint(cast(float) total_circle_linear);
+		// op_pos : Vector2F = c_space.transform * dspace_pos + c_space.world_center;
+		op_pos : Vector2F = CirclePointToWorldPos(cast(float) total_circle_linear, c_space);
+		array_add(*c_space.inter_points, total_circle_linear);
+		// world_rect : Rectangle2 = RectCenterDim(world_pos, c_space.point_dim);
+		rect.rect = RectCenterDim(op_pos, c_space.point_dim);
+		rect.pitch_set = NewArray(1, float64,,op_spec_data.spec_2D_alloc);
+		pitch_value : int = tp_index + tuning_octave * tuning_system.music_pt_count;
+		// rect.pitch_set[0] = MusicPtToFrequency(cast(float64) pitch_value, tuning_system, tuning_pitches);
+		rect.pitch_set[0] = cast(float64) pitch_value;
+		rect.shape_text = sprint("%", pitch_value,,op_spec_data.spec_2D_alloc);
+
+		if c_space.show_pitch_text {
+			space_text : *SpaceText = array_add(*op_spec_data.ass.all_space_text);
+			space_text.op_pos = CirclePointToWorldPos(cast(float) total_circle_linear,
+				c_space.radius + Length(1.5*c_space.point_dim), c_space.world_center, c_space.transform);
+			space_text.color = WHITE_V;
+			SetSpaceText(rect.shape_text, space_text);
+		}
+
+
+		// rect_value : *SpaceShapeValue = array_add(*ass.all_space_shape_values);
+		// rect_value.shape_id = rect.shape_id;
+		// rect_value.float_value = MusicPtToFrequency(cast(float64) point.int_pos.x, tuning_system, tuning_pitches);
+		// rect_value.float_value = MusicPtToFrequency(total_circle_linear, tuning_system, tuning_pitches);
+
+		//NOTE : Not using this we have only 1 value to check for consistency and to avoid errors, but we could if needed.
+		// current_ratio *= tuning_pitches[tp_index].ratio_to_next_music_pt;
+		tp_index += 1;
+		if tp_index >= tuning_pitches.count {
+			tp_index = 0;
+			tuning_octave += 1;
+		}
+		tp : TuningPitch = tuning_pitches[tp_index];
+		total_circle_linear = (tp.linear_from_start + tuning_octave - start_linear_offset) / c_space.repeating_interval_linear;
+		// total_circle_linear = (tp.linear_from_start + tuning_octave - start_linear_offset) / (c_space.repeating_interval_ratio / tuning_system.compass_interval);
+	}
+}
+
+/*TODO REVIEW AND TEST AND CLEAN UP THIS FUNCTION 
+//MAYBE give this a quick pass to see if we can optimize it a bit but i think it's ok overall.
+//Might be good to actually write some tests also OR we can wait till be do asm as well to test all at once,
+//BUT it is fresh in my mind right now. May be best to test when fresh
+//Then transfer to test so we can put the new circle in op_space and then start on row asm
+*/
+//TODO Can pull this out of here if we need to use it somewhere else. We likely will so maybe that's a good idea.
+//TODO I think this function is worth testing to make sure it works for various different circles and tuning systems.
+//with different start notes and different compass intervals for example.
+MusicPtToCirclePos :: inline (music_pt : float64, circle : CircleSpace) -> Vector2F {
+	//TODO I think maybe we should remove this case because  we should just assume the circle is repeating maybe
+	//If the circle is not repeating, then we don't want anything of the # of points.
+	//WE COULD make this a user decision instead of doing it here and just generate the notes properly.
+	//We can leave it here for now as a reminder and then see how people use it later.
+	// if !circle.is_repeating && music_pt >= cast(float64) circle_points.count {
+		//TODO Should we return an error or just pull this out?
+		// return .{};
+	// }
+	//Can we do all this a better way while avoiding any floating point errors?
+	cp_frac : float64 = frac(music_pt);
+	pt_diff : int = round_to_int(music_pt - cp_frac - circle.start_note);
+	// if pt_diff < 0 pt_diff += 12; //TODO FROM HERE This needs to be from the tuning_system
+	//If its negative from start_note, then we want it to module with tuning_system not circle_points.count
+	//Maybe we remove start_note... it reminds me of being able to tune a guitar though... iunno,
+	//lets change this and then update the sound and maybe i still remove it and leave it commented out
+	//We use PosMod here since this could be negative
+	cp1_index : int = PosMod(pt_diff, circle.inter_points.count);
+	cp2_index : int = (cp1_index + 1) % (circle.inter_points.count);
+	cp1 : float64 = circle.inter_points[cp1_index];
+	cp2 : float64 = circle.inter_points[cp2_index];
+	rel_delta : float64 = cp2 - cp1;
+	//TODO Should make an explicit test for this edge case with start_note > 0 in case we forget
+	//In case we wrap around the circle with start_note==1. I think this is the only edge case
+	if cp2_index == 0 rel_delta = 1.0 - cp1;
+	//NOTE : If we use dspace_pos here then we get a linear interpolation along the line and we don't have to do sin,cos
+	// world_pos : Vector2F = circle.transform * (cp1.dspace_pos + cp_frac * (cp2.dspace_pos - cp1.dspace_pos));
+	interp : float64 = cp1 + cp_frac * rel_delta;
+	// world_pos : Vector2F = circle.transform * circle.radius * GetCirclePoint(interp) + circle.world_center;
+	world_pos : Vector2F = CirclePointToWorldPos(cast(float) interp, circle);
+	return world_pos;
+}
+CirclePointToWorldPos :: inline (x : float, c : CircleSpace) -> Vector2F {
+	return CirclePointToWorldPos(x, c.radius, c.world_center, c.transform);
+}
+//DOC : X is where we are along the circle between 0 and 1. So it gets converted to radians by GetCirclePoint
+CirclePointToWorldPos :: inline (x : float, radius : float, world_center : Vector2F, transform : Matrix2F) -> Vector2F {
+	world_pos : Vector2F = transform * (radius * GetCirclePoint(x)) + world_center;
+	return world_pos;
+}
+
+CreateCircleInOpSpace :: inline (
+	c_data : CreateCircleSpaceData,
+	op_spec_data : *OpSpaceSpecData,
+	//We pass this in here so we make sure to get the right tuning systems
+	all_tuning_systems : [] TuningSystem,
+	all_tuning_pitches : [] TuningPitch)
+-> *CircleSpace 
+{
+	circle : *CircleSpace = CreateCircleSpace(c_data, all_tuning_systems, op_spec_data);
+	if !c_data.no_base_points {
+		MakeCircleSpaceShapes(circle, op_spec_data, all_tuning_systems, all_tuning_pitches); 
+	}
+	coll : *CollisionEntity = array_add(*op_spec_data.all_op_collision_entities);
+	coll.entity_id = circle.dspace_id;
+	coll.entity_type = EntityType.OP_CIRCLE_DSPACE;
+	coll.op_space_id = op_spec_data.op_space_id;
+	coll.shape = CollisionShape.CIRCLE;
+	coll.circle.pos = circle.world_center;
+	coll.circle.radius = circle.radius + Length(0.6*circle.point_dim);
+
+	return circle;
+}
+
+//TODO should we separate music_pts/OscWave out for multi-beat music_pts and more efficient use of space
+//TODO then we would also only have to loop through music_pts instead of all values
+Space2D :: struct {
+	#as using space : DimensionalSpace;
+	transform : Matrix2F;
+	//TODO move this back into LinearPitchSpace and CircularPitchClassSpace
+	hover_point_index : int;
+	//TODO could put start_index and end_index to know exact positions in all_space_points array
+}
+
+/*TODO
+	these should be spatially partitioned in a separate table that is acessed through an optimized spatial hash
+	stack overflow hash - hashing 2D, 3D and...
+
+	should we have entities or elements in general?
+	seems like DimensionalSpace may just be an Entity struct
+	with basic dimensions and positions and other variables
+	that are needed by all entities (eg mesh_id...)
+*/
+//TODO how should we generate ids?
+DimensionalSpace :: struct {
+	//TODO could maybe use a dspace id to type table
+	//TODO update dspace data to work with indexed by id model
+	dspace_id : int;
+	// dpsace_type : Type;
+	//TODO should we eventually do Matrix3x2F for efficiency?
+	//TODO do we really need both of these world vectors?
+	dspace_world_center : Vector2F;
+	dspace_world_pos : Vector2F;
+	dspace_dim : Vector2F; //TODO should this be an int vector?
+	dspace_dim_int : Vector2I;
+	dspace_point_dim : Vector2F;
+	//TODO keep index in here for point locations of this dspace
+
+	//TODO dspace might also have a invariant_id
+	//TODO dspace might be related to one scale
+}
+
+OpGridPosToStartPulseCoord :: inline (op_grid_pos_x : int, dspace_set_count : int) -> int
+{
+	pulse_coord : int = round_to_int(0.5 * op_grid_pos_x * dspace_set_count);
+	return pulse_coord;
+}
+
+/*TODO
+	for clarity and efficiency, we can likely separate linear_space_points
+	from higher_space_points
+
+TODO We could store op_space_id in here and then index and sort by op_space_id
+and then we could also remove by op_space_id more easily.
+*/
+//TODO CAN CHANGE NAME TO SpacePoint2D
+//TODO CHANGE NAME TO COORDINATE
+//TODO do we make points dspace specific (different dimensions)
+//TODO currently this is for chord_s2 and works for linear and circular
+//TODO 1D version would have only int for int_pos and no text and maybe no color
+SpacePoint :: struct {
+	//MusicPt : dspace_id and rel_pos are enough for a unique space_point_id
+	id : int;
+	dspace_id : int;
+	//TODO We could have OpDSpaceType in here now or EntityType.
+
+	//MusicPt : These are the original positions of the music_pt (maybe we can remove later)
+	//Leaving here now for convenience
+	/*TODO should probably remove this and only have rel_pos and dspace_pos
+		this unnecessarily complicates updating
+
+		also may be worth keeping since we may not move dspaces very often
+		space vs speed argument
+
+		TODO Should this be float64 for world_pos?
+	*/
+	world_pos : Vector2F;
+	//TODO could store a mesh_id in here at some point to have different meshes
+	//TODO this is only being used for linear spaces now for alternative views
+	//such as log and linear and overlay and for pitch class profiles
+	rect_mesh : Rectangle2;
+	//TODO Can likely re
+	rect_dim : Vector2F;
+	//TODO eventually need to have a separate collider rect instead 
+
+	//TODO Can likely remove 1 or both of these and just use world_pos (which should probably be float64)
+	//TODO can probably remove one of these, or rename to
+	//original_rel_pos and transformed_rel_pos
+	rel_pos : Vector2F; //MusicPt : can derive octave, tritave, etc... from static rel_pos and scale data
+	//MusicPt : These are both the dimensional space and cam space we actually use for rendering and checks
+	dspace_pos : Vector2F;
+
+
+	//MusicPt : int_pos used for chord space 2 fundamental region points values
+	//and also used for linear pitch space to cache music_pt values with octave
+	//TODO should we move it out if not used by anything else?
+	//TODO this is probably just a cached version of the tuning_pitch music_pt_pos
+	//TODO should we remove it then?
+	int_pos : Vector2I;
+	fun_region_float : [2] float64;
+
+	//Can use this on a filter if needed to not draw
+	//It looked weird on 2D as an outline though...
+	//Maybe I can draw something else to show points off access
+	//TODO Not really using this anymore so we can remove if we don't need
+	//but am leaving here for now in case we want to separate
+	not_base_point : bool;
+
+	color : Vector4F;
+	text : string;
+	//TODO should we cache beat in here? or beat in separate table to dspace
+	//TODO if point data is completely separated by dimension, then we can cache tuning music_pts in here
+}
+
+CirclePoint :: struct {
+	dspace_id : int;
+	music_pt_int : int;
+}
+
+BEAT_PITCH_OFFSET_SIZE_FACTOR :: 0.4;
+
+/*TODO technically we can reuse RenderMusicPt here but
+since we have no need for the 2D rectangle or possibly the id
+then we will keep them separate since, overall, it seems like it 
+makes sense to separate 2D and 3D
+*/
+RenderMusicPt3D :: struct {
+	//TODO do we really need a separate id
+	id : int;
+	//TODO caching in here for now but can be removed
+	//and get dspace_id from SpacePoint
+	//TODO should we rename dspace_id to chord_s3_id?
+	//and do this everywhere overall since these dspace_ids
+	//don't really have to be the same anymore...
+	dspace_id : int;
+	space_point_3D_id : int;
+	// music_pt_set_id : int;
+
+	//Note : we don't need a mesh in here since we can just fetch
+	//from the visible_space_points_3D
+	// cube_mesh : Cube;
+	//TODO could store a separate rect in SoA to check mouse intersection
+	
+	//MusicPt : x - beat, y - pitch (or vice-versa)
+	//TODO should this be in MusicPoint
+	// beat_pitch_offset : Vector2F;
+
+	//TODO can have a flags in here or voice data to know if music_pt is previously held
+	//TODO for audio would need to know which synth osc wave to hold back and forward from
+	// music_pt_held_back : bool;
+	// music_pt_held_forward : bool;
+	//TODO store start and end beat in here?
+	//TODO for rhythm to we have previous beat music_pt check for held music_pts here?
+}
+
+MakeRenderMusicPt3D :: inline (
+	dspace_id : int,
+	space_point_3D_id : int)
+-> RenderMusicPt3D
+{
+	render_music_pt_3D : RenderMusicPt3D = ---;
+	render_music_pt_3D.id = ALL_NEXT_IDS.NEXT_RENDER_MUSIC_PT_3D;
+	defer ALL_NEXT_IDS.NEXT_RENDER_MUSIC_PT_3D += 1;
+	render_music_pt_3D.dspace_id = dspace_id;
+	render_music_pt_3D.space_point_3D_id = space_point_3D_id;
+	return render_music_pt_3D;
+}
+
+InternalRowMessage :: struct {
+	message_id : int;
+	using value : union {
+		int_value : int;
+		float_value : float64;
+	}
+}
+MessageSimpleSynth :: inline (synth : *SimpleSynth, row_msg : InternalRowMessage) {
+	if row_msg.message_id == {
+	case 0; synth.volume = cast(float) row_msg.float_value;
+	case 1; synth.envelope.attack_seconds = cast(float) row_msg.float_value;
+	}
+}
+
+/*TODO this concept should be fleshed out more so that
+	all the base_linear_spaces and scales and other rules
+	are positioned relative to the music_lane their in
+
+	do we even need this as a separate concept or is
+*/
+MusicLane :: struct {
+	id : int;
+	//TODO Can likely remove this now that we have only 1 type of music_lane
+	music_lane_type : MusicLaneType;
+	//TODO Right now pitch always comes first.
+	//Should we allow this to be changeable?
+	// first_row_world_pos : Vector2F;
+
+	//TODO This should likely be pulled out into
+	//a separate array like SoA. Then the string 
+	//memory management would be easier as well.
+	//String literals could potentially even have
+	//their own allocator.
+	lane_name : string;
+	// music_lane_pos : int;
+	//TODO order needed when we have multiple music_lanes
+	//to know where to render them spatially
+	//can therefore keep the array sorted by order
+	// order : int;
+	// next_pitch_world_start_pos : Vector2F;
+	// next_rhythm_world_start_pos : Vector2F;
+	//TODO this could be adjustable based on how many
+	//note we want to see at once
+	// world_height : float;
+}
+
+
+MakeMusicLane :: inline (
+	music_lane_type : MusicLaneType = MusicLaneType.DEFAULT,
+	lane_name : string = "") 
+-> MusicLane 
+{
+	music_lane : MusicLane;
+	music_lane.id = ALL_NEXT_IDS.NEXT_MUSIC_LANE_ID;
+	defer ALL_NEXT_IDS.NEXT_MUSIC_LANE_ID += 1;
+	music_lane.music_lane_type = music_lane_type;
+	// music_lane.first_row_world_pos = start_world_pos;
+	music_lane.lane_name = copy_string(lane_name);
+	return music_lane;	
+}
+
+
+GetRowXStart :: inline (row : MusicLaneRow, memory_unit_width : float) -> float {
+	x_start : float = row.row_world_base_start.x - 0.5*memory_unit_width;
+	return x_start;
+}
+GetPlayPosWorldX :: inline (
+	row : MusicLaneRow,
+	x_float : float64,
+	memory_unit_width : float) 
+-> float 
+{
+	play_pos_x : float = GetRowXStart(row, memory_unit_width);
+	play_pos_x += cast(float) (x_float * memory_unit_width);
+	return play_pos_x;
+}
+
+AsmGetOrCreateSimpleSynthData :: struct {
+	ret_synth_id : int;
+	synth_name : AsmString;
+} @LibraryAsmGen
+GetOrCreateSimpleSynthData :: struct {
+	synth_name : string;
+}
+/*TODO Should this be separate from synths we add later like subtractive synth?
+Maybe we won't add it and we'll just do custom synths.
+I think it's better this way and then if we add a subtractive synth later
+we can separate it especially for update and custom synths will run completely separately anyways.
+
+We could also pass in runtime settings here if we want to set some defaults from there eventually
+*/
+GetOrCreateSimpleSynth :: (
+	gcsd : GetOrCreateSimpleSynthData,
+	all_simple_synths : *[..] SimpleSynth,
+	free_simple_synth_pool : *[..] SimpleSynth)
+-> *SimpleSynth 
+{
+	synth_data, found_synth := ArrayFindFirstByNameId(all_simple_synths.*,
+		gcsd.synth_name, "synth_name");
+	if found_synth return synth_data;
+
+	synth : *SimpleSynth;
+	if free_simple_synth_pool.count > 0 {
+		popped_synth : SimpleSynth = pop(free_simple_synth_pool);
+		array_add(all_simple_synths, popped_synth);
+		synth = peek_pointer(all_simple_synths.*);
+	} else {
+		synth = array_add(all_simple_synths);
+	}
+	//TODO We only need to set the id for a new synth but to avoid errors ill just always generate a new id there
+	synth.synth_id = ALL_NEXT_IDS.NEXT_SYNTH_ID;
+	ALL_NEXT_IDS.NEXT_SYNTH_ID += 1;
+	synth.wave_type = OscWaveType.SINE;
+	synth.envelope = MakeVolumeEnvelope();
+	synth.volume = 0.1;
+	array_reset_keeping_memory(*synth.simple_waves);
+
+	update : UpdateSimpleSynthData;
+	update.update_synth_name = true;
+	update.synth_name = gcsd.synth_name;
+	UpdateSimpleSynth(synth, update);
+	return synth;
+}
+SimpleSynthMessageType :: enum {
+	VOLUME;
+	WAVE_TYPE;
+	ATTACK_SECONDS;
+	RELEASE_SECONDS;
+	ATTACK_CURVE;
+	RELEASE_CURVE;
+} @LibraryAsmGen
+AsmUpdateSimpleSynthData :: struct {
+	synth_id : int;
+
+	update_synth_name : AsmBool;
+	synth_name : AsmString;
+
+	update_volume : AsmBool;
+	volume : float64;
+
+	update_wave_type : AsmBool;
+	wave_type : OscWaveType;
+
+	update_attack_seconds : AsmBool;
+	attack_seconds : float64;
+
+	update_attack_curve : AsmBool;
+	attack_curve : float64;
+
+	update_release_seconds : AsmBool;
+	release_seconds : float64;
+
+	update_release_curve : AsmBool;
+	release_curve : float64;
+} @LibraryAsmGen
+UpdateSimpleSynthData :: struct {
+	synth_id : int;
+
+	update_synth_name : bool;
+	synth_name : string;
+
+	update_volume : bool;
+	volume : float;
+
+	update_wave_type : bool;
+	wave_type : OscWaveType;
+
+	update_attack_seconds : bool;
+	attack_seconds : float;
+
+	update_attack_curve : bool;
+	attack_curve : float;
+
+	update_release_seconds : bool;
+	release_seconds : float;
+
+	update_release_curve : bool;
+	release_curve : float;
+}
+UpdateSimpleSynth :: (
+	update : UpdateSimpleSynthData,
+	all_simple_synths : [] SimpleSynth) 
+-> *SimpleSynth, success : bool, msg : string
+{
+	synth, found_synth := ArrayFindFirstByNameId(all_simple_synths,
+		update.synth_id, "synth_id");
+	if !found_synth {
+		return null, false, tprint("synth_id % not found.\n", update.synth_id);
+	}
+
+	success, msg := UpdateSimpleSynth(synth, update);
+	return synth, success, msg;
+}
+UpdateSimpleSynth :: (
+	synth : *SimpleSynth,
+	update : UpdateSimpleSynthData) 
+-> success : bool, msg : string
+{
+	if update.update_synth_name {
+		if synth.synth_name.data != null && synth.synth_name.count > 0 {
+			free(synth.synth_name);
+		}
+		synth.synth_name = copy_string(update.synth_name);
+	}
+	if update.update_volume {
+		synth.volume = update.volume;
+	}
+	if update.update_wave_type {
+		synth.wave_type = update.wave_type;
+	}
+	if update.update_attack_seconds {
+		synth.envelope.attack_seconds = update.attack_seconds;
+	}
+	if update.update_release_seconds {
+		synth.envelope.release_seconds = update.release_seconds;
+	}
+	if update.update_attack_curve {
+		synth.envelope.n_attack = update.attack_curve;
+	}
+	if update.update_release_curve {
+		synth.envelope.n_release = update.release_curve;
+	}
+	return true, "";
+}
+AsmDeleteSimpleSynthData :: struct {
+	synth_id : int;
+} @LibraryAsmGen
+DeleteSimpleSynthData :: struct {
+	synth_id : int;
+}
+DeleteSimpleSynth :: (
+	delete : DeleteSimpleSynthData,
+	all_simple_synths : *[..] SimpleSynth,
+	free_simple_synth_pool : *[..] SimpleSynth)
+-> success : bool, msg : string
+{
+	synth_index, found_synth := ArrayFindFirstIndexByNameId(all_simple_synths.*,
+		delete.synth_id, "synth_id");
+	if !found_synth {
+		return false, tprint("synth_id % not found.\n", delete.synth_id);
+	}
+	/*DOC : We reset the synth on creation if we take it back from the pool.*/
+	deleted_synth : SimpleSynth = all_simple_synths.*[synth_index];
+	array_add(free_simple_synth_pool, deleted_synth);
+	array_ordered_remove_by_index(all_simple_synths, synth_index);
+	return true, "";
+}
+//TODO We can also delete all subtractive synths here eventually if we add those
+DeleteAllSynths :: (
+	all_simple_synths : *[..] SimpleSynth,
+	free_simple_synth_pool : *[..] SimpleSynth)
+{
+	//We don't want to delete the default simple synth
+	// assert(all_simple_synths.count >= 1);
+	if all_simple_synths.count <= 1 return;
+
+	delete : DeleteSimpleSynthData;
+	for 1..all_simple_synths.count-1 {
+		delete.synth_id = all_simple_synths.*[it].synth_id;
+		DeleteSimpleSynth(delete, all_simple_synths, free_simple_synth_pool);
+	}
+	//We reset the synth id to 1 since the default synth should always be in the array
+	ALL_NEXT_IDS.NEXT_SYNTH_ID = 1;
+}
+
+RowViewType :: enum {
+	ROW_VIEW_LINEAR;
+	//TODO This should only allow octave view
+	//since otherwise points would not be aligned
+	ROW_VIEW_MODULO;
+}
+
+//TODO Should we still create lane or just have rows 
+//TODO Should we rename to CreateNextMusicRow/CreateNextBaseMusicRow and only allow that and then inserting will be equivalent to
+//creating and moving it up to that position or we could have a convenience function for that specifically if needed
+//since we would just have to update all the music_pt indices from there.
+//TODO FROM HERE ADd mspace_id to this and then also get_or_create_mspace by name so it's unique to the string
+//and we can recreate when recompiling and then either do clear or not
+CreateMusicRow :: inline (create_row_data : CreateRowData, all_data : *AllData) -> MusicLaneRow {
+	mspace_data, found_mspace := ArrayFindFirstByNameId(all_data.all_mspace_data,
+		create_row_data.mspace_id, "mspace_id");
+	//TODO We should either check this externally or return this as an error.
+	//Probably an error is best for dynamic libraries eventually.
+	assert(found_mspace);
+
+	//TODO Should we push this halfway down row_height here or leave it to the player to decide and just 
+	//have the lowest point be what the player inputs be default?
+	//TODO Maybe we don't need this and we just compute it directly if/else.
+	//ALSO if we don't allow adding a row by index directly here and the player has to do it, then we can just have this 1 way.
+	// next_lane_world_base_pos : Vector2F = ComputeNextMusicLaneWorldPos(all_data.all_mspace_data[0].all_music_lane_rows);
+	//Center the first dspace to the middle of screen. Can remove this if unnecessary
+	next_row_world_base_pos : Vector2F = Vector2F.{0,-0.25 * create_row_data.row_height};
+	//TODO This has to be allowed to grow up or down depending on a global setting so people can adjust either way.
+	// If we don't have any rows, then we use the default world_pos for the row.
+	if mspace_data.all_music_lane_rows.count > 0 {
+		//TODO This should be += if we have the opposite directions and add rows upwards if we want to allow that.
+		last_row_y : float = peek(mspace_data.all_music_lane_rows).row_world_base_start.y;
+		//TODO We can just allow adjusting the gap here instead
+		next_row_world_base_pos.y = last_row_y - create_row_data.row_height - MUSIC_ROW_GAP;
+	}
+
+	//TODO How should we compute this?
+	next_row_index : int = mspace_data.all_music_lane_rows.count;
+
+	DEFAULT_MUSIC_LANE_ID : int = 0;
+	//TODO Leaving here for now just in case but we can remove it if everything is fine.
+	#if 0 {
+	row : MusicLaneRow = MakeMusicLaneRow(DEFAULT_MUSIC_LANE_ID, RowSystemType.internal_pitch, MusicLaneType.MEMORY, 
+		next_row_world_base_pos, next_row_index, create_row_data.row_height, use_create_row_data = true, create_row_data);
+	array_add(*mspace_data.all_music_lane_rows, row);
+	} else {
+	row : *MusicLaneRow = array_add(*mspace_data.all_music_lane_rows);
+	//We are using negative row_ids/row_indices now for hidden rows
+	assert(ALL_NEXT_IDS.NEXT_MUSIC_LANE_ROW_ID >= 0);
+	row.id = ALL_NEXT_IDS.NEXT_MUSIC_LANE_ROW_ID;
+	ALL_NEXT_IDS.NEXT_MUSIC_LANE_ROW_ID += 1;
+	// row.music_lane_id = DEFAULT_MUSIC_LANE_ID;
+	row.row_world_base_start = next_row_world_base_pos;
+	row.total_row_index = next_row_index;
+	row.octave_height = create_row_data.octave_height;
+	row.row_height = create_row_data.row_height;
+	row.row_midi_data = create_row_data.row_midi_data;
+	row.row_system_type = create_row_data.row_system_type;
+	// row.sound_on = create_row_data.sound_on;
+	row.is_muted_row = create_row_data.muted_row;
+	// row.num_of_points = GetRowNumOfPoints(create_row_data.tuning_system_count, create_row_data);
+	}
+
+	last_section_x : int = 0;
+	for row_section : create_row_data.row_section_data {
+		linear_tuning : LinearToTuningSystem = 
+			GetOrCreateLinearTuning(row_section.tuning_system_id, row_section.linear_view, all_data);
+
+		section : *SectionToRow = array_add(*mspace_data.all_section_to_row);
+		//TODO Should this be index or id? Id would allow row movement without having to update this section.
+		section.row_id = row.id;
+		section.dspace_id = linear_tuning.dspace_id;
+		section.start_x = last_section_x;
+		section.end_x = last_section_x + row_section.x_length;
+		section.tuning_system_id = linear_tuning.tuning_system_id;
+
+		//TODO Should check that last_section_x == global row_size after this loop i think.
+		//So we would have to set the row_size beforehand OR take the first row or something like that.
+		//We could force all rows to be row_size OR we just take max row here and set that to global row size.
+		//Maybe force is better first for consistency and later we can see if it makes sense to allow shorter rows.
+		//Different row sizes can be allowed across different musical spaces eventually.
+		last_section_x = section.end_x;
+	}
+
+	row.row_size = last_section_x;
+	if !mspace_data.is_fixed_audio_row_size {
+		mspace_data.mspace_audio_row_size = max(row.row_size, mspace_data.mspace_audio_row_size);
+	}
+
+
+	linear_grid_dim : Vector2F = ---;
+	linear_grid_dim.x = all_data.global_rules.memory_unit_width * last_section_x;
+	linear_grid_dim.y = create_row_data.row_height;
+	//TODO We could store this rectangle in a separate linear space for op space struct with grid_size etc...
+	// world_min_pos : Vector2F = points_in_space[0].rect_mesh.min + row.row_world_base_start;
+	//row.row_world_base_start is the min_center so we subtract half the width the get the bottom left
+	//without having to use the space_points so we can compute this anywhere instead.
+	world_min_pos : Vector2F = row.row_world_base_start - Vector2F.{0.5*all_data.global_rules.memory_unit_width,0};
+	linear_grid_rect : Rectangle2 = RectMinDim(world_min_pos, linear_grid_dim);
+	linear_world_center : Vector2F = GetCenter(linear_grid_rect);
+
+	coll : *CollisionEntity = array_add(*mspace_data.all_base_collision_entities);
+	coll.entity_id = row.id;
+	coll.entity_type = EntityType.LANE_ROW_WITH_SECTIONS;
+	coll.shape = CollisionShape.RECTANGLE;
+	coll.rect = RectCenterDim(linear_world_center, linear_grid_dim);
+
+	return row;
+}
+
+
+CreateOpLinearRow :: inline (create_row_data : CreateRowData, all_data : *AllData) -> MusicLaneRow {
+	//TODO Remove this once the new way is working.
+	// row : MusicLaneRow = MakeMusicLaneRow(DEFAULT_MUSIC_LANE_ID, RowSystemType.internal_pitch, MusicLaneType.MEMORY, 
+	// 	next_row_world_base_pos, next_row_index, create_row_data.row_height, use_create_row_data = true, create_row_data);
+	row : *MusicLaneRow = array_add(*all_data.all_op_linear_rows);
+	row.id = ALL_NEXT_IDS.NEXT_OP_LINEAR_ROW_ID;
+	ALL_NEXT_IDS.NEXT_OP_LINEAR_ROW_ID += 1;
+	//TODO We could make this one struct so we only have to copy once
+	//and we can then reuse it everywhere.
+	row.row_world_base_start = create_row_data.op_world_pos;
+	row.row_height = create_row_data.row_height;
+	row.octave_height = create_row_data.octave_height;
+	row.x_point_width = create_row_data.x_point_width;
+	row.op_row_type = create_row_data.op_row_type;
+	row.copy_music_row_id = create_row_data.copy_music_row_id;
+	// row.music_lane_id = music_lane_id;
+	//TODO If we want to be able to play a linear row directly (maybe with mouse-hover or mouse-hover and click)
+	//then we can use something like this to set how we want the row to sound. This could be a good idea for hearing
+	//different notes with specific sounds for example either with midi or internal pitch.
+	row.row_system_type = create_row_data.row_system_type;
+	// row.row_midi_data = create_row_data.row_midi_data;
+	// row.sound_on = create_row_data.sound_on;
+	row.is_muted_row = create_row_data.muted_row;
+
+	last_section_x : int = 0;
+	if row.op_row_type == OpRowType.COPY_MUSIC_ROW {
+		music_row : MusicLaneRow = ArrayFindFirstByNameId(all_data.all_mspace_data[0].all_music_lane_rows, 
+			row.copy_music_row_id, "id");
+		row.total_row_index = music_row.total_row_index;
+
+		//Need to find last section for the collision rect width
+		for all_data.all_mspace_data[0].all_section_to_row if it.row_id == row.copy_music_row_id {
+			if it.end_x > last_section_x {
+				last_section_x = it.end_x;
+			}
+		}
+	} else {
+		for row_section : create_row_data.row_section_data {
+			linear_tuning : LinearToTuningSystem = 
+				GetOrCreateLinearTuning(row_section.tuning_system_id, row_section.linear_view, all_data);
+
+			section : *SectionToRow = array_add(*all_data.all_op_section_to_row);
+			//TODO Should this be index or id? Id would allow row movement without having to update this section.
+			section.row_id = row.id;
+			section.dspace_id = linear_tuning.dspace_id;
+			section.start_x = last_section_x;
+			section.end_x = last_section_x + row_section.x_length;
+			section.tuning_system_id = linear_tuning.tuning_system_id;
+
+			//TODO Should check that last_section_x == global row_size after this loop i think.
+			//So we would have to set the row_size beforehand OR take the first row or something like that.
+			last_section_x = section.end_x;
+		}
+	}
+
+	row.row_size = last_section_x;
+
+	linear_grid_dim : Vector2F = ---;
+	linear_grid_dim.x = row.x_point_width * last_section_x;
+	linear_grid_dim.y = row.row_height;
+	//TODO We could store this rectangle in a separate linear space for op space struct with grid_size etc...
+	// world_min_pos : Vector2F = points_in_space[0].rect_mesh.min + row.row_world_base_start;
+	//row.row_world_base_start is the min_center so we subtract half the width the get the bottom left
+	//without having to use the space_points so we can compute this anywhere instead.
+	world_min_pos : Vector2F = row.row_world_base_start - Vector2F.{0.5*row.x_point_width,0};
+	linear_grid_rect : Rectangle2 = RectMinDim(world_min_pos, linear_grid_dim);
+	linear_world_center : Vector2F = GetCenter(linear_grid_rect);
+
+	coll : *CollisionEntity = array_add(*all_data.all_op_collision_entities);
+	coll.entity_id = row.id;
+	coll.entity_type = EntityType.OP_LINEAR_ROW;
+	coll.shape = CollisionShape.RECTANGLE;
+	coll.rect = RectCenterDim(linear_world_center, linear_grid_dim);
+
+	return row.*;
+}
+
+
+MakeMusicLaneRow :: inline (
+	music_lane_id : int,
+	row_system_type : RowSystemType,
+	music_lane_type : MusicLaneType,
+	row_world_base_start : Vector2F,
+	total_row_index : int,
+	row_height : float,
+	use_create_row_data : bool = false,
+	create_row_data : CreateRowData = CreateRowData.{},
+	row_name : string = "")
+-> MusicLaneRow
+{
+	music_lane_row : MusicLaneRow;
+	//We are using negative row_ids/row_indices now for hidden rows
+	assert(ALL_NEXT_IDS.NEXT_MUSIC_LANE_ROW_ID >= 0);
+	music_lane_row.id = ALL_NEXT_IDS.NEXT_MUSIC_LANE_ROW_ID;
+	ALL_NEXT_IDS.NEXT_MUSIC_LANE_ROW_ID += 1;
+	music_lane_row.music_lane_id = music_lane_id;
+	music_lane_row.row_system_type = row_system_type;
+	music_lane_row.music_lane_type = music_lane_type;
+	music_lane_row.row_world_base_start = row_world_base_start;
+	music_lane_row.total_row_index = total_row_index;
+	music_lane_row.row_height = row_height;
+
+	//TODO This should always be used and is just here for legacy code convenience.
+	//To be removed once we always use CreateRowData
+	if use_create_row_data 
+	{
+		music_lane_row.row_midi_data = create_row_data.row_midi_data;
+		music_lane_row.row_system_type = create_row_data.row_system_type;
+		// music_lane_row.sound_on = create_row_data.sound_on;
+		music_lane_row.is_muted_row = create_row_data.muted_row;
+		music_lane_row.base_note = create_row_data.base_note;
+		music_lane_row.num_of_points = GetRowNumOfPoints(create_row_data.tuning_system_count, create_row_data);
+		music_lane_row.octave_height = create_row_data.octave_height;
+		music_lane_row.music_lane_row_point_type = create_row_data.music_lane_row_point_type;
+	}
+
+	music_lane_row.row_name = copy_string(row_name);
+	return music_lane_row;
+}
+
+ComputeNextPitchRowWorldStart :: inline (
+	all_music_lane_rows : [] MusicLaneRow)
+-> Vector2F
+{
+	min_row_world_y : float = 
+		ArrayFindMinByNameId(all_music_lane_rows, "row_world_base_start.y", 0.0);
+	pitch_start_pos : Vector2F = MakeV2F(0, min_row_world_y - 20);
+	return pitch_start_pos;
+}
+
+//TODO This could possibly change if we allow height to increase if we want to show more octaves at once.
+//This could be store in the MusicLaneRow then.
+row_world_height : float = 12.5;
+MUSIC_LANE_GAP : float = 5;
+MUSIC_ROW_GAP : float = 1;
+DEFAULT_START_POS :: Vector2F.{0,0};
+ComputeNextMusicLaneWorldPos :: inline (
+	all_music_lane_rows : [] MusicLaneRow)
+-> Vector2F
+{
+	bottom_row, found_bottom_row := ArrayFindMinValueByNameId(all_music_lane_rows,
+		"row_world_base_start.y", FLOAT32_MAX);
+
+	next_world_pos := DEFAULT_START_POS;
+	if found_bottom_row {
+		next_world_pos = bottom_row.row_world_base_start;
+		// next_world_pos.y -= MUSIC_LANE_GAP;
+	}
+
+	return next_world_pos;
+}
+
+ComputePitchGridWorldPos :: inline (
+	start_world_pos : Vector2F,
+	memory_unit_width : float,
+	memory_x_index : int)
+-> Vector2F
+{
+	pitch_grid_world_pos : Vector2F = start_world_pos;
+	pitch_grid_world_pos.x += memory_x_index * memory_unit_width;
+	return pitch_grid_world_pos;
+}
+
+
+/*ACTUALLY this is more than convenience as it groups all objects by the op_Space their in.
+So we would only have to cycle directly through these arrays for both rendering and input
+and this would avoid any kind of filtering or moving around data we would need to do later.
+
+ALSO This makes me think that maybe its best to have the dspace be separate by op_space_id as well.
+Not entirely sure. Then we would just have an allocator for all shapes and dspaces here
+and could then reuse it if we close an op_space for example.
+
+We could also have ids specific to op_spaces eventually and that would mean dspaces
+would be identified with op_space_id + dspace_id. Would have to think about that a bit
+depending on how we are using it but I think now everything is being redone per op_space
+whenever we interact except for linear rows.
+
+PROBABLY Worth considering all of this once we have all the data setup and can use it
+with most code so then we know rendering and input and can make a best decision based on that. 
+*/
+//TODO Use this for convenience so we can add any shape in any function
+AllSpaceShapes :: struct {
+	all_space_rects : [..] SpaceRect;
+	all_space_quads : [..] SpaceQuad;
+	all_space_triangles : [..] SpaceTriangle;
+	all_space_circles : [..] SpaceCircle;
+	all_space_text : [..] SpaceText;
+
+	all_space_shape_values : [..] SpaceShapeValue;
+
+	all_custom_geometries : [..] CustomGeometry;
+
+	/*TODO Leaving this data below here as a reminder of some ideas
+	of how to organize data once we separate data between op_spaces here.
+	*/
+	//TODO Maybe this is better as op_space_id
+	//TODO Can remove this from SpaceShape if we use this method.
+	// op_space_id : int;
+	// all_next_ids : AllNextIds;
+	//TODO Would use this to store everything per op_space so this would
+	//be the same as op_space allocator. Can use the same allocator for all the
+	//shapes and also the text strings.
+	//op_alloc : Allocator;
+}
+
+/*TODO For custom shapes (and also some of ours maybe) we should allow the creation of point_values
+which can be associated to a dspace_to_tuning_system_id struct and then those values can play if
+that particular dspace is on. This way people can creates static dspaces using asm/code directly.
+Maybe even pseudo-dynamic ones with input if we allow some code to run given input for example in asm/code.
+We'll see if we allow that or just allow that in external code.
+*/
+//TODO Could make this compile-time and insert the code in here or something like that.
+SpaceShape :: struct {
+	//Maybe we don't need id since the other 3 values are an identifier.
+	//This could be used as a return value for code.
+	//TODO Still might need this if we want to associate audio for example.
+	//Could have space_shape_group and another id for each shape anyways.
+	//TODO We set this to -1 and start the next ids from 0 so we only use
+	//the id if we need it and we can set it to whatever we want as reference.
+	shape_id : int = -1; 
+	//This array can be indexed/sorted by op_space_id
+	//and then dspace_id and then dspace_shape_group
+	//TODO Remove this from here if we use the AllSpaceShapes ordering and indexing method.
+	op_space_id : int;
+	dspace_id : int;
+	//TODO Could add this if we need, maybe also useful for custom shapes
+	//that can be added to the system.
+	// op_dspace_type : OpDSpaceType;
+	//TODO This can likely be 1 64-bit int and then just grab the color from somewhere.
+	//Or just a Vector3F... I don't know if that's worth it though, what about alpha?
+	color : Vector4F;
+
+	//Probably can make each order 32-bit or 16-bit if needed for efficiency.
+	//TODO Do we need render_order for our own rendering?
+	render_order : int;
+	//This is used to group shapes together.
+	//We can then delete in bulk later using op, dspace and shape_group together.
+	//TODO should we rename to dspace_shape_ref?
+	dspace_shape_group : int;
+
+	not_selectable : bool;
+
+	//These are arrays and not just 2d because we can set more pitches or fun region poses depending on the
+	//geometry. Like with spiral the size of the chord depends on the spiral's geometric properties.
+	fun_region : [] float64;
+	pitch_set : [] float64;
+	shape_text : string;
+}
+SpaceRect :: struct {
+	using shape : SpaceShape;
+	//TODO Should we store pos and dim here instead?
+	//Let's see how we use it overall if we're getting center and dim often.
+	//Would also allow us to do SoA and then re-use the point_dim and color
+	//from the particular space for the space_points for example.
+	rect : Rectangle2;
+}
+//TODO We could instead of SpaceLine which would only need 5 floats
+//But then we would have to compute the quad at runtime anyways...
+//ALTHOUGH with this method, say we translated or rotated a dspace
+//then we would just have to translate or rotate all space shapes
+//in that dspace.
+SpaceQuad :: struct {
+	using shape : SpaceShape;
+	quad : Quad2F;
+}
+SpaceCircle :: struct {
+	using shape : SpaceShape;
+	circle : Circle2;
+	//TODO Could add a resolution which would allow us
+	//to also make polygons.
+}
+SpaceTriangle :: struct {
+	using shape : SpaceShape;
+	triangle : Triangle2F;
+}
+/*TODO Text ideas
+1) Current SpaceText which is just 1 short line of 32 chars. Can increase later if needed.u
+2) Variable text where we store the string and it can be formatted (like a paragraph for example)
+3) Text editing boxes which are formattable so people can write their own text
+   which could then be used somehow to adjust some shapes for example or something like that.
+
+We could eventually add font index to change font_size or font type. 
+*/
+SpaceText :: struct {
+	using shape : SpaceShape;
+	//REMINDER SET text.data = text_chars.data
+	text : string;
+	text_chars : [32] u8;
+	op_pos : Vector2F;
+}
+//TODO Eventually we can just allocated the string with the op space allocator
+//similarly to the space point fun region pos
+SetSpaceText :: inline (s : string, space_text : *SpaceText) {
+	count : int = min(s.count, space_text.text_chars.count);
+	space_text.text.data = space_text.text_chars.data;
+	space_text.text.count = count;
+	memcpy(space_text.text.data, s.data, count);
+}
+
+AsmShapeType :: enum {
+	RECTANGLE;
+	// QUADRILATERAL;
+	// TRIANGLE;
+	// TEXT;
+	//TODO Line can be a quad given 2 points
+	// LINE;
+	//TODO Arrow can just be quad and triangle the way we do it now between 2 points
+	// ARROW; 
+
+	// CUBE;
+	// BOX;
+} @LibraryAsmGen
+AsmShapeData :: struct {
+	ret_shape_id : int; //return value
+
+	dspace_id : int;
+	op_space_id : int;
+	dspace_shape_group : int;
+	render_order : int;
+	color : Vector4F64;
+	fun_region : AsmArray(float64); @float64
+	pitch_set : AsmArray(float64); @float64
+	shape_text : AsmString;
+	not_selectable : AsmBool;
+
+	//TODO Put other vars for other shape types later when we add them
+	type : AsmShapeType;
+	rect_pos : Vector2F64;
+	rect_dim : Vector2F64;
+} @LibraryAsmGen
+AsmText2D :: struct {
+	op_space_id : int;
+	text : AsmString;
+	op_pos : Vector2F64;
+	color : Vector4F64;
+	render_order : int;
+} @LibraryAsmGen
+DeleteShapeData :: struct {
+	op_space_id : int;
+	shape_id : int;
+	type : AsmShapeType;
+}
+//TODO Could rename just SpaceValue
+SpaceShapeValue :: struct {
+	op_space_id : int;
+	shape_id : int;
+	//TODO could add this to differentiate for what to do with
+	//each different value group
+	// shape_value_group : int;
+	using value : ShapeValueUnion;
+}
+//TODO Can use this if we use this union elsewhere to copy generally.
+ShapeValueUnion :: union {
+	float_value : float64;
+	int_value : int;
+}
+
+MemoryRangeToDSpace :: struct {
+	x_start : float64;
+	x_end : float64;
+	row_index : int;
+
+	dspace_id : int;
+	op_dspace_type : OpDSpaceType;
+	x_dspace_start : float64;
+}
+
+MemoryUnitToDSpace :: struct {
+	//TODO Should this be float64 now as well?
+	x_index : int;
+	//TODO Should this be row_id so we don't have to update it on a change?
+	//Then we have to fetch the row all the time for the index for each one to get music_pts though...
+	row_index : int;
+
+	//TODO Should we have type here so that dspace_id remains different per type?
+	dspace_id : int;
+	//TODO We could have separate arrays per type especially if we need more data
+	//for each separate type but this seems ok and consistent for now.
+	op_dspace_type : OpDSpaceType;
+
+	//Adding this specifically for linear grids optimization 
+	//(this might only be linear but maybe for other dspaces as well...)
+	//Should we separate it out somehow if it is only for linear?
+	//TODO If we don't really use it in practice then we can remove it although it does seem very practical
+	/*TODO Can replace this with the word order once we merge it with
+	MemoryUnitToChordSpace
+	*/
+	//TODO Maybe this should be float64
+	x_grid_pos : int;
+	//TODO Could add this if we wanted to allow a range mapping.
+	// x_end_pos : float64;
+}
+
+DSpaceToOpSpaceIndex :: struct {
+	/*Note : We are doing it this way instead of multiple
+	arrays for each dspace_type so that we can easily change
+	between each and just have to generate the different
+	dspace. Ultimately this may be unnecessary since we may
+	only ever have LINEAR and CIRCLE and other op_space
+	representations may be much more complex.
+	*/
+	//TODO If dspace_id is unique to each type then we can have different ids for each type instead of just dspace_id
+	//Then we could make the total id = dspace_id + op_dspace_type
+	dspace_id : int;
+	op_dspace_type : OpDSpaceType;
+	op_space_id : int;
+	op_grid_pos : Vector2I;
+}
+
+//TODO Should probably rename this to OpGeometryType or something like that.
+op_dspace_type_enums : [] OpDSpaceType : #run enum_values_as_enum(OpDSpaceType);
+OpDSpaceType :: enum {
+	//TODO Can remove these once we generalize everything.
+	//Just keeping it here for the tests in case for asm tests.
+	//But we will update everything so we can change those tests anyways.
+	OLD_LINEAR;
+	OLD_CIRCLE; 
+
+	LINEAR;
+	CIRCLE;
+	SPIRAL;
+
+	//TODO Should this really be a type or generalized so we can 
+	//have it run for any dimension eventually.
+	CHORD_S2;
+	PITCH_S2;
+}
+
+OpLinearData :: struct {
+	dspace_id : int;
+	base_note : int;
+	grid_size_x : int;
+	grid_size_y : int;
+	//TODO Could have an unequal rendering here instead of doing it with UNEQUAL_TEMPERAMENT
+}
+
+SetupTerminalData :: inline (td : *TerminalData) {
+	//TODO SETTINGS Could pass this in through settings
+	//other default option - λ
+	// td.terminal_start_cmd_string = "λ";
+	td.terminal_start_cmd_string = ">";
+
+	/*DOC : Having cmd_string_with_start and terminal_command_string
+	allows us to just add the cmd_string_with_start to the terminal_split_lines
+	directly whenever we update and so then we can highlight it directly
+	and with terminal_command_string we can still update the text like a normal
+	single line text string. Setting it like this allows us to use 1 contiguous block
+	that always stays in sync.
+	IMPORTANT remember to call UpdateCmdStringWithStart whenever we change
+	the terminal_command_string which we are doing now on udpated_text and 
+	when pressing enter in the terminal.
+	*/
+	terminal_command_string_size : int = Kilobytes(1);
+	cmd_string_with_start_size : int = 
+		terminal_command_string_size+td.terminal_start_cmd_string.count;
+	td.cmd_string_with_start = alloc_string(cmd_string_with_start_size);
+	memcpy(td.cmd_string_with_start.data, 
+		td.terminal_start_cmd_string.data, 
+		td.terminal_start_cmd_string.count);
+	td.cmd_string_with_start.count = td.terminal_start_cmd_string.count;
+
+	//TODO SETTING This can also be a setting if needed
+	//OR we can eventually have this double automatically
+	//in update file to string and set whether or not we allow 
+	//file string increase as a bool flag in FileString
+	//WOULD Also have to increase the size of cmd_string_start if we do that
+
+	td.terminal_command_string.total_allocated_bytes = terminal_command_string_size;
+	td.terminal_command_string.text_string.data =
+		td.cmd_string_with_start.data + td.terminal_start_cmd_string.count;
+	td.terminal_command_string.text_string.count = 0;
+	//TODO I Am not adding this because it messes with the terminal history
+	//We could make the terminal history part of undo but that feels weird
+	// cfsd : CreateFileStringData;
+	// cfsd.undo_action_count = 50;
+	// cfsd.text_undo_split = " ";
+	// InitTextActionHistory(*td.terminal_command_string, cfsd);
+
+
+	td.next_cmd_history_index = 0;
+	td.cmd_history_count = 1;
+	td.history_select_offset = 0;
+	//TODO SETTINGS can pass this in through settings and set the default in there instead
+	td.cmd_history_max_count = 40;
+	array_resize(*td.terminal_cmd_history, td.cmd_history_max_count);
+	for * td.terminal_cmd_history {
+		it.* = alloc_string(terminal_command_string_size);
+		it.count = 0;
+	}
+
+
+	//TODO Should this be bigger in case we want to pass in many commands
+	//TODO I think we can remove this altogether
+	//TODO What exactly is this? Maybe a list for all possible terminal commands, BUT I can make that
+	//a command and just output that to the terminal or generate a file for documentation.
+	// executable_commands_string_size : int = Kilobytes(1);
+	// td.runnable_terminal_commands.total_allocated_bytes = executable_commands_string_size;
+	// td.runnable_terminal_commands.text_string = alloc_string(executable_commands_string_size);
+	// td.runnable_terminal_commands.text_string.count = 0;
+
+	//TODO Maybe can an allocator and clear it with a clear command.
+	//TODO SETTING I think this can be a startup setting where we set the size
+	//of this depending on what people want and default to 100kb which is around 2000 lines
+	//and also write in documentation to clear sometimes
+	terminal_string_size : int = Kilobytes(50);
+	td.terminal_file_string.total_allocated_bytes = terminal_string_size;
+	td.terminal_file_string.text_string = alloc_string(terminal_string_size);
+	td.terminal_file_string.text_string.count = 0;
+}
+ResetTerminalCmdHistory :: inline (td : *TerminalData) {
+	td.next_cmd_history_index = 0;
+	td.cmd_history_count = 1;
+	td.history_select_offset = 0;
+	//We reset here just in case for example we adjust this for tests or there might be other cases later
+	td.terminal_cmd_history.count = td.cmd_history_max_count;
+	for * td.terminal_cmd_history {
+		it.count = 0;
+	}
+}
+/*TODO If we create a dynamic string, then we should likely use that
+currently the size
+*/
+CopyToCurrentCmdHistory :: inline (
+	to_copy : string,
+	td : *TerminalData) 
+{
+	memcpy(td.terminal_cmd_history[td.next_cmd_history_index].data,
+		to_copy.data, to_copy.count);
+	td.terminal_cmd_history[td.next_cmd_history_index].count = to_copy.count;
+}
+ClearTerminalCommandString :: inline (td : *TerminalData, all_term_ops : [] TerminalOpSpaceData) {
+	ResetTextCursor(*td.terminal_cursor);
+	td.terminal_command_string.text_string.count = 0;
+	UpdateCmdStringWithStart(td);
+}
+
+//TODO SETTING this should be settable in the settings and then set in
+//terminal_data below
+// cmd_history_max_count : int : 40;
+TerminalData :: struct {
+	//NOTE : This is the start of the cmd string by default ">" right now
+	terminal_start_cmd_string : string;
+	//Should rename this to DynamicString
+	/*DOC : terminal_command_string refers to the same string
+	as cmd_string with start but the data pointer is increased by 
+	the size of the terminal_start_cmd_string.count
+	*/
+	terminal_command_string : FileString;
+	cmd_string_with_start : string;
+
+	terminal_file_string : FileString;
+	//TODO Rename to terminal command cursor and have some separate data for highlighting other text
+	terminal_cursor : TextCursor;
+
+	//TODO Can put this into a separate struct if we reuse it or something eventually.
+	history_select_offset : int;
+	//TODO This is the current cmd index, so we could name it current_cmd_index
+	//but I think this is clearer and just leave it a note her that
+	//THIS IS the current cmd message that is typed in the terminal
+	next_cmd_history_index : int;
+	//DOC : This count includes the current command so we can systematically
+	//go back to what we were writing when we are scrolling through the cmd history.
+	cmd_history_count : int;
+	cmd_history_max_count : int;
+	terminal_cmd_history : [..] string;
+
+	//Need this for when we resize
+	//TODO Can put it in term op if we ever have separate terminals eventually
+	all_terminal_lines : [..] string;
+
+
+	//TODO This should be capped and then we loop to write
+	//So we would need a pointer of which line we 
+	//are currently writing on to not have to move 
+	//the whole terminal over or something like that.
+	//this should also have a max char cap per line
+	//TODO Could make this an object which could
+	//then differentiate between lines of commands
+	//and info and error commands or also just add
+	//and array with info for each lane instead
+	//of one big object
+	//TODO CAN REMOVE BOTH OF THESE NOW SINCE WE PUT THE terminal
+	//in an op_space
+	// terminal_open : bool;
+	// terminal_cam : Camera2D;
+	//TODO this index is for when we have a limited number
+	//of lines and history so we know where we need to add to
+	//and start drawing from which would be right after the this index
+	//TODO CAN REMOVE THIS now since we use it from text_split_line
+	// terminal_start_line_index : int;
+	// runnable_terminal_commands : FileString;
+}
+
+TerminalEvent :: struct {
+	command_string : string;
+}
+
+MakeTerminalEvent :: (
+	command_type : TerminalCommandType,
+	input_command_params : .. string,
+	//TODO Replace this with context.allocator now
+	allocator : Allocator = temp) 
+-> TerminalEvent 
+{
+	//TODO We can pull this String_Builder out to reuse it if this is slow.
+	sb: String_Builder;
+	sb.allocator = temp;
+
+	print_to_builder(*sb, "%", terminal_command_type_names[command_type]);
+	for input_command_params {
+		print_to_builder(*sb, " %", it);
+	}
+
+	terminal_event : TerminalEvent;
+   terminal_event.command_string = builder_to_string(*sb,, allocator);
+   //TODO Should we check the size of the command string here is less than terminal_command_string.total_allocated_bytes
+	return terminal_event;
+}
+
+#if 0 {
+terminal_command_details : [terminal_command_type_count] string : .[
+#string DONE
+'load' TODO details\n
+DONE,
+
+#string DONE
+'code' TODO details\n
+DONE,
+
+#string DONE
+ms : Prints out all music sections by name.\n
+DONE
+];
+}
+
+terminal_command_type_count : int : 
+	#run type_info(TerminalCommandType).names.count;
+terminal_command_type_names : [] string : #run enum_names(TerminalCommandType);
+terminal_command_type_enums : [] TerminalCommandType : #run enum_values_as_enum(TerminalCommandType);
+TerminalCommandType :: enum {
+	//New commands
+	ldl; //load dynamic library
+
+	create_file;
+	save_file;
+
+	//TODO Need to do delete_op in order to do this properly BECAUSE if there is only 1 file open in 1 op space
+	//then we would have to close that op_space as well OR we could just close it and then when its opened
+	//we open the file selector again.
+	//TODO Could have an option where we just delete the file locally if that helps.
+	//TODO We can't do this because we would need to remove the text op space as well
+	// TODO If we only have 2 commands then we can open empty text op space and then use file explorer to open file.
+	// For now we don't allow empty text op space but maybe we could without any files we don't do any cursor typing or rendering code.
+	//WE COULD ALSO allow deleting a file externally with this but keep the file internally and it would have to be saved
+	//again on the system. 
+	//OR We don't allow the deleting of files internally and if its deleted externally 
+	//we already deal with that case in SaveTextFile where we ask where to save. This way we only open op spaces with a text file
+	//and we can never delete a file and then we just prevent there from being < 1 tabs open.
+	// delete_file;
+
+	open_op; //open op_space
+	close_op; //close op_space
+	create_op; //create a new empty text op_space
+	load_op; //load file and open op_space
+
+	move_op;
+
+	goto;
+
+	tuning_systems;
+
+	//Terminal commands
+	clear;
+
+	//Setting commands
+	load_input_mappings;
+	generate_input_mappings;
+	load_runtime_settings;
+	generate_runtime_settings;
+	generate_startup_settings;
+	//DOC : This is not user facing, so just internally so we can 
+	//change the setting file for tests if we need to.
+	//Can likely remove it altogether if we use setting dynamic libraries eventually
+	set_runtime_settings_file;
+	set_input_mappings_file;
+
+	//Old commands (can remove if we don't use or reuse)
+	sys;
+	compile;
+	jai;
+
+	//Set the audio play pointer (can reuse something like this with mouse)
+	mp;
+
+	//Midi convenience commands
+	midi;
+}
+IsTerminalCmdHelp :: inline (cmd_switches : [] string) -> bool {
+	is_cmd_help : bool = cmd_switches.count > 0 && cmd_switches[0] == "-help";
+	return is_cmd_help;
+}
+goto_type_names : [] string : #run enum_names(GoToTermType);
+goto_type_values : [] GoToTermType : #run enum_values_as_enum(GoToTermType);
+GoToTermType :: enum {
+	mspace;
+	op_space;
+}
+
+CompileCodeType :: enum {
+	DEFAULT; //just a string
+	TEXT_FILE;
+}
+CompileCodeEvent :: struct {
+	compile_settings : CompileSettings;
+	code_string : string;
+	text_file_id : int;
+
+	compile_code_type : CompileCodeType;
+	//TODO We could have this be op_space and/or text_file_id because
+	//technically we could compile from file_id without op_space
+	//and we can have 2 op_spaces with the same text_file i guess...
+	//or maybe we don't allow the second case...
+	op_space_id : int;
+}
+
+ProcessInstructionEvent :: struct {
+	//PROBABLY BETTER TO JUST DO THIS FROM COMMAND LINE and set the parameters consistently.
+	//If we are in RUN, then we can use text_file_id and just run instructions.
+	//If we are in DEBUG, then we have to use op_space_id.
+	// exec_mode : ExecutionMode;
+
+	op_space_id : int;
+	// text_file_id : int;
+}
+OneOpIsExecuting :: inline (
+	all_process_instruction_events : [] ProcessInstructionEvent) 
+-> bool
+{
+	return all_process_instruction_events.count == 1;
+}
+TextOpIsExecuting :: inline (
+	op_space_id : int,
+	all_process_instruction_events : [] ProcessInstructionEvent) 
+-> bool
+{
+	text_op_is_executing : bool = all_process_instruction_events.count > 0 &&
+		all_process_instruction_events[0].op_space_id == op_space_id;
+	return text_op_is_executing;
+}
+
+MapLinearType :: enum {
+	POINT;
+	RANGE;
+}
+MapLinearData :: struct {
+	dspace_id : int;
+	row_index : int;
+	x_index : float64;
+
+	op_x_row_pos : float64;
+
+	map_linear_type : MapLinearType;
+	x_end_index : float64;
+}
+
+//TODO Should this be collapsed with AsmCreateRowData?
+AsmOpRowData :: struct {
+	//Return values
+	row_id : int;
+
+	octave_height : float64;
+	row_height : float64;
+
+	row_section_memory_index : int;
+	row_section_count : int;
+
+	//TODO We might want to make this different for op_rows since we will play them differently
+	sound_on : int; //bool in asm
+	row_system_type : RowSystemType;
+	//TODO We can add midi specific data here
+	// row_midi_data : RowMidiData;
+
+	op_space_id : int;
+
+	x_point_width : float64;
+	x_op_pos : float64;
+	y_op_pos : float64;
+	is_music_row_copy : int; //bool in asm
+	copy_music_row_id : int;
+}
+
+CreateRowData :: struct {
+	mspace_id : int;
+	// lane_start_row_index : int;
+	// relative_row_index : int;
+	// row_name : string;
+	//TODO Could replace this with tuning_system_id
+	//TODO Can remove this if we remove old precise linear way
+	//since we have info in row_section_data.
+	tuning_system_type : TuningSystemType;
+	tuning_system_count : int;
+
+	base_note : int;
+
+	//TODO Can we remove this if we are using tuning system only now? I think so yes but maybe
+	//need to remove some old code before it'll compile out.
+	use_num_of_points : bool = false;
+	num_of_points : int;
+
+	//TODO Pass this in from the code
+	//TODO Should these be float64 so we dont lose info from asm?
+	octave_height : float = 12;
+	row_height : float = 12;
+
+	sound_on : bool = true;
+	muted_row : bool;
+
+	row_system_type : RowSystemType;
+	row_system_id : int;
+	row_sub_system_id : int;
+
+	music_lane_row_point_type : MusicLaneRowPointType;
+	row_midi_data : RowMidiData;
+
+	//TODO This can be used for modulo spaces
+	//So maybe we can replace with row_type
+	// is_octave_view : int;
+	// num_of_octaves : int;
+	// row_view_type : RowViewType;
+
+	// compass_interval : int;
+
+	row_section_data : [] RowSectionData;
+
+
+	//op_row specific data
+	//TODO We can separate this if needed but keeping in here for convenience for now.
+	op_world_pos : Vector2F;
+	x_point_width : float;
+	op_row_type : OpRowType;
+	copy_music_row_id : int;
+}
+
+//TODO Could do a version with input params for non-default
+MakeDefaultCreateRowData :: inline (all_data : AllData) -> CreateRowData
+{
+	//TODO Should we take this from all_tuning_systems instead?
+	create_row_data : CreateRowData;
+	create_row_data.tuning_system_type = all_data.global_rules.tuning_system.type;
+	create_row_data.tuning_system_count = all_data.global_rules.tuning_system.music_pt_count;
+	return create_row_data;
+}
+//Asm specific create row data
+AsmCreateRowData :: struct {
+	octave_height : float64;
+	row_height : float64;
+	muted_row : AsmBool;
+	//TODO Should we make this it's own struct?
+	row_system_type : RowSystemType;
+	row_system_id : int;
+	row_sub_system_id : int;
+	row_sections : AsmArray(RowSectionData);
+	row_midi_data : AsmRowMidiData;
+} @LibraryAsmGen
+RowSectionData :: struct {
+	linear_view : LinearPitchSpaceView;
+	tuning_system_id : int;
+	//TODO Should this be length or x_start and x_end for convenience?
+	//This way eliminates the possibility of overlapping errors.
+	x_length : int;
+} @LibraryAsmGen
+
+MakeRowSectionData :: inline (tuning_system_id : int, x_length : int, linear_view : LinearPitchSpaceView = .RATIO_PROPORTIONAL) -> RowSectionData {
+	section_data : RowSectionData = ---;
+	section_data.linear_view = linear_view;
+	section_data.tuning_system_id = tuning_system_id;
+	section_data.x_length = x_length;
+	return section_data;
+}
+
+
+/*Setting up music data with a struct so we can easily add
+members if we need to add more music data setup.
+
+TODO SET A DEFAULT BASE/ZERO FREQUENCY IN HERE so that we have the same
+frequency everywhere for all 0 pitches and then we can allow adjusting that
+on a per case basis explicitly if needed.
+*/
+SetupMusicData :: struct {
+	//TODO I think this should just be memory_units_per_second
+	row_size : int = 12;
+	memory_units_per_second : float64 = 1.0;
+	// default_pitch_zero_freq : float64 = C4;
+	//TODO Maybe we can set which music space is default here and put that in a register
+	//or somewhere in global rules or something like that and then use that
+	//whenever we don't specify music space or to start implementing it and not add it everywhere.
+	//default_music_space : int;
+	//TODO Do we want to have the concept of a beat here? It could be maintained by the user.
+	//I'll store it in here for now but I am not sure I want to keep it as I would rather remove
+	//the concept of a beat altogether and people can introduce it if they want to.
+	/*I WILL REMOVE IT. Will keep it for now just in case BUT then we can also allow drawing
+	rectangles for linear so that we can change the rhythm for row section without having to change
+	the underlying memory_units_per_second so that the asm works. Then the user can write functions
+	that allows the rhythm to generalize the length of music_pts per row and then can multiply values from there.
+	*/
+	//TODO REMOVE THESE 2 once they are no longer used
+	bpm : float64 = 60.0;
+}
+
+//Leaving like this so I can put things on for defaults if needed.
+TWO_ROWS :: CreateRowData.[
+.{row_section_data=.[.{x_length=12}], row_system_type=.internal_pitch},
+.{row_section_data=.[.{x_length=12}], row_system_type=.internal_pitch},
+];
+SetupMusic :: inline (all_data : *AllData, smd : SetupMusicData = .{}) {
+	//TODO Should this be in a register instead of in global rules?
+	all_data.global_rules.row_size = smd.row_size;
+	//TODO I think maybe i want to remove bpm and bps altogether and only keep memory_units as a concept.
+	all_data.audio_timing.bpm = smd.bpm;
+	all_data.audio_timing.bps = all_data.audio_timing.bpm / 60.0;
+	//TODO Why am I multiplying this? It was 1 so it was doing nothing. No need to multiply.
+	//TODO Should this be memory_units_per_beat by default though?
+	//TODO I think we can leave this as per_second and then have a function that does memory_units_per_second
+	//to memory_units_per_beat
+	// all_data.game_audio_play.memory_units_per_second = smd.memory_units_per_second * all_data.audio_timing.bps;
+	all_data.game_audio_play.memory_units_per_second = smd.memory_units_per_second;
+
+	//TODO We could set base_frequency in here which would map to the pitch 0 in any case.
+	//We could also allow that to be set per tuning system if needed
+}
+
+SetupMusicAndRows :: inline (all_data : *AllData, rows : [] CreateRowData = .[], smd : SetupMusicData = .{}) {
+	//TODO We can rmove this from here now since we set it by default
+	//We can just call this function if we need to update it OR update it directly in the code since that works now.
+	// SetupMusic(all_data, smd);
+	//Technically we can just call this now directly and remove this function
+	for rows CreateMusicRow(it, all_data);
+}
+
+
+/*TODO Should we put this in a separate instructions file?
+*/
+MusicInstruction :: struct {
+	//TODO Do we need this id. Maybe it can be associated externally by file_id or something like that.
+	//Leaving here for now just in case we use it but can remove if we don't with external id
+	//so it clears up the instruction data from unnecessary size increase.
+	//We could reference a file by beginning and start index and then remove the id... not sure.
+	//They are currently not used and only need if we need things to happen out of order.
+	//I think we can remove id to try and keep size <= 128 bytes.
+	//Mac cache lines are 128 bytes, pc cache lines are 64 bytes.
+	//Can collapse some enums to bits to remove a few more bytes too.
+	id : int;
+	op_code : OpCode;
+	instr_type : InstructionType;
+	//TODO Could have a #place here with each separate operand.
+	operands : [3] MusicOperand;
+}
+
+/*REMINDER 
+  I am making this a type for now but it could be 1 bit if
+  we only have these 2 types. This is in case we need it for
+  u8 string later or allow other types as well.
+*/
+InstructionType :: enum u8 {
+	INTEGER;
+	FLOAT;
+	//TODO Could allow byte here so we can have instructions
+	//for u8 and bool like arithmetic and logical. This would then
+	//be used directly for string manipulation if needed for example.
+	/*IF/WHEN We allow this type, I think we just need this type and not operand types.
+	Then we just check the InstructionType and only take the the first byte. We can do
+	bounds checks I guess but maybe just do checks in the compiler and not during execution.
+	Just assume to take the first byte would be clearer and faster.
+	Would need to check this in arithmetic and also comparison instructions. (Maybe logical but maybe note)
+	Comparison is most important and also could have a special case for mov.b if needed but maybe mov_size == 1 is enough.
+	REMIND THAT THIS IS REALLY ONLY NEEDED FOR STRINGS and should not really be used as an int replacement for now.
+	*/
+	// BYTE;
+}
+
+//TODO Can this be done with #procedure_of_call or something like that?
+// MakeFloatInstr :: #bake_arguments MakeMusicInstruction(t=.FLOAT);
+FloatInstr :: MakeFloatInstr;
+MakeFloatInstr :: inline (
+	op_code : OpCode,
+	operands : .. MusicOperand) 
+-> MusicInstruction 
+{
+	return MakeMusicInstruction(op_code, operands, .FLOAT);
+}
+
+MakeMI :: MakeMusicInstruction;
+MakeMusicInstruction :: inline (
+	op_code : OpCode,
+	operands : .. MusicOperand,
+	t : InstructionType = .INTEGER) 
+-> MusicInstruction 
+{
+	assert(operands.count <= MusicInstruction.operands.count, "MusicInstruction operands need to be <= 3.");
+	mi : MusicInstruction = MakeMusicInstruction(op_code, operands, t);
+	return mi;
+}
+
+MakeMusicInstruction :: inline (
+	op_code : OpCode,
+	operands : [] MusicOperand,
+	t : InstructionType = .INTEGER) 
+-> MusicInstruction 
+{
+	assert(operands.count <= MusicInstruction.operands.count);
+
+	mi : MusicInstruction;
+	mi.id = ALL_NEXT_IDS.NEXT_MUSIC_INSTRUCTION_ID;
+	ALL_NEXT_IDS.NEXT_MUSIC_INSTRUCTION_ID += 1;
+	mi.instr_type = t;
+	mi.op_code = op_code;
+	for operands {
+		mi.operands[it_index] = it;
+	}
+	return mi;
+}
+
+EqualsMInstr :: inline (m1 : MusicInstruction, m2 : MusicInstruction) -> bool {
+	is_equal : bool = m1.op_code == m2.op_code &&
+		m1.instr_type == m2.instr_type &&
+		EqualsMOperand(m1.operands[0], m2.operands[0]) &&
+		EqualsMOperand(m1.operands[1], m2.operands[1]) &&
+		EqualsMOperand(m1.operands[2], m2.operands[2]);
+	return is_equal;
+}
+
+MusicOperand :: struct {
+	operand_type : MusicOperandType;
+	//TODO Could have a #place here with each separate value.
+	/*TODO We could also just make this a struct with
+	  both values and then can also copy easily. This way
+	  we can also put using on the first value and then access
+	  that type by default directly. Maybe thats confusing
+	  for debugging though.
+	  Part of me likes the struct way more than the array way,
+	  since then we can copy with one line of code as well.
+	  SO FAR I am just using the arrays.
+	  ALSO IMPORTANT it may be possible to optimize this down
+	  to 1 64 bit value and then 2 32 bit values for anything
+	  that needs 2 values. The only exception is music memory
+	  since it reduces how much we can access... not sure
+	  will leave it now but maybe can consider later...
+	  Can possible remove v0 and v1 since im using the array everywhere.
+	  CAN MAKE 1 32-bit and 1 64-bit and that would optimize a bit eventually.
+
+	  Can also reduce a few bytes by collapsing the enums into bits
+	  Seems like pc cache lines are 64 bytes and mac cache lines are 128 bytes
+	  so would be worth keeping this <= 128 bytes.
+	*/
+	// using mv : MultiValues;
+	using v0 : MusicOperandValue;
+	v1 : MusicOperandValue;
+	#place v0; values : [2] MusicOperandValue;
+}
+
+//TODO Remove this if we don't use since it seems like
+//I am using the fixed array of operand values everywhere
+#if 0 {
+MultiValues :: struct {
+	using v0 : MusicOperandValue;
+	v1 : MusicOperandValue;
+}
+}
+
+MusicOperandType :: enum u8 {
+	//TODO We can remove this NONE type if we set the defaults
+	//to be zero and also have a zero register at register 0
+	//and then calculations just come out to be 0 for RAM_MEMORY and MUSIC_MEMORY.
+	NONE;
+	INTEGER;
+	FLOAT;
+	REGISTER;
+	//TODO Should we rename this to RAM_VALUE now?
+	RAM_MEMORY;
+	MUSIC_MEMORY;
+	//We are using RAM_ARRAY for array access so we cannot set right now.
+	//Should we allow setting an array? That seems like something
+	//we can stick to keeping in the compiler.
+	/*This should be thought of as a base value like INTEGER or FLOAT.
+	I am not sure if we should use it as an array storage type, but
+	maybe we could since it could simplify array code in general.
+	*/
+	RAM_ARRAY;
+}
+
+EqualsMOperand :: inline (o1 : MusicOperand, o2 : MusicOperand) -> bool {
+	is_equal : bool = o1.operand_type == o2.operand_type &&
+		EqualsMValue(o1.values[0], o2.values[0]) &&
+		EqualsMValue(o1.values[1], o2.values[1]);
+	return is_equal;
+}
+
+MusicOperandValue :: struct {
+	type : OperandValueType;
+	using value : MemoryValue;
+}
+
+OperandValueType :: enum u8 {
+	NONE;
+	REGISTER;
+	INTEGER;
+	FLOAT;
+}
+
+EqualsMValue :: inline (v1 : MusicOperandValue, v2 : MusicOperandValue) -> bool {
+	is_equal : bool = v1.type == v2.type && v1.int_value == v2.int_value;
+	return is_equal;
+}
+
+//TODO We could validate in here, although if we use the functions
+//internally then it should be fine and we don't need to validate.
+MakeMusicOperand :: inline (
+	type : MusicOperandType,
+	v1 : MusicOperandValue)
+-> MusicOperand
+{
+	op : MusicOperand;
+	op.operand_type = type;
+	op.values[0] = v1;
+	return op;
+}
+
+MakeMusicOperand :: inline (
+	type : MusicOperandType,
+	v1 : MusicOperandValue,
+	v2 : MusicOperandValue)
+-> MusicOperand
+{
+	op : MusicOperand = MakeMusicOperand(type, v1);
+	op.values[1] = v2;
+	return op;
+}
+
+//TODO Should this go in thegame_code?
+non_stack_start_reg :: RegDef.ax;
+non_stack_start_reg_index :: cast(int) non_stack_start_reg;
+reusable_start_reg :: RegDef.r0;
+reusable_start_reg_index :: cast(int) reusable_start_reg;
+reusable_end_reg :: RegDef.r3;
+reusable_end_reg_index :: cast(int) reusable_end_reg;
+
+//We use this for push_all_stack_reg and pop_all_stack_reg for everything we have to store and reset on a function call
+push_pop_start_reg :: RegDef.sbp;
+push_pop_start_reg_index :: cast(int) push_pop_start_reg;
+STACK_REG_SIZE :: ((#run enum_names(RegDef)).count - push_pop_start_reg_index) * size_of(MemoryValue);
+ALL_REG_SIZE :: (#run enum_names(RegDef)).count * size_of(MemoryValue);
+reg_def_names : [] string : #run enum_names(RegDef);
+reg_def_enums : [] RegDef : #run enum_values_as_enum(RegDef);
+reg_def_s64 : [] int : #run enum_values_as_s64(RegDef);
+RegDef :: enum {
+	//We could use this if needed as a default zero value reg
+	//that is always set to zero like they do in RISC architecture.
+	//TODO Can rename to ZERO_REGISTER
+	ZERO_VALUE_REGISTER;
+
+	//Constant value registers
+	dfms; //default music space
+
+	ir; //Current instruction register
+	pc; //Next instruction program count
+	cr; //TODO Can remove this if we don't use a comparison register.
+
+	//TODO Should we rename this .hbp instead of .hsp?
+	hsp; //heap start pointer
+	hcp; //heap current pointer
+	hrp; //heap return pointer
+
+	//tano row stack pointers
+	//NOTE : This will not get reset on function return so then the tsp can maintain the return tano stack op neumes.
+	tsp; //tano row stack pointer
+
+	srp; //stack return pointer
+
+	sbp; //stack base pointer
+	scp; //stack current pointer
+	//TODO We may not need this if we can just use byte_offset_from_sbp
+	sep; //stack expression pointer (can remove this if not used)
+	//We want to reset this on function return so we place it here
+	tbp; //tano row base pointer
+
+	//TODO Likely need a bdr (base data register) to show
+	//where data starts after constant. Can use now also
+	//so that the 0 value in memory always = 0 for null pointers
+	//TODO Should we rename to rax...?
+	//NOTE : These registers are now assumed to only be used locally and do not move around in an expression.
+	//To use a register that moves around (eg for binary ops or dereference) then use reusable registers below.
+	ax;
+	bx;
+	cx;
+	dx;
+	//Maybe we have a few y registers instead of ex. So ax, bx, cx and ay, by, cy
+	// ex;
+
+	//NOTE : We use arm register names for reusable registers.
+	//These are use based on availability and specifically for
+	//pointer dereferences for example. Could also optimize simple
+	//instructions and use them for y = x + 1 for example if needed
+	//to avoid a stack push for the x + 1 there eventually.
+	r0;
+	r1;
+	r2;
+	r3;
+	//TODO could add more of these if we need them
+
+	/*NOTE : If we do add float registers, we can add an execution time check
+	so that we always grab reg.float_value from float registers. This would maybe
+	be helpful but I don't know if it matters. We would still have to specify that
+	it is a float instruction. Ultimately all register can hold anything, even on x86
+	and so the values are interpreted by the instructions. This allows an extra check
+	but it may not be worth it. The general case is good because it allows me or the user
+	to do anything and also does not feel restrictive or not restrictive enough
+	because memory and registers will be interpreted anyways in any case.
+	Ie if there is a float in an int value, there is no way to check it in all cases all the time.
+	*/
+	//TODO Could have 5 float registers by name here and then we know which ones are floats and then
+	//optimization for op_codes would be fine later.
+	//fadd also makes it fine. Only having a separate type does not make it fine but also how would
+	//we know the other types anyways... so may need it anyways. (could possibly just be a few bits though.)
+	// fax;
+	// fbx;
+	// fcx;...
+
+	//Then we could also have forced integer registers
+	// iax;
+	// ibx;
+	// icx;
+
+	//Function pointer
+	foop;
+
+	//TODO Can likely remove all these in favor of just storing muscalls on the stack
+	//TODO REMOVE THIS ONCE WE REMOVE THE OLD MUSCALL CODE.
+	amu;
+	bmu;
+	cmu;
+	dmu;
+	emu;
+}
+
+/*New Music instruction and operand creation. Can remove
+old one if this works nicely. We use the OldMusicOperand
+and OldMusicOperandValue directly here and then copy it over.
+We could also add it directly to the array since we know
+it is correct. Is there a clean way to do this?
+*/
+
+/*TODO SHOULD WE move this into thegame_code?
+
+REPLACE New and call the old ones Old once this is working and tested.
+*/
+
+/*
+NEW MUSIC OPERAND STUFF
+
+TODO MOVE ALL THIS INTO thegame_code
+*/
+//TODO We could just pass in music_instructions directly instead of using the /interface now
+InstrCreator :: struct {
+	all_music_instructions : [..] MusicInstruction;
+}
+
+//TODO Can replace with #bake_arguments if that allows function overloads at some point.
+CreateFloatInstr :: FCreateMInstr;
+FInstr :: FCreateMInstr;
+FCreateMInstr :: inline (op_code : OpCode, operands : .. MusicOperand, d : $D/interface InstrCreator) -> MusicInstruction {
+	return CreateMInstr(op_code, operands, ami=*d.all_music_instructions, t=.FLOAT);	
+}
+FCreateMInstr :: inline (op_code : OpCode, operands : .. MusicOperand, ami : *[..] MusicInstruction) -> MusicInstruction {
+	return CreateMInstr(op_code, operands, ami, t=.FLOAT);
+}
+FCreateMInstr :: inline (op_code : OpCode, operands : [] MusicOperand, ami : *[..] MusicInstruction) -> MusicInstruction {
+	return CreateMInstr(op_code, operands, ami, t=.FLOAT);
+}
+
+Instr :: CreateMInstr;
+CreateMInstr :: inline (op_code : OpCode, operands : .. MusicOperand, d : $D/interface InstrCreator, $t : InstructionType = .INTEGER) -> MusicInstruction {
+	return CreateMInstr(op_code, operands, ami=*d.all_music_instructions, t=t);	
+}
+CreateMInstr :: inline (op_code : OpCode, operands : .. MusicOperand, ami : *[..] MusicInstruction, $t : InstructionType = .INTEGER) -> MusicInstruction {
+	return CreateMInstr(op_code, operands, ami, t);
+}
+//TODO Could Make a separate function like MakeInstr which then sets that a compile_time dont_add and we just return it without adding.
+CreateMInstr :: inline (op_code : OpCode, operands : [] MusicOperand, ami : *[..] MusicInstruction, $t : InstructionType = .INTEGER) -> MusicInstruction {
+	assert(operands.count <= MusicInstruction.operands.count);
+	mi : MusicInstruction = MakeMusicInstruction(op_code, operands, t);
+	//TODO Validate that the operands work with the instruction before adding
+	//Can validate operands and values altogether now.
+	// ValidateOldMusicInstruction();
+	array_add(ami, mi);
+	return mi;
+}
+CreateMInstr :: inline (mi : MusicInstruction, d : $D/interface InstrCreator) -> MusicInstruction {
+	new_mi : MusicInstruction = PROC_JMP_RETURN;
+	new_mi.id = ALL_NEXT_IDS.NEXT_MUSIC_INSTRUCTION_ID;
+	ALL_NEXT_IDS.NEXT_MUSIC_INSTRUCTION_ID += 1;
+	array_add(*d.all_music_instructions, new_mi);
+	return new_mi;
+}
+
+//TODO Should have a version with integer to allow creation of new registers.
+RegMem :: inline (reg_def : RegDef) -> MusicOperand {
+	mop : MusicOperand = MakeMusicOperand(.REGISTER, .{.REGISTER,.{cast(int) reg_def}});
+	return mop;	
+}
+
+//TODO Can reaplce this with Imm or Imme for shortness
+Imm :: Immediate;
+Immediate :: inline (i : int) -> MusicOperand {
+	mop : MusicOperand = MakeMusicOperand(.INTEGER, .{.INTEGER, .{i}});
+	return mop;
+}
+
+FImm :: inline (f : float64) -> MusicOperand {
+	mop : MusicOperand = MakeMusicOperand(.FLOAT, .{.FLOAT, .{float_value=f}});
+	return mop;
+}
+
+ImmEnum :: inline (i : $T) -> MusicOperand {
+   #assert(type_info(T).type == .ENUM);
+	mop : MusicOperand = MakeMusicOperand(.INTEGER, .{.INTEGER, .{cast(int) i}});
+	return mop;
+}
+
+//TODO Do we need a version with only 1 x input?
+MusicMem :: inline (row : $T, x : $R) -> MusicOperand {
+	#if R == float64 || R == float {
+	mop := MakeMusicOperand(.MUSIC_MEMORY, .{IntOrReg(T),.{cast(int) row}}, .{.FLOAT,.{float_value=cast(float64)x}});
+	} else {
+	mop := MakeMusicOperand(.MUSIC_MEMORY, .{IntOrReg(T),.{cast(int) row}}, .{IntOrReg(R),.{cast(int) x}});
+	}
+	return mop;
+}
+//TODO Not sure if 1 input should be absolute x or row?
+// MusicMem :: inline (x : $T) -> MusicOperand {
+// 	mop : MusicOperand = MakeMusicOperand(.MUSIC_MEMORY, .{IntOrReg(T),.{cast(int) x}});
+// 	return mop;
+// }
+
+//TODO Could collapse RamMem function now. This just lets us do RamMem(.sbp,0) without RamMem(RegDef.sbp,0).
+RamMem :: inline (b : RegDef, i : int) -> MusicOperand {
+	return MakeMusicOperand(.RAM_MEMORY, .{.REGISTER,.{cast(int)b}}, .{.INTEGER,.{i}});
+}
+RamMem :: inline (b : RegDef, i : RegDef) -> MusicOperand {
+	return MakeMusicOperand(.RAM_MEMORY, .{.REGISTER,.{cast(int)b}}, .{.REGISTER,.{cast(int)i}});
+}
+RamMem :: inline (b : RegDef) -> MusicOperand {
+	return MakeMusicOperand(.RAM_MEMORY, .{.REGISTER,.{cast(int)b}});
+}
+RamMem :: inline (b : int) -> MusicOperand {
+	return MakeMusicOperand(.RAM_MEMORY, .{.INTEGER,.{b}});
+}
+
+//TODO I kind of want to flip the order of data and count here...
+RamArray :: inline (count : $T, data : $R) -> MusicOperand {
+	mop : MusicOperand = 
+		MakeMusicOperand(.RAM_ARRAY, .{IntOrReg(T),.{cast(int) count}}, .{IntOrReg(R),.{cast(int) data}});
+	return mop;
+}
+
+//I think with the macro and the #if this is all done at compile-time now.
+//Maybe if we want these to be dll callable later we might have to change them a bit... not sure.
+IntOrReg :: inline ($T : Type) -> OperandValueType #expand {
+	return ToOpValueType(T, .[int,RegDef]);
+}
+ToOpValueType :: inline ($T : Type, $valid_types : [] Type = .[int,RegDef,float64]) -> OperandValueType #expand {
+#assert(AllOrEquals(T,valid_types));
+	#if T == {
+	case int; return .INTEGER;
+	case RegDef; return .REGISTER;
+	case float64; return .FLOAT;
+	}
+	//Note : This cannot be reached because of the #assert above.
+	//Putting here to squelch the compiler warnings.
+	return .NONE;
+}
+
+ValueToOp :: inline (v : MusicOperandValue) -> MusicOperand {
+	operand_type : MusicOperandType;
+	if #complete v.type == {
+	case .NONE;     operand_type = .NONE;
+	case .REGISTER; operand_type = .REGISTER;
+	case .INTEGER;  operand_type = .INTEGER;
+	case .FLOAT;    operand_type = .FLOAT;
+	}
+	return MakeMusicOperand(operand_type, v);
+}
+
+NO_CPU_ERROR :: CPUError.{is_error=false};
+//TODO Can rename this to RuntimeError if that's clearer but CPUError seems more general.
+CPUError :: struct {
+	is_error : bool;
+	//TODO Can reuse this if we need both
+	// instr_index : int;
+	error_index : int;
+	msg : string;
+}
+
+CPUErr :: MakeCPUErr;
+MakeCPUErr :: inline (msg : string, instr_index : int=0) -> CPUError {
+	err : CPUError;
+	err.is_error = true;
+	err.error_index = instr_index;
+	err.msg = msg;
+	return err;
+}
+
+/*END OF NEW OPERAND STUFF
+*/
+
+/*TODO Should we do this union or just have 3 different register types?
+*/
+MemoryValue :: union {
+	//TODO Or should this be *u8 for bytes instead?
+	int_value : int;
+	float_value : float64;
+	bytes : [8] u8;
+}
+
+//TODO Likely move this to thegame_code
+//TODO could turn this into a u8 if we have less than
+//256 although if users can add their own then
+//we can have a custom option which fetches those.
+//Unless they create their own in which case we don't 
+//need anything.
+//TODO Should this be in AllData because we will
+//likely want to allow the player to add their own
+//although maybe only has higher level functions?
+//Still might be worth creating HashTable to put them
+//all in for easy access and easy adding later on
+//although if people create their own models, they
+//may want to change everything.
+op_code_names : [] string : #run enum_names(OpCode);
+op_code_enums : [] OpCode : #run enum_values_as_enum(OpCode);
+OpCode :: enum u8 {
+	//Data Directive OpCodes
+	//Note : These could be fixed for levels
+	/*Every File can start with
+		LANESIZE X
+		NUMADDRESS 10
+		MUSICLANE 0 reg
+	*/
+	//TODO These could be generated visually upon request
+	//so we can see things or just when we run everything
+	// numsreg;
+	// numfreg;
+	// lanesize;  //LANESIZE 10
+	//TODO Could allow to generate music lanes instead
+	//like MUSICLANE 10 without a name would make 10 music_lanes
+	// lane; // musiclane piano 1
+
+	//Music Instructions
+	// CREATE_MUSIC_POINT; //Second operand is note we want to create in first operand
+	//TODO Should have only 1 COPY op_code but then
+	//various op_codes depending on the input
+	// MOVE_MPS; //Move entire MPS with replacement
+	mov; //MOVE_IMMEDIATE; //Move constant MPS value directly with replacement
+	mset; //This performs a memset so we can initialize things easily and efficiently in ram memory
+	clear;
+
+
+	//TODO If we need more operands (eg for chunk moves) then we could make this array compile-time constant.
+	//ACTUALLY for chunks we could have operand[2] be the 2 chunk values and operand[0] and operand[1] be
+	//the music memory values we are trying to move.
+	// movc;
+
+	add;
+	sub;
+	mod;
+	div;
+	mul;
+
+	split;
+	dim;
+
+
+	//tano instructions
+	tmov;
+	tclear;
+
+	tadd;
+	tsub;
+	tmod;
+	tdiv;
+	tmul;
+
+	trol;
+	tshr;
+	tshl;
+	tror;
+
+
+	// ADD_SYSTEM;
+	// SUB_SYSTEM;
+	// SUBSET; //TODO can we just replace subset with LOGICAL AND?
+	// //TODO Can have player implement SYSTEM_SUBSET ops.
+	// //Should we provide player with modulo(%) op? 
+	// //Or even have them implement modulo?
+	// //Yes, modulo seems like it could be another level.
+	// ADD_SYSTEM_SUBSET;
+	// SUB_SYSTEM_SUBSET;
+	// //Note that inversion is just 2*n - value = (n+n) - value
+	// SPLIT; //Can have the second operand be which notes in vertical positions you want to be moved
+	// EXTEND; //Extend Rhythm
+	// SNAP_UP;
+	// SNAP_DOWN;
+	// SNAP_ROUND;
+
+	//Get tuning system of specific memory
+	//This would allow tuning to be changed depending
+	//on whats happening in the piece
+	//TODO MEMORY_CHUNK type or something 
+	//instead of MEMORY_MPS
+	//TODO entire lane is this tuning
+	//tuning <[piano] 12
+	//TODO entire row is this tuning
+	//tuning <[piano,#0] 12
+	//TODO subsection is this tuning
+	//tuning <[piano,#0,#0] 12
+	//tunerow piano.pitch 12
+	//tunelane piano 12
+	//tunemps [piano.pitch, 10] 19
+	//tune [0, piano.pitch] 19
+	//tune [0, piano.0] 19
+	//TODO to create tuning systems
+	//Could also allow changing tuning systems
+	//with registers
+	//eq19 : tuning = {a,b,c,d,e,f}
+	//eq19 : tuning = {0,120,240,600,1200}
+	//TODO This can be replaced with muscall altogether now
+	tune;
+
+	//TODO Can be replaced with muscall
+	mlen;
+
+	// This could be a generalized op which lets us do
+	// multiple simply math operations at once for clarity.
+	// So we'd have to implement operator precedence using a binary tree
+	// MATHOP piano[.1] := 2 * .0 - .1
+	// MATH_OP;
+
+	// This does not need to be an op_code and can instead
+	// get replaced by the other op_codes like inlining.
+	// Could also allow macros to be placed directly in
+	// an op space in a visual kind of way.
+	// MACRO;
+
+	//TODO regular split can be a level using INTERSECTION and JUMP_EQUAL
+	//Can also have < and > be INTERSECTION since we can
+	//go and check each value with a loop and then the player
+	//can create their own measure for > or < of chord for example
+	// INTERSECTION; //Logical AND - can be used as specific music_pt_pos split
+	or; //Logical OR - can be used as a MOVE without replacement
+	and;
+	not;
+	xor;
+	// diff;
+	abs;
+
+	shr;
+	shl;
+	ror;
+	rol;
+
+	//TOOD FROM HERE start implementing cmpr and branching
+	//Code Instructions
+	//Note : Do a comparison with <, >, <=, etc...
+	//and then place that comparison in a register
+	//cmpr #0 #1 > #2
+	//can be implemented using bits in int value
+	//for ==, >, <
+	// cmp; //Convenience with the operators
+	ceq;
+	cgt;
+	clt;
+	cgte;
+	clte;
+	cneq;
+
+	tjmp;
+	fjmp;
+	jmp;
+	call;
+	//TODO We could have jmpa for absolute addressing if needed.
+	// jmpa;
+	//TODO Can remove this, leaving here for now for backwards
+	//compatibilty with old execution for old example checking.
+	// jr; //TODO is the word 'call' better here
+
+	/*TODO For storing and loading ireg like a stack
+	  if needed for convenience in a macro. The other
+	  way to do this would be to store ireg values in
+	  memory_units but then we would be limited to 
+	  row_size although not really since we can
+	  make a lane as many rows as we want.
+
+	  What names do we want? What does x86 and arm use?
+	*/
+	ret;
+	//TODO I think we can remove these now
+	// pushi;
+	// popi;
+	// pushf;
+	// popf;
+
+	push;
+	pop;
+
+	//TODO Right now we are doing comparison and then
+	//jump based on the comparison but we could
+	//change later if needed. Could do 1 compare and
+	//then jump if we keep it with a separate register
+	//because then we could have negative numbers.
+	// jeq;
+	// jgt;
+	// jlt;
+	// jgte;
+	// jlte;
+	// jneq;
+
+	push_all_stack_reg;
+	pop_all_stack_reg;
+
+
+	//We use these to systematically manage heap memory.
+	alloc;
+	free;
+
+	ftoi; //float to int
+	itof; //int to float
+
+	s_print; //asm for sprint
+
+	//Move memory from constant section to main memory
+	//TODO Could rename const_mem or constm maybe
+	const_mov;
+
+	/*TODO Instead of having separate create and map instructions
+	we could just have create and map with an operand that
+	specifies what we are creating.
+	Should we even have create and map or just load things into
+	a buffer. This would be more work to parse but also more extensible. 
+	Do we want to allow creation of op_spaces in code or just in external jai.
+	To some extent, external jai makes more sense because then you have access
+	to everything like render buffer and audio whereas then I would have to create
+	a mapping to that which seems like overkill. 
+	Maybe the internal language should just be musical manipulation and some
+	op_space creation but for more complicated things like creating own geometries
+	and making synths then we have to use normal code, otherwise the overlap seems
+	to start to be too much. HOWEVER, we can do it if it seems good
+	since we have a full programming language out our disposal. 
+
+	TECHNICALLY we can create a system that allows creating op_spaces and then
+	adding dspaces arbitrarily at a position and then mapping points either from
+	music_memory or from direct points in other memory. This way we could even allow
+	mapping objects like squares or triangles directly to a vector point in the op_space
+	and so we could draw our own shapes. However, more complex tasks would still need
+	externall dll, like movement and then also think about vr. (Could possibly allow movement
+	if we allow certain things to update every frame)
+	This would allow us to create something like a collision object
+	so then we can even interact with it with the mouse and generate possibly.
+	OR allow keyboard strokes to have an effect.
+	*/
+
+	//TODO I think we should should move all the base muscalls in here.
+	//Then we don't have update assembler or the values in tests.
+	mspace_clear;
+	//TODO Could also allow moving spaces to a specific index so people can cycle in any order they want.
+	//Could call it move_mspace or swap_mspace might be clearer.
+	// swap_mspace;
+
+	//New instructions for muscall (like syscall) so we can generalize
+	//thinks like creating. The first operand can have a corresponding
+	//enum for code legibility.
+	muscall;
+
+	//Music and op space asm instructions
+	setup_music;
+
+	get_or_create_simple_synth;
+	update_simple_synth;
+	delete_simple_synth;
+	delete_all_synths;
+
+	get_tuning_system;
+	create_tuning_system;
+	reset_default_tuning_systems;
+
+	create_row;
+
+	get_or_create_mspace;
+	update_mspace;
+	delete_mspace;
+	clear_mspace;
+
+	get_or_create_op_space;
+	clear_op_space;
+
+	create_circle;
+	map_circle;
+
+	create_spiral;
+	map_spiral;
+
+	create_cs2;
+	map_cs2;
+
+	create_cs3;
+	map_cs3;
+
+	create_custom_3D;
+	create_shape_3D;
+	create_text_3D;
+
+	create_custom_geometry;
+	create_shape;
+	delete_shape;
+	create_text;
+
+	//TODO Should use this to allow converting to frequencies with a pitch and tuning system in a consistent way
+	// to_frequency;
+
+	//Note : Comparisons are always just a SUB and then a branch.
+	//Can look at some more places to see how they do it as well.
+	// JUMP_EQUAL;
+	// JUMP_NOT_EQUAL;
+	// JUMP_GREATER_THAN; //can tell us if we have notes in an mps or not if we compare to empty mps
+
+	// //TODO do we need these?
+	// JUMP_GREATER_THAN_EQUAL;
+	// JUMP_LESS_THAN;
+	// JUMP_LESS_THAN_EQUAL;
+
+	exit;
+	HALT;
+
+	//TODO Would go check in a String table for name.
+	//This way the user can easily create new OpCodes.
+	// CUSTOM; 
+}
+
+/*We write the numbers out explicitly since those will be used directly in the instructions.
+WE NEED TO ALLOW THESE TO BE NAMED BY STRING IN THE ASM directly as that is much clearer
+
+TODO Should these even be muscalls or just normal calls? I feel like they should be muscalls for consistency
+with future calls but we could make the base calls normal calls. Eventually when we let people add their own
+calls, then they would use muscalls with other numbers basically, but maybe that would even be a separate
+instruction altogether like cuscall for custom calls and then we call the external code with that particular instruction.
+
+TODO MAYBE we should not make these number dependent and have them be called by name everywhere.
+
+TODO I THINK WE SHOULD REMOVE base instructions from MUSCALL and have that be future calls
+if we allow people to add their own or something.
+The issue is the tests fail when we change the order in here (could use enum_flags)
+but also then we can't tell what the call is with the number, so we could
+update the assembler for that but why when we can just have the call anyways...
+*/
+muscall_type_names : [] string : #run enum_names(MusCallType);
+muscall_type_enums : [] MusCallType : #run enum_values_as_enum(MusCallType);
+MusCallType :: enum {
+	/*I am not sure how these should be done if we should
+	allow combining 2d or 3d space. What about vr? Probably
+	best to do that once we actually integrate with vr.
+	TODO Should we rename this to create_window?
+	I may want to use the name Space later to have more total row spaces.
+	*/
+	create_space;
+
+	//This is the new create_row. I think maybe this should be 0 instead
+	//and then create space should be 1 and then create_geometry 2 and so on
+	setup_music;
+	create_row;
+
+	map_memory;
+
+	//TODO Rename to create_linear or create_op_linear or create_op_linear_row
+	create_op_row;
+	map_linear;
+
+	create_circle;
+	map_circle;
+
+	create_spiral;
+	map_spiral;
+
+	//TODO I think we can have separate chord_s2 and chord_s3+ since one is 2d and one is 3d
+	//but 3d can be 3d+ since it is all 3d and just dimension change. It depends what we need to generate for each.
+	create_cs2;
+	map_cs2;
+
+	create_cs3;
+	map_cs3;
+
+	/*DOC : Generalized create shape call.
+	*/
+	create_custom_geometry;
+	create_shape;
+	delete_shape;
+	create_shape_value;
+	delete_shape_value;
+}
+
+map_geometry_type_enums : [] MapGeometryType : #run enum_values_as_enum(MapGeometryType);
+MapGeometryType :: enum {
+	memory_unit;
+	point;
+	//TODO Could have this as a range to place in 1 dspace like a sequence of linear on linear
+	//or a sequence of linear on circle like a melody on a circle
+	// memory_range;
+}
+
+ArrayData :: struct {
+	count : int;
+	data_address : int;
+}
+AsmArray :: struct($array_type : Type) {
+	count : int;
+	data_address : int;
+}
+AsmPointer :: struct($p_type : Type) {
+	data_address : int;
+}
+
+CreateLaneData :: struct {
+	row_count : int;
+	tuning_system_count : int;
+}
+//DOC bool in language is 64-bits so we just use an int
+//and then use functions to convert here to bool type
+AsmBool :: struct {
+	value : int;
+}
+ToAsmBool :: inline (b : bool) -> AsmBool {
+	if b return .{1};
+	else return .{0};
+}
+AsmBoolToBool :: inline (ab: AsmBool) -> bool {
+	//This is the same as cast(bool) int but more explicit for clarity and remembering.
+	if ab.value == 0 return false;
+	else return true;
+}
+AsmGeom3D :: struct {
+	group_id : int;
+	op_space_id : int;
+	tuning_system_id : int;
+	//TODO We could add MIDI to here instead of for the chord space directly
+	custom_audio_type : CustomAudioType;
+	osc_wave_type : OscWaveType;
+} @LibraryAsmGen
+CustomAudioType :: enum {
+	TUNING_SYSTEM;
+	PITCH_SET_AS_FREQUENCY;
+} @LibraryAsmGen
+/*DOC : This groups some data for custom 3d geometries. Right now
+we just use it for sound, but we could include some rendering things in here
+although that would complicate rendering. If we add things for rendering
+maybe only apply them to a different array a 3d shapes where we fetch
+this data separately per group of 3d shapes.
+*/
+CustomGeom3D :: struct {
+	group_id : int;
+	//Tuning system is used by default here
+	tuning_system_id : int;
+	custom_audio_type : CustomAudioType;
+	osc_wave_type : OscWaveType;
+}
+AsmShape3D :: struct {
+	op_space_id : int;
+	group_id : int;
+	rel_pos : Vector3F64;
+	//TODO Do we need both of these?
+	fun_region : AsmArray(float64);
+	pitch_set : AsmArray(float64);
+	shape_text : AsmString;
+	//We only need to add this option if these are filterable eventually
+	// do_not_remove_with_filter : AsmBool;
+	draw_wire_mesh : AsmBool;
+	not_selectable : AsmBool;
+	color := #run MakeV4F64(DEFAULT_CUBE_MULTI_COLOR);
+	scale_value : float64 = 1.0;
+} @LibraryAsmGen
+AsmText3D :: struct {
+	op_space_id : int;
+	group_id : int;
+	text : AsmString;
+	op_pos : Vector3F64;
+} @LibraryAsmGen
+
+AsmGeom2D :: struct {
+	dspace_id : int; //returned
+	op_space_id : int;
+	custom_audio_type : CustomAudioType;
+	tuning_system_id : int;
+	osc_wave_type : OscWaveType;
+	collision_pos : Vector2F64;
+	collision_dim : Vector2F64;
+	show_collision : AsmBool;
+
+	//TODO If we put this in here then we could just draw the rects
+	//and if it's a sound float, then we do the special audio
+	//OR JUST AHVE THIS IN CUSTOM GEOMETRY and have that as
+	//a type which we only set internally.
+	// is_sound_float : AsmBool;
+} @LibraryAsmGen
+CustomGeometry :: struct {
+	dspace_id : int;
+	custom_audio_type : CustomAudioType;
+	tuning_system_id : int;
+	//TODO We can remove this if we don't use it.
+	//Using currently to help see where the dspace boundaries are.
+	collision_rect : Rectangle2;
+	show_collision : bool;
+	/*DOC : We technically need this here if want this to work / allow for
+	overlapping geometries or overlapping op spaces. So I think it's best to
+	just leave this like this
+	*/
+	synth : SimpleSynth;
+
+	//TODO We could then also put types in here and just fetch
+	//that specific data if needed and 
+	//custom_internal_type
+	//TODO If we put this in here then we could just draw the rects
+	//and if it's a sound float, then we do the special audio
+	// is_sound_float : AsmBool;
+}
+
+CreateGeometryData :: struct {
+	//Return variables
+	//TODO Should these be here or somewhere else?
+	dspace_id : int;
+
+	//Input variables
+	op_dspace_type : OpDSpaceType;
+	op_space_id : int;
+	//Should this be general or specific to each space? I guess position is general in any case.
+	pos_x : float64;
+	pos_y : float64;
+	data_address : int;
+}
+
+//TODO Will each geometry be the same create data or do we need separate ones for each OpDSpaceType?
+CreateCircleData :: struct {
+	radius : float64;
+	point_count : int;	
+}
+
+
+CreateLinearData :: struct {
+	base_note : int;
+	grid_size_x : int;
+	grid_size_y : int;
+}
+
+MapGeometryData :: struct {
+	dspace_id : int;
+	op_dspace_type : OpDSpaceType;
+	map_geometry_type : MapGeometryType;
+
+	//TODO Should we access the map data array directly or have an intermediate data for each type?
+	//Can also just put intermediate data here.
+	map_data_count : int;
+	map_data_address : int;
+	//TODO Do we need this later?
+	// op_space_id : int;
+}
+
+/*These are the default mapping unit datas. We have a different one below for linear
+since we can have a sequence with linear and then maybe we can update these later if needed for example
+*/
+MapUnitData :: struct {
+	row_index : int;
+	x_index : int;
+}
+
+MapPointData :: struct {
+	dspace_id_address : int;
+	point_count : int;
+}
+
+//TODO Not sure if we need this or if we should just put it in MapUnitData anyways
+MapLinearUnitData :: struct {
+	using unit_data : MapUnitData;
+	//TODO If we use this for other spaces then I can move it back to MapUnitData
+	//I just can't think of another case where I'd do that know but maybe later... iunno
+	x_grid_pos : int;
+}
+
+//TODO Could setup some kind of array data struct since we will likely
+//reuse the concept.
+SetMapPointData :: inline (ram_memory : *[] MemoryValue, ram_address : int,
+	dspace_id_address : int, points : [] int)
+{
+	point_data := cast(*MapPointData) *((ram_memory.*)[ram_address]);
+	point_data.dspace_id_address = dspace_id_address;
+	point_data.point_count = points.count;
+	pd_size : int = size_of(MapPointData) / 8;
+	for points {
+		(ram_memory.*)[ram_address + it_index + pd_size].int_value = it;
+	}
+}
+
+/*TODO Should we move all this and MusicInstruction to thegame_code?
+*/
+
+//TODO Could make a CodeMemory object eventually so we can reset easily
+//for now we use all_data just for consistency
+//TODO Could also likely just pass in AllCodeData here but we have not really
+//done the memory allocation everywhere yet so will just leave this for now.
+/*TODO EVENTUALLY instead fo resetting we will just grab new data whenever
+we execute from a pool and then that will always be reset so it won't affect anything else.
+*/
+ResetCodeMemory :: inline (all_data : *AllData) {
+	//TODO Could do memset here for efficiency eventually.
+	//Doing this for safet for now just in case.
+	assert(all_data.all_register_memory.count == reg_def_enums.count);
+	for * all_data.all_register_memory {
+		it.* = .{};
+	}
+	// memset(all_data.all_register_memory.data, 0, 
+	// 	size_of(MemoryValue) * all_data.all_register_memory.count);
+
+	all_data.all_register_memory[RegDef.hsp].int_value = all_data.ram_memory.stack_size;
+	all_data.all_register_memory[RegDef.hcp].int_value = all_data.all_register_memory[RegDef.hsp].int_value;
+
+
+	//TODO For now we don't reset anything because eventually we will
+	//just grab new data only when we are running.
+
+	//TODO Right now we get the same amount we store in bytes array
+	//so we have it only in 1 place and don't get it confused.
+	// reset(*all_data.ram_memory.ram_alloc_pool);
+	// all_data.ram_memory.bytes.data = cast(*u8) 
+	// 	get(*all_data.ram_memory.ram_alloc_pool, 
+	// 		all_data.ram_memory.bytes.count);
+}
+
+/*This memory model allows for array bounds check in jai.
+Consider using a stack pointer and heap pointer in here instead of a used variable.
+*/
+RAMMemory :: struct {
+	//TODO If we use a char *u8 here then we can do using
+	//and access the RAMMemory directly. Could also just
+	//make an array operator overload.
+	bytes : [..] u8;
+	// ram_alloc_pool : Flat_Pool;
+
+	//TODO Could have stack_start_address after null and constants
+	//Then also stack_end_address instead of the size here.
+	//I think heap can just be the end of the bytes array.
+	//NOTE : stack size = heap_start_address
+	//Should we rename this to heap_start_address?
+	stack_size : int;
+
+	//TODO This is here so we don't have a bunch of valid tests breaking. I can remove it later
+	//but maybe we don't want null_address always (eg if we only have #asm block and no code)
+	has_null_address : bool = false;
+	null_address : int = 0;
+	//TODO Should we just move these out since we will only use them in tests?
+	//These are just for convenience. If we only use them in tests eventually
+	//can make an external struct to move these out just for tests.
+	stack_p : int;
+	heap_p : int;
+
+	//For debugging convenience
+	debug_int : [] int;
+}
+
+//TODO Technically this should return a u8 so maybe use *u8 in RAMMemory instead.
+operator [] :: (mem : RAMMemory, index: int) -> *u8 {
+	return *mem.bytes[index];
+}
+
+//TODO I think these Push functions are unneecessary now and just
+//have a separate stack_p in the tests if we need it instead of storing
+//it in RAMMemory. Or could pass a value in and update it there.
+//OR Could do like we had before and have a RAMPointer struct
+//which updates any values we want in it separate from RAMMemory
+PushRAMValues :: inline (arr : .. $T, r : *RAMMemory) -> int {
+	return PushRAMValues(arr,r=r);
+}
+PushRAMValues :: inline (arr : [] $T, r : *RAMMemory) -> int {
+	index : int = r.stack_p;
+	PushRAMArray(arr, r);
+	return index;
+}
+
+//TODO This should be Push and Set should be at a specific location
+//so we don't have any mixups
+PushRAMValue :: inline (v : $T, r : *RAMMemory) -> int {
+	index : int = r.stack_p;
+	v_ret : *T = PushStruct(T, r);
+	v_ret.* = v;
+	return index;
+}
+
+//TODO Stack and heap should be swapped in terms of direction
+PushStack :: inline (size : s64, ram : *RAMMemory) -> *void {
+	assert(ram.stack_p + size < ram.heap_p);
+   result : *void = ram.bytes.data + ram.stack_p;
+   ram.stack_p += size;
+   return result;
+}
+
+//TODO FROM HERE maybe do stack and heap like in computer memory
+//and then update RAMMemory bytes and the mov
+//OR can start on mov and see how that feels for stack and heap
+//TODO With Flat_Pool, this could just be a separate array 
+//that the stack can't cross. We want 1 array for memory, so
+//that the move instruction accesses the 1 array as memory
+//and not 2 arrays.
+//Also usually stack is from the top and heap from the bottom
+//so we could also just put an array at the stack_p to see
+//what's in it.
+/*If we start heat from ram.bytes.count then we just subtract size.
+But then the first value is off memory which could lead to errors.
+This way also heap_p is always at the last placed piece of data.
+
+We are starting from there now otherwise size-1 has a bug
+Better to have out of bounds than a weird error like that.
+*/
+PushHeap :: inline (size : s64, ram : *RAMMemory) -> *void {
+	assert(ram.heap_p - size > ram.stack_p);
+    // ram.heap_p -= size - 1; //This way we have a bug if size == 1 repeatedly
+    ram.heap_p -= size; //If we started from bytes.count
+    result : *void = ram.bytes.data + ram.heap_p;
+    return result;
+}
+
+//TODO Change names to heap and stack
+PushStruct :: inline ($type : Type, data : *RAMMemory) -> *type {
+	result := cast(*type) PushStack(size_of(type), data);
+	return result;
+}
+
+PushMulti :: inline ($type : Type, count : s64, data : *RAMMemory) -> *type {
+    result := cast(*type) PushStack(size_of(type) * count, data);
+    return result;
+}
+
+PushString :: inline (s : string, ram_mem : *RAMMemory) -> count : int, data : int {
+	push_address : int = ram_mem.stack_p;
+	push_data : *u8 = PushMulti(u8, s.count, ram_mem);
+	memcpy(push_data, s.data, s.count);
+	return s.count, push_address;
+}
+
+HeapMulti :: inline ($type : Type, count : s64, data : *RAMMemory) -> *type {
+    result := cast(*type) PushHeap(size_of(type) * count, data);
+    return result;
+}
+
+PushRAMArray :: inline (array : [] $T, ram : *RAMMemory) -> count : int, data : int {
+	data : int = ram.stack_p;
+	result : [] T;
+   result.data = PushMulti(T, array.count, ram);
+   result.count = array.count;
+   for array result[it_index] = it;
+   //TODO memcpy is not copying all the time. Maybe a stack data pointer issue.
+   // memcpy(result.data, array.data, array.count);
+   return array.count, data;
+}
+
+//TODO Can remove this function now with RAM_ARRAY
+/*This imitates how arrays would be loaded in code so that we can
+use them consistently for music memory.
+TODO Need to update this to use RAM_ARRAY now.
+*/
+PushRAMArrayAndCount :: inline (array : [] $T, data : *RAMMemory) -> int {
+	//Push array view
+	index : int = data.stack_p;
+	PushRAMValue(array.count, data);
+	//Push fixed array values
+	// data_address : int = data.stack_p;
+	PushRAMArray(array, data);
+	// PushRAMValue(data_address, data);
+   return index;
+}
+
+PushRAMString :: inline (s : string, ram : *RAMMemory) -> count : int, data : int {
+	data : int = ram.stack_p;
+   result_data := cast(*u8) PushStack(s.count, ram);
+   // for array result[it_index] = it;
+   //TODO memcpy is not copying all the time. Maybe a stack data pointer issue.
+   memcpy(result_data, s.data, s.count);
+   return s.count, data;
+}
+
+PushRAMCountData :: inline (count : int, data : int, ram : *RAMMemory) -> int {
+	stack_start_address : int = PushRAMValue(count, ram);
+	PushRAMValue(data, ram);
+   return stack_start_address;
+}
+
+//TODO I am not sure this function is in fact useful anywhere other
+//than mov instruction? So I am not using it for now unless it is reused properly.
+SetRAMMem :: inline (location : int, v : *u8, size : int, r : *RAMMemory) {
+	assert(v != null && r != null);
+	m_ptr : *u8 = GetMemory(location, size, r);
+	assert(m_ptr != null);
+	memcpy(m_ptr, v, size);
+}
+
+SetRAMValue :: inline (location : int, v : $T, r : *RAMMemory) -> CPUError {
+	p, err := GetMemPtr(location, T, r);
+	assert(p != null);
+	p.* = v;
+	return err;
+}
+
+//TODO Should this return a CPUError for consistency or do we want different errors in different places?
+//Right now we could have out of bounds access or out of heap memory, so it seems like different messages are needed.
+MemoryInBounds :: inline (ram : RAMMemory, location : int, size : int = 0) -> CPUError {
+	if location + size < ram.bytes.count && location >= 0 && size >= 0 {
+		return NO_CPU_ERROR;
+	}
+	err := CPUErr(sprint("Memory out of bounds : %. RAM location is % and size is % bytes.\n", 
+		ram.bytes.count, location, size,,context.allocator));
+	return err;
+}
+
+//TODO Rename to GetRAMMem and ones below as well
+GetMemory :: inline (location : int, size : int, ram : RAMMemory) -> *u8, CPUError {
+	#if 1 {
+	bounds_err := MemoryInBounds(ram, location, size);
+	if bounds_err.is_error return null, bounds_err;
+
+	rm : *u8 = *ram.bytes[location];
+	return rm, NO_CPU_ERROR;
+	} else {
+	//TODO Leaving here for now but can remove since above case has separate out memory bounds check.
+	if location + size < ram.bytes.count && location >= 0 && size >= 0 {
+		rm : *u8 = *ram.bytes[location];
+		return rm, CPUError.{};
+	} else {
+		err := CPUErr(sprint("Memory out of bounds : %. RAM location is % and size is % bytes.\n", 
+			ram.bytes.count, location, size,,context.allocator));
+		return null, err;
+	}
+	}
+}
+
+//TODO Could make one that increments by size type instead of bytes
+//although I'm not sure if that's convenient right now.
+GetMemValue :: inline (location : int, $type : Type, ram : RAMMemory) -> type, CPUError {
+	rm, err := GetMemPtr(location, type, ram);
+	//TODO This is a sanity check, we should never be returning null as this should be
+	//checked beforehand that it is in bounds for GetMemory.
+	assert(rm != null);
+	return rm.*, err;
+}
+
+GetMemPtr :: inline (location : int, $type : Type, ram : RAMMemory) -> *type, CPUError {
+	rm, err := GetMemory(location, size_of(type), ram);
+	return (cast(*type) rm), err;
+}
+
+GetMemArray :: inline (location : int, count : int, $type : Type, ram : RAMMemory) -> [] type, CPUError {
+	array_data, err := GetMemory(location, count * size_of(type), ram);
+	arr : [] type;
+	arr.data = cast(*type) array_data;
+	arr.count = count;
+	return arr, err;
+}
+GetAsmArray :: inline (asm_array : AsmArray($array_type), ram : RAMMemory) -> [] array_type, CPUError {
+	asm_array, array_err := GetMemArray(asm_array.data_address, asm_array.count, asm_array.array_type, ram);
+	return asm_array, array_err;
+}
+
+UpdateLogicMusicOp :: inline (
+	op_code : OpCode, 
+	mp : *MusicPoint,
+	shft_dist : int,
+	rotate_bound : int) 
+{
+	if op_code == {
+	case OpCode.shr;
+		//TODO What if we go over the row_size? Do we even want row_size or do we want it to just match
+		//the max note count anyways and then we adjust that by checking before rendering or playing audio?
+		mp.x_start += shft_dist;
+		mp.x_end += shft_dist;
+	case OpCode.shl;
+		mp.x_start -= shft_dist;
+		mp.x_end -= shft_dist;
+	case OpCode.ror;
+		mp.x_start = PosMod(mp.x_start + shft_dist, rotate_bound);
+		mp.x_end = PosMod(mp.x_end + shft_dist, rotate_bound);
+	case OpCode.rol;
+		mp.x_start = PosMod(mp.x_start - shft_dist, rotate_bound);
+		mp.x_end = PosMod(mp.x_end - shft_dist, rotate_bound);
+	}
+}
+
+ArithmeticMusicOp :: inline (
+	op_code : OpCode,
+	op_int : int,
+	op_float : float64, 
+	mp : *MusicPoint) 
+{
+	if op_code == {
+	//TODO Need to do PosMod here based on the TuningSystem
+	//OR could have a DataConstantType which says if we do PosMod by default
+	//or not and if not then we would have a runtime error
+	case OpCode.add;
+		mp.music_pt_pos += op_int;
+		mp.music_pt_float += op_float;
+	case OpCode.sub;
+		mp.music_pt_pos = ClampMin(0, mp.music_pt_pos - op_int);
+		mp.music_pt_float = ClampMin(cast(float64) 0, mp.music_pt_float - op_float);
+	case OpCode.mod;
+		mp.music_pt_pos = PosMod(mp.music_pt_pos, op_int);
+		mp.music_pt_float = PosMod(mp.music_pt_float, op_float);
+	case OpCode.div;
+		mp.music_pt_pos /= op_int;
+		mp.music_pt_float /= op_float;
+	case OpCode.mul;
+		mp.music_pt_pos *= op_int;
+		mp.music_pt_float *= op_float;
+	}
+}
+
+/*TODO We should use this one instead of ArithmeticMusicOp even for MusicMemory so it works with
+subtraction (inversion) and division as well.
+*/
+//TODO This can just return a float value and be set once we remove music_pt_pos if that makes more sense
+DirectionArithmeticOp :: inline (
+	op_code : OpCode,
+	left_float : float64,
+	right_float : float64,
+	mp : *MusicPoint) 
+{
+	if op_code == {
+	case OpCode.tadd;
+		mp.music_pt_float = left_float + right_float;
+	case OpCode.tsub;
+		//TODO Should we allow negative music_pt_pos here and then just not play or render them?
+		//This way they can be modded for example if needed.
+		//Need to check if that works with rendering music_pts on linear row
+		// mp.music_pt_float = ClampMin(cast(float64) 0, left_float - right_float);
+		mp.music_pt_float = left_float - right_float;
+	case OpCode.tmod;
+		//TODO We could use fmod_cycling OR have a separate operation for modulo that stays negative/positive
+		//depending on the mod value.
+		mp.music_pt_float = PosMod(left_float, right_float);
+	case OpCode.tdiv;
+		mp.music_pt_float = left_float / right_float;
+	case OpCode.tmul;
+		mp.music_pt_float = left_float * right_float;
+	}
+	//TODO Remove this once we remove music_pt_pos and can just round whenever we need and int for midi for example
+	mp.music_pt_pos = round_to_int(mp.music_pt_float);
+}
+
+//TODO Could we just use a generic linear function in the math module?
+ComputeMemoryIndex :: inline (
+	x_index : int,
+	row_index : int,
+	row_size : int)
+-> int
+{
+	memory_index : int = (row_index * row_size) + x_index;
+	return memory_index;
+}
+
+ComputeXAndRowIndex :: inline (
+	memory_index : int,
+	row_size : int)
+-> x_index : int, row_index : int
+{
+	row_index, x_index := ComputeQuotientAndRemainder2(memory_index, row_size);
+	return x_index, row_index;
+}
+
+/*TODO
+	this can return all dspaces of all types eventually
+*/
+GetAllDSpacesInOpSpace :: inline (
+	op_space_id : int,
+	all_dspace_to_op_space : [] DSpaceToOpSpace,
+	all_linear_pitch_spaces : [] LinearPitchSpace,
+	allocator : Allocator = temp)
+-> [] LinearPitchSpace
+{
+	array_dspace_to_op_space : [] DSpaceToOpSpace = 
+		ArrayFindAllVarName(all_dspace_to_op_space, op_space_id, "op_space_id", temp);
+
+	array_linear_spaces_in_op_space : [] LinearPitchSpace =
+		ArrayFindAllByBothNames(
+			all_linear_pitch_spaces, "dspace_id",
+			array_dspace_to_op_space, AllOrEqualsVarName, "dspace_id",
+			temp);
+
+	return array_linear_spaces_in_op_space;
+}
+
+OffsetSpaceToWorldSpace :: inline (
+	offset_pos : Vector2F,
+	world_offset : Vector2F,
+	offset_cam_pos : Vector2F)
+-> Vector2F
+{
+	world_pos : Vector2F = 
+		offset_pos - offset_cam_pos + world_offset;
+	return world_pos;	
+}
+
+//TODO Do the same with WorldSpaceToOffsetSpace
+WorldSpaceToOpSpace :: inline (
+	world_pos : Vector2F,
+	op_space : OperationSpace,
+	op_cam_pos : Vector2F)
+-> Vector2F
+{
+	// op_pos : Vector2F = world_pos - op_space.world_offset + op_cam_pos;
+	//NOTE : This is the version that works with zoom factor in the renderer
+	// op_pos : Vector2F = ((world_pos + op_cam_pos) * op_space.render_groups.scissor_group.zoom_factor) - op_space.world_offset;
+	// op_pos : Vector2F = ((world_pos + op_cam_pos) * op_space.render_groups.scissor_group.zoom_factor) - op_space.world_offset;
+	//NOTE : This was computed by algebraically rearranging the OpSpaceToWorldSpace equation which seems to work for rendering op to world space.
+	op_pos : Vector2F = ((world_pos - op_space.world_offset) / op_space.render_groups.scissor_group.zoom_factor) + op_cam_pos;
+	return op_pos;
+}
+
+/*NOTE : We account for the op_space zoom_factor in here, we could even move it into the op_space if this works.
+This is more efficient than putting in the renderer directly since it's just 1 multiplication here and also
+does not effect the rest of the code so everything else stays the same which seems better overall.
+I am not 100% sure it works in all cases so we will see with regular usage but it seems to work for now.
+ALTERNATIVE OPTION
+	- multiply group.pixels_per_square with zoom_factor (left it commented out in .RECTANGLE)
+	and then need to divide the world_offset here and also in OpSpaceToCameraSpace and also
+	the background rectangle needs its own division.
+*/
+//TODO This is very SIMDable
+OpSpaceToWorldSpace :: inline (
+	op_pos : Vector2F,
+	op_space : OperationSpace,
+	op_cam_pos : Vector2F)
+-> Vector2F
+{
+	// world_pos : Vector2F = op_pos - op_cam_pos + op_space.world_offset;
+	//This seems to work... need to try and compute WorldSpaceToOpSpace from here and check mouse coordinates
+	//This seems to do nothing, im confused an don't want to do this anymore.
+	//NOTE What we were using with zoom_factor in the renderer
+	// world_pos : Vector2F = op_pos - op_cam_pos + op_space.world_offset / op_space.render_groups.scissor_group.zoom_factor;
+	// world_pos : Vector2F = (op_pos - op_cam_pos) + op_space.world_offset / op_space.render_groups.scissor_group.zoom_factor;
+	world_pos : Vector2F = ((op_pos - op_cam_pos) * op_space.render_groups.scissor_group.zoom_factor) + op_space.world_offset;
+	return world_pos;
+}
+
+OpRectToWorldRect :: inline (
+	op_rect : Rectangle2,
+	op_space : OperationSpace,
+	op_cam_pos : Vector2F)
+-> Rectangle2
+{
+	world_rect := op_rect;
+	world_rect.min = OpSpaceToWorldSpace(op_rect.min, op_space, op_cam_pos);
+	world_rect.max = OpSpaceToWorldSpace(op_rect.max, op_space, op_cam_pos);
+	return world_rect;
+}
+
+OpRectToCamRect :: inline (
+	op_rect : Rectangle2,
+	op_space : OperationSpace,
+	op_cam_pos : Vector2F,
+	world_cam : Camera2D)
+-> Rectangle2
+{
+	cam_rect := op_rect;
+	cam_rect.min = OpSpaceToCameraSpace(op_rect.min, op_space, op_cam_pos, world_cam);
+	cam_rect.max = OpSpaceToCameraSpace(op_rect.max, op_space, op_cam_pos, world_cam);
+	return cam_rect;
+}
+
+MakeCamera2D :: inline (
+	all_next_ids : *AllNextIds,
+	cam_dim : Rectangle2 = Rectangle2.{},
+	world_pos : Vector2F = Vector2F.{0,0},
+	transform : Matrix2F = Matrix2F_IDENTITY) 
+-> Camera2D
+{
+	cam_2D : Camera2D;
+	// cam_2D.id = all_next_ids.NEXT_CAM_ID;
+	// defer all_next_ids.NEXT_CAM_ID += 1;
+	// cam_2D.cam_dim = cam_dim;
+	cam_2D.world_pos = world_pos;
+	// cam_2D.transform = transform;
+	return cam_2D;
+}
+ResetCamera2D :: inline (cam : *Camera2D) {
+	cam.world_pos = Vector2F.{0,0};
+	// cam.move_this_frame = Vector2F.{0,0};
+}
+#if 0 {
+MoveCamera2D :: inline (
+	active_cam : *Camera2D, 
+	game_input : GameInput,
+	pixels_per_square : float) 
+-> Vector2F, moved_this_frame : bool
+{
+	move_vec, moved_this_frame := DefaultInputMove2D(game_input, pixels_per_square);
+	active_cam.move_this_frame = move_vec;
+	active_cam.world_pos += move_vec;
+	return move_vec, moved_this_frame;
+}
+}
+
+
+/*TODO
+We no longer use this in favor of just moving the op_space
+based on the camera movement that frame.
+*/
+// GetOpSpaceWorldCam :: inline (
+// 	op_space : OperationSpace,
+// 	default_base_cam : Camera2D) 
+// -> Camera2D
+// {
+// 	op_world_cam : Camera2D = default_base_cam;
+// 	if op_space.is_fixed_to_camera {
+// 		op_world_cam.world_pos = Vector2F.{0,0};
+// 	}
+// 	return op_world_cam;
+// }
+OpSpaceToCameraSpace :: inline (
+	op_pos : Vector2F,
+	op_space : OperationSpace,
+	op_cam_pos : Vector2F,
+	//TODO Can remove this if the per_frame_world_cam works well
+	cam : Camera2D) 
+-> Vector2F
+{
+	//TODO In order to fix op spaces, we just have to set the cam (world_cam) to be 0 and then
+	//WorldSpaceToCameraSpace will not add an offset. This is a clean mathematical way to make
+	//the op spaces move around with the camera instead of being fixed to the world.
+	//It would be more efficient to update the camera externally per op space since then we don't need an if statement
+	//but that might be more prone to error since then we have to remember to do that everywhere.
+	//BETTER to pass it in since this is computed many times per frame, it would reduce computation substantially
+	//ALSO if we simd this eventually, then nothing would change and there would be no need for simd branching
+	// op_world_cam : Camera2D = GetOpSpaceWorldCam(op_space, cam);
+	world_pos : Vector2F = OpSpaceToWorldSpace(op_pos, op_space, op_cam_pos);
+	cam_pos : Vector2F = WorldSpaceToCameraSpace(world_pos, cam);
+	// cam_pos : Vector2F = WorldSpaceToCameraSpace(world_pos, op_world_cam);
+	// cam_pos : Vector2F = WorldSpaceToCameraSpace(world_pos, op_space.per_frame_world_cam);
+	//This seems to work... I guess you have to do the flip of the zoom on the parts that are not affected...
+	//NOTE: This is the old version that works with zoom_factor in the renderer
+	// cam_pos : Vector2F = world_pos - cam.world_pos / op_space.render_groups.scissor_group.zoom_factor;
+	return cam_pos;
+}
+
+OpQuadToCamQuad :: inline (
+	quad : Quad2F, 	
+	op_space : OperationSpace,
+	op_cam_pos : Vector2F,
+	cam : Camera2D)
+-> Quad2F
+{
+	cam_quad : Quad2F = ---;
+	cam_quad.a = OpSpaceToCameraSpace(quad.a, op_space, op_cam_pos, cam);
+	cam_quad.b = OpSpaceToCameraSpace(quad.b, op_space, op_cam_pos, cam);
+	cam_quad.c = OpSpaceToCameraSpace(quad.c, op_space, op_cam_pos, cam);
+	cam_quad.d = OpSpaceToCameraSpace(quad.d, op_space, op_cam_pos, cam);
+	return cam_quad;
+}
+
+OpTriangleToCamTriangle :: inline (
+	tri : Triangle2F,
+	op_space : OperationSpace,
+	op_cam_pos : Vector2F,
+	cam : Camera2D)
+-> Triangle2F
+{
+	cam_tri : Triangle2F = ---;
+	cam_tri.a = OpSpaceToCameraSpace(tri.a, op_space, op_cam_pos, cam);
+	cam_tri.b = OpSpaceToCameraSpace(tri.b, op_space, op_cam_pos, cam);
+	cam_tri.c = OpSpaceToCameraSpace(tri.c, op_space, op_cam_pos, cam);
+	return cam_tri;
+}
+
+OpCircleToCamCircle :: inline (
+	circle : Circle2,
+	op_space : OperationSpace,
+	op_cam_pos : Vector2F,
+	cam : Camera2D)
+-> Circle2
+{
+	cam_c : Circle2 = ---;
+	cam_c.pos = OpSpaceToCameraSpace(circle.pos, op_space, op_cam_pos, cam);
+	cam_c.radius = circle.radius * op_space.render_groups.scissor_group.zoom_factor;
+	return cam_c;
+}
+
+//TODO should we store music_pt_set_id in here for convenience?
+//this would also make it easier to use as a SetOfMPS
+DSpaceToOpSpace :: struct {
+	dspace_id : int;
+	op_space_id : int;
+	//TODO this is stored in DSpaceSetToOpSpace
+	//do we need in both places for convenience?
+	op_grid_pos : Vector2I;
+	//TODO should we store dspace type in here
+
+	//TODO Should we have a separate DSpaceToOpSpace order here
+	//instead of using rhythm. Yes, that seems more flexible in general
+	//and we may also want options where there is no rhythm to the 
+	//dspace_set in general.
+}
+
+GetAllLinearSpacesInOpSpace :: inline (
+	op_space_id : int,
+	all_base_dspace_to_op_space : [] DSpaceToOpSpace,
+	all_linear_pitch_spaces : [] LinearPitchSpace,
+	allocator : Allocator = temp) 
+-> [] LinearPitchSpace
+{
+	current_dspace_to_op_space : [] DSpaceToOpSpace = 
+		ArrayFindAllVarName(all_base_dspace_to_op_space, op_space_id, "op_space_id", allocator);
+
+	array_dspace_in_op_space : [] LinearPitchSpace = 
+		ArrayFindAllByBothNames(all_linear_pitch_spaces, "dspace_id", 
+			current_dspace_to_op_space, AllOrEqualsVarName, "dspace_id", allocator);
+
+	return array_dspace_in_op_space;
+}
+
+/*TODO
+	instead of storing this in data structs could have a separate
+	table which stores all dspace_ids and their associated types
+*/
+DSpaceType :: enum {
+	LINEAR_PITCH_SPACE;
+	CIRCULAR_PITCH_CLASS_SPACE;
+	CHORD_S2;
+	CHORD_S3;
+	PIANO_ROLL;
+
+	DSPACE_SET_GROUP; //TODO
+
+	CIRCULAR_RHYTHM_SPACE;
+}
+
+GetAllMusicPtFloat :: inline (row_index : int, x_pos : $T, all_music_pts : [] MusicPoint) -> [] float64 {
+	return GetAllMusicPtPosByPosition(row_index, x_pos, all_music_pts, float64);
+}
+
+/*TODO Likely change the name of this to just GetAllMusicPts or something like that.
+ALSO int is currently the default type because of old code but eventually we could make it
+float64 or MusicPoint depending on whichever return type is used most.
+
+TOOD Should pass in MemoryUnit here so we can change to float64 later
+TODO We can make a for_expansion version of this so we don't need to accumulate memory here.
+*/
+GetAllMusicPtPosByPosition :: inline (
+	row_index : int,
+	x_pos : $T,
+	all_music_pts : [] MusicPoint,
+	//TODO Maybe this should only return float64 and MusicPoint if we only use that
+	$type : Type = int)
+-> [] type
+{
+#assert(AllOrEquals(type, .[int,float64,MusicPoint,*MusicPoint]));
+
+	music_pt_poses : [..] type;
+	music_pt_poses.allocator = context.allocator;
+	//TODO If x_pos and row_index are > row_size then we should print out and error or pause on the debugger eventually.
+	//For now we do nothing but we could print it out.
+	for music_pt : all_music_pts {
+		if ValueInMusicPt(x_pos, row_index, music_pt) {
+   		#if type == int array_add(*music_pt_poses, music_pt.music_pt_pos);
+	   	else #if type == float64 array_add(*music_pt_poses, music_pt.music_pt_float);
+	   	else #if type == MusicPoint array_add(*music_pt_poses, music_pt);
+	   	else #if type == *MusicPoint array_add(*music_pt_poses, *all_music_pts[it_index]);
+	   }
+	}
+
+	return music_pt_poses;
+}
+
+//TODO This is only used for old tests, can remove if we remove that test.
+GetAllMemoryIndexMusicPtPointers :: inline (
+	memory_index : int,
+	row_size : int,
+	all_music_pts : [] MusicPoint,
+	allocator : Allocator = temp)
+-> [] *MusicPoint
+{
+	x_index, row_index := ComputeXAndRowIndex(memory_index, row_size);
+	return GetAllMusicPtPosByPosition(row_index, x_index, all_music_pts, *MusicPoint);
+}
+
+MusicPtStartInRange :: inline (x_start : $T, mp : MusicPoint, x_end : T, EPSILON : float64 = DEFAULT_MP_EPSILON) -> bool {
+#assert(T == float64 || T == int);
+	//x_start = 1 and x_end = 2 then we want a point starting on 1 to be valid but a point starting on 2 not to be within epsilon
+	// in_range : bool = (mp.x_start_float >= x_start - EPSILON && mp.x_start_float <= x_end - EPSILON);
+	// return in_range;
+	return InEpsilonRangeLeft(mp.x_start_float, cast(float64) x_start, cast(float64) x_end, EPSILON);
+}
+//MusicPoint either starts or ends in the given range.
+MusicPtInRange :: inline (x_start : $T, mp : MusicPoint, x_end : T, EPSILON : float64 = DEFAULT_MP_EPSILON) -> bool {
+#assert(T == float64 || T == int);
+	//TODO Update to ones below once we can test everywhere
+	// in_range : bool = (mp.x_start >= x_start && mp.x_start < x_end) ||
+	//    (mp.x_end > x_start && mp.x_end <= x_end);	
+	// in_range : bool = (mp.x_start_float >= x_start - EPSILON && mp.x_start_float < cast(float64) x_end) ||
+	//    (mp.x_end_float > cast(float64) x_start && mp.x_end_float <= x_end + EPSILON);	
+
+	//TODO I think I can use this now but I want to run the tests first before checking.
+	//Using Left and then Right epsilon seems to work since we want to include the RHS end range.
+	//IS this actually what we want? I think so but worth thinking about as well.
+	//This feels more intuitive and is the way we had it for ints above.
+	//x_start [0-2.0[ and x_end ]0-2.0]
+	in_range : bool = InEpsilonRangeLeft(mp.x_start_float, cast(float64) x_start, cast(float64) x_end, EPSILON) ||
+	   InEpsilonRangeRight(mp.x_end_float, cast(float64) x_start, cast(float64) x_end, EPSILON);
+	//x_start [0-2.0] and x_end ]0-2.0]
+	// in_range : bool = InEpsilonRangeOpen(mp.x_start_float, cast(float64) x_start, cast(float64) x_end, EPSILON) ||
+	//    InEpsilonRangeRight(mp.x_end_float, cast(float64) x_start, cast(float64) x_end, EPSILON);
+	//x_start [0-2.0[ and x_end [0-2.0[
+	// in_range : bool = InEpsilonRangeLeft(mp.x_start_float, cast(float64) x_start, cast(float64) x_end, EPSILON) ||
+	//    InEpsilonRangeLeft(mp.x_end_float, cast(float64) x_start, cast(float64) x_end, EPSILON);
+
+	return in_range;
+}
+MusicPtInRowRange :: inline (start_row : int, mp : MusicPoint, end_row : int) -> bool {
+	in_row : bool = mp.row_index >= start_row && mp.row_index <= end_row;
+	return in_row;
+}
+//NOTE : This assumes that the tano is normalized for efficiency
+//TODO could make another function that adjusts the tano every time.
+InTanoAssumeNorm :: inline (mp : MusicPoint, t : tano) -> bool {
+	in_row_range : bool = MusicPtInRowRange(t.row_start, mp, t.row_end);
+	in_x_range : bool = MusicPtInRange(t.x_start, mp, t.x_end);
+	in_tano : bool =  in_row_range && in_x_range;
+	return in_tano;
+}
+InTanoNorm :: inline (mp : MusicPoint, t : tano) -> bool {
+	t_adj : tano = NormalizeTano(t);
+	return InTanoAssumeNorm(mp, t_adj);
+}
+
+//TODO Could add a flag to sort values in here by x or row or in reverse
+TanoSortType :: enum {
+	DEFAULT; //x and row forward
+	X_REVERSE;
+	ROW_REVERSE;
+	// X_ROW_REVERSE;
+}
+GetTanoMusicPts :: inline (
+	t : tano,
+	all_music_pts : [] MusicPoint,
+	sort_type : TanoSortType = .DEFAULT,
+	$type : Type = MusicPoint)
+-> [] type
+{
+#assert(AllOrEquals(type,.[int,float64,MusicPoint,*MusicPoint,Neume]));
+
+	music_pts : [..] type;
+	music_pts.allocator = context.allocator;
+
+	t_norm : tano = NormalizeTano(t);
+	for mp : all_music_pts {
+		in_tano : bool = InTanoAssumeNorm(mp, t_norm);
+		if in_tano {
+			#if type == *MusicPoint array_add(*music_pts, *all_music_pts[it_index]);
+			else #if type == int array_add(*music_pts, round_to_int(mp.music_pt_float));
+			else #if type == float64 array_add(*music_pts, mp.music_pt_float);
+	    	else #if type == MusicPoint array_add(*music_pts, mp);
+	    	//TODO We can remove this case eventually once MusicPoint and Neume are the same struct
+			else #if type == Neume array_add(*music_pts, Neume.{mp.music_pt_float, mp.row_index, mp.x_start_float, mp.x_end_float});
+	   }
+	}
+
+	#if type == MusicPoint || type == *MusicPoint {
+	if sort_type == {
+	case .X_REVERSE;
+		quick_sort(music_pts, (m1,m2) => m2.x_start_float - m1.x_start_float);
+	case .ROW_REVERSE;
+		quick_sort(music_pts, (m1,m2) => m2.row_index - m1.row_index);
+	}
+	}
+
+	return music_pts;
+}
+GetTanoNumOfPoints :: inline (t : tano, all_music_pts : [] MusicPoint) -> int {
+	dim : int = 0;
+	t_norm : tano = NormalizeTano(t);
+	for mp : all_music_pts {
+		in_tano : bool = InTanoAssumeNorm(mp, t_norm);
+		if in_tano dim += 1;
+	}
+	return dim;
+}
+
+//TODO Update this function and use it in mov for music, then test
+//and also check rendering and audio
+//Copy all notes in range and then have them all start
+//relative to the min_x_start in the set.
+//TODO We can make a for_expansion version of this so we don't need to accumulate memory here.
+GetAllMemoryMusicPtsInRange :: inline (
+	x_start : $T, x_end : T,
+	row_index : int,
+	all_music_pts : [] MusicPoint,
+	$type : Type = MusicPoint)
+-> [] type
+{
+#assert(AllOrEquals(type,.[MusicPoint,*MusicPoint]));
+
+	music_pts : [..] type;
+	music_pts.allocator = context.allocator;
+
+	for mp : all_music_pts {
+		in_range : bool = MusicPtInRange(x_start, mp, x_end);
+		if in_range && row_index == mp.row_index {
+			#if type == *MusicPoint array_add(*music_pts, *all_music_pts[it_index]);
+	    	else array_add(*music_pts, mp);
+	   }
+	}
+
+	return music_pts;
+}
+
+//TODO REMOVE ALL THE INT CODE FROM HERE ONCE float64 x works since that should be the only way.
+//We can just cast(float64) if we are passing in an int then.
+UpdateMusicPtsFromMinStart :: inline (
+	music_pts : [] MusicPoint, 
+	to_start_x : $T, to_row : int,
+	row_size : int) 
+{
+//TODO Remove this and just use float64 only once we 
+#assert(AllOrEquals(T, .[int, float64]));
+	//TODO This should be float eventually since the x values should be float.
+	#if T == int {
+	min_x : int = ArrayFindMinByNameId(music_pts, "x_start", S64_MAX);
+	} else {
+	min_x : float64 = ArrayFindMinByNameId(music_pts, "x_start_float", FLOAT64_MAX);		
+	}
+	for * music_pts {
+		it.row_index = to_row;
+		#if T == int {
+		from_min_x : int = it.x_start - min_x;
+		x_length : int = it.x_end - it.x_start;
+		it.x_start = to_start_x + from_min_x;
+		it.x_start_float = cast(float64) it.x_start;
+		it.x_end = ClampMax(it.x_start + x_length, row_size);
+		it.x_end_float = cast(float64) it.x_end;
+		} else {
+		from_min_x : float64 = it.x_start_float - min_x;
+		x_length : float64 = it.x_end_float - it.x_start_float;
+		it.x_start_float = to_start_x + from_min_x;
+		it.x_start = round_to_int(it.x_start);
+		it.x_end_float = ClampMax(it.x_start_float + x_length, cast(float64) row_size);
+		it.x_end = round_to_int(it.x_end);
+		}
+		//We remove right now, we could increase row_size. We could also not have a row_size
+		//and just render based on max note or a user defined value.
+		//Leaving it off for now until we decide if we want row_size at all.
+		// if it.x_start > perm.all_data.global_rules.row_size {
+		// 	remove it;
+		// 	continue;
+		// }
+		//TODO Need to just use these floats eventually
+		//Left this commented so the tests keep failing so we can update everything
+		//when I update the asm to allow x float everywhere.
+		// it.x_start_float = cast(float64) it.x_start;
+		// it.x_end_float = cast(float64) it.x_end;
+	}
+}
+
+//TODO eventually may want to have this be an octave range
+//or a different total visible range of music_pts
+//ie min_music_pt_pos to max_music_pt_pos
+FilterMusicPtsInOctave :: inline (
+	input_music_pts : [] MusicPoint,
+	current_octave : int,
+	system_size : int,
+	allocator : Allocator = temp)
+-> [] MusicPoint
+{
+	filtered_music_pts : [..] MusicPoint;
+	filtered_music_pts.allocator = allocator;
+
+	for music_pt : input_music_pts
+	{
+		music_pt_octave : int = music_pt.music_pt_pos / system_size;
+		if music_pt_octave == current_octave {
+			array_add(*filtered_music_pts, music_pt);
+		}
+	}
+
+	return filtered_music_pts;
+}
+
+FilterMusicPtsInView :: inline (
+	input_music_pts : [] MusicPoint,
+	base_note : int,
+	system_size : int,
+	allocator : Allocator = temp)
+-> [] MusicPoint
+{
+	filtered_music_pts : [..] MusicPoint;
+	filtered_music_pts.allocator = allocator;
+
+	top_note : int = base_note + system_size;
+	for music_pt : input_music_pts
+	{
+		if music_pt.music_pt_float >= cast(float64) base_note &&
+		   music_pt.music_pt_float <  cast(float64) top_note
+		{
+			array_add(*filtered_music_pts, music_pt);
+		}
+	}
+
+	return filtered_music_pts;
+}
+
+MusicPtsByPitch :: struct {
+	music_pts : [..] MusicPoint;
+	music_pts.allocator = temp;
+}
+
+/*MusicPt
+	by default we return the first MusicPoint of each pitch found
+*/
+RemoveMusicPtsDuplicatePitch :: inline (
+	input_music_pts : [] MusicPoint,
+	allocator : Allocator = temp)
+-> [] MusicPoint
+{
+	all_music_pts_by_pitch : [..] MusicPtsByPitch;
+	all_music_pts_by_pitch.allocator = temp;
+	for music_pt : input_music_pts
+	{
+		music_pts_by_pitch, found_pitch :=
+			ArrayFindFirstByNameId(all_music_pts_by_pitch, music_pt.music_pt_pos, "music_pts[0].music_pt_pos");
+
+		if found_pitch {
+			array_add(*music_pts_by_pitch.music_pts, music_pt);
+		}
+		else {
+			new_music_pts_by_pitch : MusicPtsByPitch;
+			array_add(*new_music_pts_by_pitch.music_pts, music_pt);
+			array_add(*all_music_pts_by_pitch, new_music_pts_by_pitch);
+		}
+	}
+
+	no_duplicates : [..] MusicPoint;
+	no_duplicates.allocator = allocator;
+	for music_pts_by_pitch : all_music_pts_by_pitch
+	{
+		array_add(*no_duplicates, music_pts_by_pitch.music_pts[0]);
+	}
+
+	return no_duplicates;
+}
+
+/*TODO These could be pointers so that if data changes
+we don't have to change it here.
+
+OscWave is stored here so its not a pointer but it may be
+more efficient eventually to have an OscWave pool so we don't
+have to recreate them and also if different music_points share
+different synth value because theyre on the same lane.
+*/
+MusicPointAndOscWave :: struct {
+	music_pt : MusicPoint;
+	osc_wave : OscWave;
+	//TODO ultimately we can just store the frequency
+	//and pass that to the synthesizer but it depends
+	//on the synthesizer so maybe we just pass everything
+	//to the synthesizer anyways
+	tuning_system_id : int;
+}
+
+/*DOC : Likely will need to update this to a synth once we implement that.
+So then we could have an array for each synth type and each synth
+would have an array of osc waves.
+MySimpleSynth - no filter just, wave and adsr (this should be very fast so we can have a lot of them)
+MyFilterSynth - add filtering and lfo after processing (can maybe just do filtering if lfo is too much)
+TODO Currently use GenerateSamples and pass in audio thread buffer and then
+we will update it to use synths and then we will associate synths to rows
+and then also have a default synth for hovering or maybe specific for op spaces.
+
+REMINDER : Anything with locked prefix requires the audio mutex.
+
+TODO I think i can remove this since I was using this when generating
+the audio in the audio thread but now we use the circular buffer so we don't need this anymore.
+*/
+LockedSoundData :: struct {
+	audio_thread_play_cursor : int;
+	audio_thread_play_sample : int;
+	//TODO Maybe this should be in global scope like in Sound_Player
+	//so we don't accidentally have alternate ones.
+	audio_mutex : Mutex;
+	//TODO Maybe this could just be the simple synth
+	locked_audio_queue : [..] OscWave;
+	simple_waves : [..] OscWave;
+	//TODO Could have a separate more complex synth queue here
+	//with filters and/or lfos
+
+	stop_neume_audio : bool;
+	locked_audio_events : [..] AudioEvent;
+
+	//For hovering, likely will not allow this to be changed other than
+	//with the mouse hovering changing frequency and other things if needed.
+	hover_waves : [] OscWave;
+}
+
+PlayingMidi :: struct {
+	//TODO Remove x_end once we only have float
+	x_end : int;
+	x_end_float : float64;
+	//TODO Should this be float64 and just cast or round for midi?
+	music_pt_pos : int;
+	midi_channel : u8;
+}
+
+MusicLine :: struct {
+/*TODO If we wanted to change the frequency while the note is playing, we could interpolate between them
+and store the MusicLine between them which just stores the 2 music points. Currently this would work
+in AddSignalToAudioBuffer because we simply adjust the frequency and add the radians from wherever
+the wav was playing. This would however not necessarily work in midi since the changes would not be fine_grained.
+Likely that most synths would have a fine tuning knob which can then be mapped to a MusicLine and then we can overlap
+those rows to see the point and the line in the same row.
+*/
+}
+
+/*NOTE TODO : For now we only have 2 music_pt arrays but eventually we will want
+to be able to get the music_pts array from any music space with this.
+I am not sure if I want to set the stack music space to be -1 or something else (88?).
+This leaves it ambiguous for now.
+*/
+GetMSpaceNeumes :: inline (mspace_index : int, ad : *AllData) -> *[..] MusicPoint {
+	//TODO I Think we can just use negative mspace_index for tano since we can't
+	//access those in the array anyways and then have a separate tano_stack_mspace_data
+	//array where we take the absolute value of the mspace_index and grab by index like that.
+	if mspace_index != 0 {
+		return *ad.tano_stack_music_pts;
+	}
+	return *ad.all_mspace_data[0].all_music_pts;
+}
+
+//TODO Not sure we need this anymore.
+//Can remove if we don't use anywhere.
+IncrementMemX :: inline (
+	old_x : int, old_row : int,
+	row_size : int, row_count : int) 
+-> new_x : int, new_row : int
+{
+	new_row : int = old_row;
+	new_x : int = old_x + 1;
+	if new_x > row_size {
+		new_x %= row_size;
+		new_row += 1;
+		if new_row >= row_count {
+			//TODO Return user error went over max row.
+			//We could also not create this and return a user error.
+		}
+	}
+	return new_x, new_row;
+}
+
+UNINITIALIZED_TUNING_PITCH : int : -666;
+MakeOldMusicPoint :: inline (
+	music_pt_pos : int,
+	invariant_id : int)
+-> MusicPoint 
+{
+	music_pt : MusicPoint;
+	music_pt.id = ALL_NEXT_IDS.NEXT_MUSIC_POINT_ID;
+	defer ALL_NEXT_IDS.NEXT_MUSIC_POINT_ID += 1;
+	music_pt.invariant_id = invariant_id;
+	music_pt.music_pt_pos = music_pt_pos;
+	return music_pt;
+}
+
+ReplaceMusicPtsInMemory :: inline (
+	input_music_pt_poses : [] $T,
+	x_pos : int,
+	row_index : int,
+	all_music_pts : *[..] MusicPoint)
+-> [] MusicPoint
+{
+	RemoveAllMusicPtsInMemory(row_index, x_pos, all_music_pts);
+
+	result_music_pts : [] MusicPoint = NewArray(input_music_pt_poses.count, MusicPoint, false,, temp);
+	for music_pt_pos, input_index : input_music_pt_poses {
+		result_music_pts[input_index] = MakeMemoryMusicPoint(music_pt_pos, x_pos, x_pos+1, row_index);
+	}
+
+	CreateManyMusicPtsInMemory(result_music_pts, all_music_pts);
+	return result_music_pts;
+}
+
+CreateMusicPtByIType :: inline (
+	instr_type : InstructionType,
+	mv : MemoryValue,
+	//TODO These could also allow float for rhythm eventually.
+	x_start : $T, x_end : T,
+	row_index : int,
+	all_music_pts : *[..] MusicPoint)
+-> *MusicPoint
+{
+	mp : *MusicPoint;
+	if #complete instr_type == {
+	case .INTEGER; mp = CreateMusicPtInMemory(mv.int_value, row_index, x_start, x_end, all_music_pts);
+	case .FLOAT; mp = CreateMusicPtInMemory(mv.float_value, row_index, x_start, x_end, all_music_pts);
+	}
+	return mp;
+}
+
+CreateMusicPtInMemory :: inline (
+	music_pt : MusicPoint,
+	all_music_pts : *[..] MusicPoint)
+-> *MusicPoint
+{
+	mp : *MusicPoint = array_add(all_music_pts);
+	mp.* = music_pt;
+	return mp;
+}
+
+//Leaving old method just in case but can remove if we never use.
+//New way is more efficient since we access memory directly and more flexible 
+//since we can return a pointer if needed.
+//MOVED TO shared library so we can remove if we don't need it here anymore
+#if 0 {
+CreateManyMusicPtsInMemory :: inline (
+	input_music_pt_poses : [] $T,
+	row_index : int,
+	//R is checked in SetMemoryMusicPoint. (float, float64 and int for convenience)
+	x_start : $R, x_end : R,
+	all_music_pts : *[..] MusicPoint)
+-> [] MusicPoint
+{
+	//TODO Could just return an array view although it would be incorrect if we change values in the all_music_pts later.
+	result_music_pts : [] MusicPoint = NewArray(input_music_pt_poses.count, MusicPoint, false,, temp);
+	for input_music_pt_poses {
+		mp : *MusicPoint = CreateMusicPtInMemory(it, row_index, x_start, x_end, all_music_pts);
+		result_music_pts[it_index] = mp.*;
+	}
+	return result_music_pts;
+}
+} else #if 0 {
+CreateManyMusicPtsInMemory :: inline (
+	input_music_pt_poses : [] int,
+	x_start : int, x_end : int,
+	row_index : int,
+	all_music_pts : *[..] MusicPoint)
+-> [] MusicPoint
+{
+	result_music_pts : [] MusicPoint = NewArray(input_music_pt_poses.count, MusicPoint, false,, temp);
+	for music_pt_pos, input_index : input_music_pt_poses {
+		result_music_pts[input_index] = MakeMemoryMusicPoint(music_pt_pos, x_start, x_end, row_index);
+	}
+
+	CreateManyMusicPtsInMemory(result_music_pts, all_music_pts);
+	return result_music_pts;
+}
+}
+
+//TODO Not sure why we would use this... but it's here. Leaving for now.
+#if 0 {
+CreateManyMusicPtsInMemory :: inline (
+	input_music_pts : [] MusicPoint,
+	x_start : int, row_index : int,
+	row_size : int,
+	all_music_pts : *[..] MusicPoint)
+-> [] MusicPoint
+{
+	new_music_pts : [] MusicPoint = NewArray(input_music_pts.count, MusicPoint, false,, temp);
+	for input_pt, i : input_music_pts {
+		new_music_pts[i] = input_pt;
+		x_length : int = input_pt.x_end - input_pt.x_start;
+		new_music_pts[i].x_start = x_start;
+		//TODO Check if x + 1 goes to beginning of next in rendering and audio.
+		new_music_pts[i].x_end = ClampMax(x_start+x_length, row_size);
+		new_music_pts[i].row_index = row_index;
+	}
+
+	CreateManyMusicPtsInMemory(new_music_pts, all_music_pts);
+	return new_music_pts;
+}
+}
+
+//Leaving old method just in case but can remove if we never use
+#if 1 {
+CreateManyMusicPtsInMemory :: inline (
+	input_music_pts : [] MusicPoint,
+	all_music_pts : *[..] MusicPoint,
+	$with_return : bool = false)
+-> [] *MusicPoint
+{
+	#if with_return {
+	result : [..] *MusicPoint;
+	result.allocator = temp;
+	}
+	for music_pt : input_music_pts {
+		//TODO could replace this with a memcpy
+		mp : *MusicPoint = CreateMusicPtInMemory(music_pt, all_music_pts);
+		#if with_return array_add(*result, mp);
+	}
+	#if with_return return result;
+	return .[];
+}
+} else {
+CreateManyMusicPtsInMemory :: inline (
+	input_music_pts : [] MusicPoint,
+	all_music_pts : *[..] MusicPoint,
+	$with_return : bool = false)
+-> [] *MusicPoint
+{
+	#if with_return {
+	result : [..] *MusicPoint;
+	result.allocator = temp;
+	}
+	for music_pt : input_music_pts {
+		//TODO could replace this with a memcpy
+		array_add(all_music_pts, music_pt);
+		#if with_return {
+		array_add(*result, *((all_music_pts.*)[all_music_pts.count-1]));
+		}
+	}
+	#if with_return return result;
+	else return .[];
+}
+}
+
+//New Music Point functions
+//Making a section here as maybe it's worth pulling this out somehow
+//TODO could set this context in thegame_base instead of external_dll if needed.
+#add_context c_all_data : *AllData;
+NewCreateMusicPtInMemory :: inline (
+	music_pt_pos : int,
+	x_start : int, x_end : int,
+	row_index : int)
+-> MusicPoint
+{
+	music_pt : MusicPoint = MakeMemoryMusicPoint(music_pt_pos, x_start, x_end, row_index);
+	array_add(*context.c_all_data.all_mspace_data[0].all_music_pts, music_pt);
+	return music_pt;
+}
+
+NewReplaceMusicPtsInMemory :: inline (
+	input_music_pt_poses : [] $T,
+	x_pos : int,
+	row_index : int)
+{
+	ReplaceMusicPtsInMemory(input_music_pt_poses, x_pos, row_index, *context.c_all_data.all_mspace_data[0].all_music_pts);
+}
+
+/*TODO 
+Could pull out all the new musical operators
+*/
+
+//TODO Could return [] MusicPoint
+//Note : We need both [] and []= operator overloads to have []= working for the compiler.
+#if 0 {
+operator [] :: (row : MusicLaneRow, index: int) -> [] *MusicPoint {
+	return GetAllMusicPtPosByPosition(row.total_row_index, index, context.c_all_data.all_mspace_data[0].all_music_pts, *MusicPoint);
+}
+
+operator []= :: (row : *MusicLaneRow, index: int, value: [] *MusicPoint) {
+	RemoveAllMusicPtsInMemory(row.total_row_index, index, *context.c_all_data.all_mspace_data[0].all_music_pts);
+	for pointer : value {
+		mp : MusicPoint = MakeMemoryMusicPoint(pointer.music_pt_pos, index, index+1, row.total_row_index);
+		array_add(*context.c_all_data.all_mspace_data[0].all_music_pts, mp);
+	}
+}
+} else #if 1 {
+//TODO FROM HERE could write some simple tests for all these operators so we know it works if
+//we change data model things later.
+operator [] :: (row : MusicLaneRow, index: int) -> AggregateMusicPts {
+	amp : AggregateMusicPts;
+	amp.row_index = row.total_row_index;
+	amp.x_start = index;
+	amp.pts = GetAllMusicPtPosByPosition(row.total_row_index, index, context.c_all_data.all_mspace_data[0].all_music_pts, MusicPoint);
+	return amp;
+}
+
+#if 0 {
+operator [] :: (row : MusicLaneRow, index: float) -> AggregateMusicPts {
+	amp : AggregateMusicPts;
+	amp.row_index = row.total_row_index;
+	amp.x_start = index;
+	amp.pts = GetAllMusicPtPosByPosition(row.total_row_index, cast(int)index, context.c_all_data.all_mspace_data[0].all_music_pts, MusicPoint);
+	return amp;
+}
+}
+
+operator []= :: (row : *MusicLaneRow, index: int, value: AggregateMusicPts) {
+	RemoveAllMusicPtsInMemory(row.total_row_index, index, *context.c_all_data.all_mspace_data[0].all_music_pts);
+	for pointer : value.pts {
+		mp : MusicPoint = MakeMemoryMusicPoint(pointer.music_pt_float, index, index+1, row.total_row_index);
+		array_add(*context.c_all_data.all_mspace_data[0].all_music_pts, mp);
+	}
+}
+
+operator []= :: (row : *MusicLaneRow, index: float, value: AggregateMusicPts) {
+	RemoveAllMusicPtsInMemory(row.total_row_index, cast(int)index, *context.c_all_data.all_mspace_data[0].all_music_pts);
+	for pointer : value.pts {
+		mp : MusicPoint = MakeMemoryMusicPoint(pointer.music_pt_float, cast(int)index, cast(int)index+1, row.total_row_index);
+		array_add(*context.c_all_data.all_mspace_data[0].all_music_pts, mp);
+	}
+}
+
+operator [] :: (row : AggregateMusicPts, index: int) -> MusicPoint {
+	return row.pts[index];
+}	
+
+#if 0 {
+operator []= :: (amp_out : *AggregateMusicPts, index: float, value: MusicPoint) {
+	amp_in.pts[index];
+}
+}
+}
+
+//TODO Should we just have [] float64 arrays now instead of [] MusicPoint
+//We already have the x_start and row_index...
+AggregateMusicPts :: struct {
+	//TODO Should we also include a ptr array here?
+	//This could let the user update things however they want easily.
+	#as pts : [] MusicPoint;
+	x_start : int;
+	row_index : int;
+}
+
+operator []= :: (row : *MusicLaneRow, index: int, value: int) {
+	array : [1] int;
+	array[0] = value;
+	NewReplaceMusicPtsInMemory(array, index, row.total_row_index);
+}
+
+operator []= :: (row : *MusicLaneRow, index: int, value: float64) {
+	array : [1] float64;
+	array[0] = value;
+	NewReplaceMusicPtsInMemory(array, index, row.total_row_index);
+}
+
+operator []= :: (row : *MusicLaneRow, index: int, value: [] $T) {
+	NewReplaceMusicPtsInMemory(value, index, row.total_row_index);
+}
+
+#if 0 {
+//TODO We could access memory_index directly with an array operator
+//this way as well or anything really.
+MemoryIndex :: struct {
+}
+
+operator [] :: (row : *MemoryIndex, index: int, value: [] $T) -> AggregateMusicPts {
+	amp : AggregateMusicPts;
+	amp.row_index = row.total_row_index;
+	amp.x_start = index;
+	//TODO Compute row from index
+	amp.pts = GetAllMusicPtPosByPosition(row.total_row_index, index, context.c_all_data.all_mspace_data[0].all_music_pts, MusicPoint);
+	return amp;
+}	
+}
+
+InterOnsetIntervals :: struct {
+	intervals : [] int;
+	start_index : int;
+}
+
+operator []= :: (row : *MusicLaneRow, index: int, value: InterOnsetIntervals) {
+	music_pt_ints : [] int = NewArray(value.intervals.count,int,true,,temp);
+	music_pt_ints[0] = value.start_index;
+	for 0..value.intervals.count-2 {
+		music_pt_ints[it+1] = value.intervals[it] + music_pt_ints[it];
+	}
+	NewReplaceMusicPtsInMemory(music_pt_ints,index,row.total_row_index);
+}
+
+Inter :: inline (row : MusicLaneRow) -> InterOnsetIntervals {
+	return Inter(row,0,context.c_all_data.global_rules.row_size-1);
+}
+
+Inter :: inline (row : MusicLaneRow, start : int, end : int) 
+-> InterOnsetIntervals 
+{
+	ioi_intervals : [..] int;
+	ioi_intervals.allocator = temp;
+
+	/*We split up into 2 arrays to simplify the processing
+	since we are treating the inter-onset intervals row section
+	as if it is a circular buffer.
+	*/
+	i : int = start;
+	while row[i].pts.count == 0 i += 1;
+
+	s0 : int = i;
+	e0 : int = end;
+	s1 : int = 0;
+	e1 : int = i;
+
+	ioi : InterOnsetIntervals;
+	ioi.start_index = i;
+
+	interval : int = 1;
+	i = s0+1;
+	while i <= e0 {
+		while i <= e0 && row[i].pts.count == 0 {
+			interval += 1;
+			i += 1;
+		}
+		if i > e0 break;
+		array_add(*ioi_intervals, interval);
+		interval = 1;
+		i += 1;
+	}
+
+	//Cycle back and finish the last interval
+	i = s1;
+	while i <= e1 && row[i].pts.count == 0 {
+		interval += 1;
+		i += 1;
+	}	
+	array_add(*ioi_intervals, interval);
+
+	ioi.intervals = ioi_intervals;
+	return ioi;
+}
+
+CopyRow :: inline (
+	r0 : MusicLaneRow, 
+	r1 : MusicLaneRow) 
+{
+	CopyRow(r0,0,context.c_all_data.global_rules.row_size-1,
+			r1,0,context.c_all_data.global_rules.row_size-1);
+}
+
+CopyRow :: inline (
+	r0 : MusicLaneRow, 
+	r1 : MusicLaneRow, start : int, end : int) 
+{
+	CopyRow(r0,start,end,r1,start,end);
+}
+
+CopyRow :: inline (
+	row_0 : MusicLaneRow, start_0 : int, end_0 : int,
+	row_1 : MusicLaneRow, start_1 : int, end_1 : int) 
+{
+	//TODO For now we assert but this should just produce
+	//and error message
+	assert(end_0 - start_0 == end_1 - start_1);
+
+	i1 : int = start_1;
+	for i0 : start_0..end_0 {
+		row_1[i1] = row_0[i0];
+		i1 += 1;
+	}
+}
+
+ShiftRow :: inline (shift : int, row_0 : MusicLaneRow, row_1 : MusicLaneRow) {
+	ShiftRow(shift, 
+		row_0, 0, context.c_all_data.global_rules.row_size-1,
+		row_1, 0, context.c_all_data.global_rules.row_size-1);
+}
+
+ShiftRow :: inline (shift : int,
+	row_0 : MusicLaneRow, start_0 : int, end_0 : int,
+	row_1 : MusicLaneRow, start_1 : int, end_1 : int)
+{
+	//Make sure theres no overlap so we don't mess up the shift. 
+	//TODO Alternatively we could store a temp row.
+	assert(end_0 - start_0 == end_1 - start_1);
+	if row_0.total_row_index == row_1.total_row_index {
+		assert((start_0 > start_1 && end_0 > end_1) ||
+			   (start_0 < start_1 && end_0 < end_1));
+	}
+	n : int = end_0 - start_0 + 1;
+	for i0 : start_0..end_0 {
+		i1 : int = ((i0 + shift) % n) + (start_1-start_0);
+		row_1[i1] = row_0[i0];
+	}
+}
+
+ShiftRow :: inline (shift : int, row : MusicLaneRow) {
+	ShiftRow(shift, row, 0, context.c_all_data.global_rules.row_size-1);
+}
+
+ShiftRow :: inline (shift : int, row : MusicLaneRow, start : int, end : int) {
+	assert(end > start);
+	n : int = end - start + 1;
+	temp_row : [] AggregateMusicPts = NewArray(n,AggregateMusicPts,true,,temp);
+	for i0 : start..end {
+		i1 : int = ((i0 + shift) % n) + start;
+		temp_row[i1] = row[i0];
+	}
+
+	i : int = start;
+	for amp : temp_row {
+		row[i] = amp;
+		i += 1;
+	}
+}
+
+RowToVertical :: inline (row : MusicLaneRow) -> AggregateMusicPts
+{
+	return RowToVertical(row, 0, context.c_all_data.global_rules.row_size-1);
+}
+
+RowToVertical :: inline (
+	row : MusicLaneRow, 
+	row_start : int, row_end : int,
+	vert_start : int = 0)
+-> AggregateMusicPts
+{
+	vert_pts : [..] MusicPoint;
+	vert_pts.allocator = temp;
+	//TODO Could check that end < max_row_index
+	i : int = 0;
+	for row_start..row_end {
+		if row[it].pts.count > 0 {
+			array_add(*vert_pts, MakeMemoryMusicPoint(vert_start+i,0,0,0));
+		}
+		i += 1;
+	}
+
+	return_amp : AggregateMusicPts;
+	return_amp.pts = vert_pts;
+	return return_amp;
+}
+
+AggregateOpType :: enum u8 {
+	AGGREGATE_ADD;
+	AGGREGATE_SUB;
+	AGGREGATE_SUB_REV;
+	AGGREGATE_MULT;
+	AGGREGATE_DIV;
+	AGGREGATE_MOD;
+}
+
+AggregateOp :: inline ($agg_type : AggregateOpType, music_pts : AggregateMusicPts, value : $T) -> AggregateMusicPts {
+	#assert(T == int || T == float);
+	amp : AggregateMusicPts;
+	amp.pts = NewArray(music_pts.pts.count, MusicPoint,, temp);
+	for music_pts.pts {
+		//TODO Can make this a switch statement since I think the new compiler version has compile time switch statements.
+		#if agg_type == .AGGREGATE_ADD {
+			amp.pts[it_index].music_pt_float = it.music_pt_float + value;
+			amp.pts[it_index].music_pt_pos = round_to_int(it.music_pt_pos + value);
+		} else #if agg_type == .AGGREGATE_SUB {
+			amp.pts[it_index].music_pt_float = ClampMin(0.0,it.music_pt_float - value);
+			amp.pts[it_index].music_pt_pos = ClampMin(0,round_to_int(it.music_pt_pos - value));
+		} else #if agg_type == .AGGREGATE_SUB_REV {
+			amp.pts[it_index].music_pt_float = ClampMin(0.0,value - it.music_pt_float);
+			amp.pts[it_index].music_pt_pos = ClampMin(0,round_to_int(value - it.music_pt_pos));
+		} else #if agg_type == .AGGREGATE_MULT {
+			amp.pts[it_index].music_pt_float = it.music_pt_float * value;
+			amp.pts[it_index].music_pt_pos = round_to_int(it.music_pt_pos * value);
+		} else #if agg_type == .AGGREGATE_DIV {
+			amp.pts[it_index].music_pt_float = it.music_pt_float / value;
+			amp.pts[it_index].music_pt_pos = round_to_int(it.music_pt_pos / value);
+		} else #if agg_type == .AGGREGATE_MOD {
+			amp.pts[it_index].music_pt_float = fmod_cycling(it.music_pt_float, cast(float) value);
+			amp.pts[it_index].music_pt_pos = it.music_pt_pos % round_to_int(value);
+		}
+	}
+	return amp;
+}
+
+operator + :: (music_pts : AggregateMusicPts, value : $T) -> AggregateMusicPts #symmetric {
+	return AggregateOp(.AGGREGATE_ADD, music_pts, value);
+}
+operator - :: (music_pts : AggregateMusicPts, value : $T) -> AggregateMusicPts {
+	return AggregateOp(.AGGREGATE_SUB, music_pts, value);
+}
+operator - :: (value : $T, music_pts : AggregateMusicPts) -> AggregateMusicPts {
+	return AggregateOp(.AGGREGATE_SUB_REV, music_pts, value);
+}
+operator * :: (music_pts : AggregateMusicPts, value : $T) -> AggregateMusicPts #symmetric {
+	return AggregateOp(.AGGREGATE_MULT, music_pts, value);
+}
+operator / :: (music_pts : AggregateMusicPts, value : $T) -> AggregateMusicPts {
+	return AggregateOp(.AGGREGATE_DIV, music_pts, value);
+}
+operator % :: (music_pts : AggregateMusicPts, value : $T) -> AggregateMusicPts {
+	return AggregateOp(.AGGREGATE_MOD, music_pts, value);
+}
+
+TypeToFloatPts :: inline (a2 : $T) -> [] float64 {
+	#assert(T == AggregateMusicPts || (T == [] int) || (T == [] float64) || T == int || T == float64);
+
+	float_pts : [..] float64;
+	float_pts.allocator = temp;
+	#if T == AggregateMusicPts {
+		for a2.pts array_add(*float_pts, it.music_pt_float);
+	} else #if T == [] int {
+		for a2 array_add(*float_pts, cast(float) it);
+	} else #if T == [] float {
+		float_pts = a2;
+	} else #if T == int {
+		array_add(*float_pts, cast(float) a2);
+	} else #if T == float {
+		array_add(*float_pts, a2);
+	}
+
+	return float_pts;
+}
+
+//TODO Should reuse what we do in Execute MusicInstruction here instead of separate functions
+//Should we just have [] float64 arrays now instead of [] MusicPoint
+operator && :: (a1 : AggregateMusicPts, a2 : $T) -> AggregateMusicPts #symmetric {
+	float_pts : [] float64 = TypeToFloatPts(a2);
+	and_pts : [..] MusicPoint;
+	and_pts.allocator = temp;
+	//Check if we have in both a1 and a2
+	for m1: a1.pts {
+		for m2: float_pts if FloatEqual(m1.music_pt_float, m2) {
+			//Check if we have already added the point.
+			for and_pts if FloatEqual(it.music_pt_float, m2) {
+				break;
+			}
+			array_add(*and_pts, m1);
+			break;
+		}
+	}
+
+	amp : AggregateMusicPts;
+	amp.pts = and_pts;
+	return amp;
+}
+
+operator || :: (a1 : AggregateMusicPts, a2 : $T) -> AggregateMusicPts #symmetric {
+	float_pts : [] float64 = TypeToFloatPts(a2);
+	or_pts : [..] MusicPoint;
+	or_pts.allocator = temp;
+	for m1: a1.pts {
+		for or_pts if Float64Equal(it.music_pt_float, m1.music_pt_float) {
+			continue;
+		}
+		array_add(*or_pts, m1);
+	}
+
+	for m2: float_pts {
+		for or_pts if Float64Equal(it.music_pt_float, m2) {
+			continue;
+		}
+		mp : MusicPoint;
+		mp.music_pt_float = m2;
+		mp.music_pt_pos = round_to_int(m2);
+		array_add(*or_pts, mp);
+	}
+
+	amp : AggregateMusicPts;
+	amp.pts = or_pts;
+	return amp;
+}
+//End of new music point functions
+
+/*
+	This mapping functions will map our MusicPoints to a specified linear_space by the dspace_id.
+	Untested but this will likely work for circular_spaces as well.
+
+	Note that this will return the SpacePoints in the same order
+	as the MusicPoints were passed in.
+
+	TODO similar mapping functions for higher dspaces
+*/
+//TODO Should have a version that uses all_space_points directly
+//since we can pass it in beforehand without filtering
+MapMusicPtsToSpace2D :: inline (
+	input_music_pts : [] MusicPoint,
+	dspace_id : int,
+	all_space_points : [] SpacePoint)
+-> [] SpacePoint
+{
+	return_music_to_space_pts : [] SpacePoint = NewArray(input_music_pts.count, SpacePoint, false,, temp);
+
+	points_in_space : [] SpacePoint = ArrayFindAllVarName(all_space_points, dspace_id, "dspace_id", temp);
+	//TODO since space_points are left ordered and only get removed altogether, we only need to sort
+	//if the space_points get moved around eventually
+	// quick_sort(points_in_space, (p1,p2) => p1.int_pos.x - p2.int_pos.x);
+
+	for music_pt, music_pt_index : input_music_pts
+	{
+		modded_music_pt_pos : int = music_pt.music_pt_pos % points_in_space.count;
+		return_music_to_space_pts[music_pt_index] = points_in_space[modded_music_pt_pos];
+	}
+
+	return return_music_to_space_pts;
+}
+
+//TODO Should we put this in "thegame_audio.jai"?
+//Right now it's data so maybe once we move all the data round
+//TODO GameAudioPlay and PlayAudioEvent should be done
+//on a per music_lane basis
+GameAudioPlay :: struct {
+	play_state : AudioPlayState;
+
+	abs_start_time : float64;
+
+	rel_initial_time : float64;
+	rel_play_time : float64;
+	rel_play_beat : float64; //TODO Do we really need this?
+
+	float_x_memory : float64;
+	current_x_memory : int;
+
+	//TODO this should be last_played_unit
+	//once we use rhythm_units for memory_index
+	last_memory_unit_played : int;
+
+	music_pt_play_index : int;
+
+	//TODO Should this be memory_units_per_beat?
+	//We could calculate that with bps anyways but maybe it's a better default.
+	//Then we could put a thick line for each of these to show the beat.
+	memory_units_per_second : float64;
+}
+
+AudioPlayState :: enum {
+	STOP;
+	PLAY;
+	PAUSE;
+}
+
+//TODO FROM HERE USE THIS INSTEAD WHILE PLAYING AND OTHER UPDATE AND ONLY UPDATE BELOW
+//WHEN WE RESET
+IncrementRelAudioTime :: inline (
+	g : *GameAudioPlay,
+	at : AudioTiming) 
+{
+	g.rel_play_time += at.time_delta;
+}
+
+UpdateAudioMemoryUnitPos :: (
+	g : *GameAudioPlay,
+	at : AudioTiming)
+{
+	g.float_x_memory = g.rel_play_time * g.memory_units_per_second;
+	g.current_x_memory = cast(int) g.float_x_memory;
+
+	//TODO Do we even need this?
+	g.rel_play_beat = g.rel_play_time * at.bps;
+	
+	//Old rel_play_time calculation for remembering
+	// g.rel_play_time = 
+	// 	at.current_time - g.abs_start_time + g.rel_initial_time;
+}
+
+/*TODO Could eventually replace this with AllAudioAction
+only so that we only have a set of actions and not
+an array of events. It does not seem like we will need
+more than 1 of each event and having a set will avoid
+overlapping events for reset and duplicates for stop and play
+*/
+//TODO Could rename to SetAudioEvent and use it
+//for playing or reset since they are similar logic
+AudioEvent :: struct {
+	// CHANGE THIS NAME AS WELL
+	initial_x_memory : int;
+	x_float : float64;
+	audio_event_type : AudioEventType;
+}
+
+AudioEventType :: enum u8 {
+	RESET_AUDIO_TO_MEMORY_UNIT;
+	SET_AUDIO_TO_X_FLOAT;
+	PLAY_NOTES_AT_CURRENT_MEMORY;
+	STOP_ALL_MUSIC_PTS;
+}
+
+MakeAudioEvent :: inline (
+	audio_event_type : AudioEventType,
+	initial_x_memory : int = 0,
+	x_float : float64 = 0)
+-> AudioEvent
+{
+	audio_event : AudioEvent = ---;
+	audio_event.audio_event_type = audio_event_type;
+	audio_event.initial_x_memory = initial_x_memory;
+	audio_event.x_float = x_float;
+	return audio_event;
+}
+
+/*Testing another way to do audio in order to avoid duplicates
+and not reprocess data.
+With this method, order must be fixed so we are also
+leaving the AudioEvent method just in case the order does
+eventually matter.
+*/
+SetAudioPositionData :: struct {
+	is_set : bool;
+
+	set_audio_mspace_id : int;
+
+	set_audio_type : SetAudioType;
+	memory_unit : int;
+	memory_x_float : float64;
+}
+SetAudioType :: enum {
+	SET_MEMORY_UNIT;
+	SET_MEMORY_X_FLOAT;
+}
+
+/*TODO 
+  these could be replaced with rhythm units which would be the
+  smallest possible beat fraction in the level (eg 1/256)
+  and the base rhythm unit would be associated to some base
+  fraction of a beat (eg 1/256th of a beat)
+
+  --- Some bounds for rhythm unit denominations ---
+  240bpm=4bps=0.25spb each rhythm unit = 0.25 seconds
+  with a u32 that means we would have 
+  2^32 * 0.25s = 1,073,741,824s = 34 years
+
+  if rhythm unit = 0.25s / 256 = 0.0009765625s then 2^32 * 0.0009765625s = 4,194,304s = 48 days
+  if rhythm unit = 0.25s / 128 = 0.001953125s then 2^32 * 0.001953125s = 8,388,608s = 96 days
+  if rhythm unit = 0.25s / 64 = 0.00390625s then 2^32 * 0.00390625s = 16,777,216s = 192 days
+
+  this would allow for optimization in terms of using discrete
+  integer values for beats and potentially less than 64 bits
+
+  this rhythm unit idea would work well with a separate beat offset 
+  for smaller beat variations 
+
+  ***sorting is a good reason to use rhythm_units, since sorting
+  by float64 (which is a common operation) requires casting to int
+  and so it is better that we just have int in the first place***
+*/
+
+//TODO Is it better to pass in fun_region_pos : [chord_dim] int directly?
+//seems less prone to weird errors
+FunRegionPosToPitchSet :: inline (
+	fun_region_pos : [] $T,
+	tuning_system_count : int,
+	chord_dim : int,
+	//DOC : This is used for mapping vls to chord spaces in 3d because otherwise we could have slight
+	//floating point rounding below the octave and then we get the octave above. It's not WRONG but it feels
+	//inconsistent, but maybe I can remove this later anyways
+	//NOTE I AM NOT USING THIS ANYMORE but I will leave it here as a reminder just in case
+	$round_pitches_below_octave : bool = false)
+-> [] T
+{
+#assert(T == int || T == float || T == float64);
+	pitch_set : [] T = NewArray(chord_dim, T, false);
+	for 0..chord_dim-1 {
+		#if round_pitches_below_octave rounded_fun := cast(T) round_to_int(fun_region_pos[it]);
+		else rounded_fun := fun_region_pos[it];
+		pitch_set[it] = PosMod(rounded_fun, cast(T) tuning_system_count);
+	}
+	quick_sort(pitch_set, (p1,p2) => p1-p2);
+	
+	return pitch_set;
+}
+
+FunRegionPosToPitchSet :: inline (
+	fun_region_pos : [$chord_dim] $T,
+	tuning_system_count : int)
+-> [chord_dim] T
+{
+#assert(T == int || T == float || T == float64);
+	pitch_set : [chord_dim] T;
+	for 0..chord_dim-1 {
+		pitch_set[it] = PosMod(fun_region_pos[it], cast(T) tuning_system_count);
+	}
+	quick_sort(pitch_set, (p1,p2) => p1-p2);
+	
+	return pitch_set;
+}
+
+FunRegionToPitchSetDeltas :: inline (
+	//TODO We have this as [] int instead of chord_dim
+	//because thats what SpacePoint3D holds but we could
+	//do [$chord_dim] int if we ever resolve that to be
+	//specific for each dimension
+	fun_region_pos : [] int,
+	tsc : int, //tuning_system_count
+	$chord_dim : int)
+-> [chord_dim] int
+{
+	fun_pos_diffs : [chord_dim] int;
+	fun_pos_diffs[0] = PosMod(PosMod(fun_region_pos[0],tsc) - PosMod(fun_region_pos[chord_dim-1],tsc), tsc);
+	for 1..chord_dim-1 {
+		fun_pos_diffs[it] = PosMod(PosMod(fun_region_pos[it],tsc) - PosMod(fun_region_pos[it-1],tsc), tsc);
+	}
+	return fun_pos_diffs;
+}
+FunRegionToPitchSetDeltas :: inline (
+	fr_pos : [] int,
+	tsc : int)
+-> [] int
+{
+	fun_pos_diffs : [] int = NewArray(fr_pos.count, int);
+	fun_pos_diffs[0] = PosMod(PosMod(fr_pos[0],tsc) - PosMod(fr_pos[fr_pos.count-1],tsc), tsc);
+	for 1..fr_pos.count-1 {
+		fun_pos_diffs[it] = PosMod(PosMod(fr_pos[it],tsc) - PosMod(fr_pos[it-1],tsc), tsc);
+	}
+	return fun_pos_diffs;
+}
+
+//TODO can $size be in [$size] int
+//TODO write tests for this function
+//(6,8,11) -> (-1,6,8) -> (-4,-1,6)
+OrderedPitchSetToFundamentalRegion :: (
+	input : [size] int, 
+	tuning_system_music_pt_count : int, 
+	$size : int) 
+-> [size] int 
+{
+	return OrderedPitchSetToFundamentalRegion(input, tuning_system_music_pt_count); 
+}
+
+//TODO This is sorted in here so can likely remove
+//the word ordered...
+OrderedPitchSetToFundamentalRegion :: inline (
+	input : [$size] int, 
+	tuning_system_music_pt_count : int)
+-> [size] int 
+{
+	poses : [size] int;
+	for input_pos, input_index : input {
+		poses[input_index] = PosMod(input_pos, tuning_system_music_pt_count);
+	}
+	quick_sort(poses, (i1, i2) => i1 - i2);
+	sum_poses : int = ArraySum(poses);
+	while sum_poses >= tuning_system_music_pt_count {
+		last_value : int = poses[size-1] - tuning_system_music_pt_count;
+		// for < size-1..1 poses[it] = poses[it-1];
+		for < 1..size-1 poses[it] = poses[it-1];
+		poses[0] = last_value;
+		sum_poses = ArraySum(poses);
+	}
+	//TODO is this unnecessary now that we fixed the ordering bug?
+	// quick_sort(poses, (i1, i2) => i1 - i2);
+	return poses;
+}
+
+OrderedPitchSetToFundamentalRegion :: inline (
+	input : [size] $T, 
+	tuning_system_music_pt_count : T, 
+	$size : int) 
+-> [size] T 
+{
+	return OrderedPitchSetToFundamentalRegion(input, tuning_system_music_pt_count);
+}
+
+OrderedPitchSetToFundamentalRegion :: inline (
+	input : [$size] $T, 
+	tuning_system_music_pt_count : T)
+-> [size] T 
+{
+#assert(T == float || T == float64);
+	poses : [size] T;
+	for input_pos, input_index : input {
+		poses[input_index] = PosMod(input_pos, tuning_system_music_pt_count);
+	}
+	quick_sort(poses, (i1, i2) => i1 - i2);
+	sum_poses : T = ArraySum(poses);
+	while sum_poses > tuning_system_music_pt_count ||
+		   FloatBothEqual(sum_poses, tuning_system_music_pt_count)
+	{
+		last_value : T = poses[poses.count-1] - tuning_system_music_pt_count;
+		// for < size-1..1 poses[it] = poses[it-1];
+		for < 1..size-1 poses[it] = poses[it-1];
+   	poses[0] = last_value;
+		sum_poses = ArraySum(poses);
+	}
+	//TODO is this unnecessary now that we fixed the ordering bug?
+	// quick_sort(poses, (i1, i2) => i1 - i2);
+	return poses;
+}
+
+//TODO Update compile time array to use this so we only have 1 algorithm function for floats
+OrderedPitchSetToFundamentalRegion :: inline (
+	input : [] $T, 
+	tuning_system_count : T)
+-> [] T
+{
+	poses : [] T = NewArray(input.count, T);
+	OrderedPitchSetToFundamentalRegion(input, tuning_system_count, poses);
+	return poses;
+}
+OrderedPitchSetToFundamentalRegion :: inline (
+	input : [] $T, 
+	tuning_system_count : T,
+	poses : [] T)
+{
+#assert(T == float || T == float64);
+assert(input.count == poses.count);
+	for input_pos, input_index : input {
+		poses[input_index] = PosMod(input_pos, tuning_system_count);
+	}
+	quick_sort(poses, (i1, i2) => i1 - i2);
+	sum_poses : T = ArraySum(poses);
+	while sum_poses > tuning_system_count ||
+		   FloatBothEqual(sum_poses, tuning_system_count)
+	{
+		last_value : T = poses[poses.count-1] - tuning_system_count;
+		// for < size-1..1 poses[it] = poses[it-1];
+		for < 1..input.count-1 poses[it] = poses[it-1];
+   	poses[0] = last_value;
+		sum_poses = ArraySum(poses);
+	}
+	//TODO is this unnecessary now that we fixed the ordering bug?
+	// quick_sort(poses, (i1, i2) => i1 - i2);
+	// return poses;
+}
+
+//TODO can we have a reflected conversion instead if we store the
+//reflected matrix instead
+FunRegionPosToWorldPos :: inline (
+	fun_region_pos : [2] float,
+    invariant_to_world : Matrix2F, 
+    chord_s2 : ChordSpace2)
+-> Vector2F 
+{
+	world_pos : Vector2F = chord_s2.zero_pos;
+	world_pos += invariant_to_world * MakeV2F(fun_region_pos);
+	return world_pos;
+}
+
+#if 0 {
+FunRegionPosToWorldPos :: inline (
+	fun_region_pos : [2] float, 
+	chord_s2 : ChordSpace2) 
+  	-> Vector2F 
+{
+	world_pos : Vector2F = chord_s2.zero_pos;
+	world_pos += fun_region_pos[0] * chord_s2.invariant_0_unit_length +
+		         fun_region_pos[1] * chord_s2.invariant_1_unit_length;
+	return world_pos;
+}
+}
+
+FunRegionPosToWorldPosMatrix :: inline (fun_region_pos : [2] float64, chord_s2 : ChordSpace2) -> Vector2F {
+	v : Vector2F = MakeV2F(cast(float) fun_region_pos[0], cast(float) fun_region_pos[1]);
+	return FunRegionPosToWorldPosMatrix(v, chord_s2);
+}
+FunRegionPosToWorldPosMatrix :: inline (fun_region_pos : [2] float, chord_s2 : ChordSpace2) -> Vector2F {
+	return FunRegionPosToWorldPosMatrix(MakeV2F(fun_region_pos), chord_s2);
+}
+FunRegionPosToWorldPosMatrix :: inline (fun_region_pos : [] float64, chord_s2 : ChordSpace2) -> Vector2F {
+	assert(fun_region_pos.count == 2);
+	v : Vector2F = MakeV2F(cast(float) fun_region_pos[0], cast(float) fun_region_pos[1]);
+	return FunRegionPosToWorldPosMatrix(v, chord_s2);
+}
+FunRegionPosToWorldPosMatrix :: inline (
+	fun_region_pos : Vector2F,
+	chord_s2 : ChordSpace2)
+-> Vector2F 
+{
+	world_pos : Vector2F = chord_s2.zero_pos;
+	world_pos += chord_s2.invariant_to_world_matrix * fun_region_pos;
+	// world_pos := chord_s2.zero_pos + chord_s2.invariant_to_world_matrix * fun_region_pos;
+	//NOTE : We need to add this after so it does not effect the rotation above
+	//which is assumed to be about {0,0}
+	world_pos += chord_s2.dspace_world_center;
+	return world_pos;
+}
+
+//NOTE : This was calculated as the inverse of FunRegionPosToWorldPosMatrix, so we maintain the order of that in reverse.
+//TODO This can all be float64 once the world is float64.
+WorldPosToFunRegionPosMatrix :: inline (
+	world_pos : Vector2F,
+	chord_s2 : ChordSpace2)
+-> Vector2F 
+{
+	//Split this up into 2 lines to make the order very explicit.
+	fr_pos : Vector2F = world_pos - chord_s2.dspace_world_center - chord_s2.zero_pos; 
+	fr_pos = chord_s2.world_to_invariant_matrix * fr_pos; 
+	return fr_pos;
+}
+
+//https://en.wikipedia.org/wiki/Encyclopedia_of_Triangle_Centers
+VLEndPoint :: struct {
+	//TODO This id should be replace with vl_index so we can
+	//know which point is selected or playing so we can make
+	//everything light up to see which value is which.
+	id : int;
+	dspace_id : int;
+	//TODO We can remove this eventually if we don't use it. Unless we continue using it for 3d.
+	//In which case we could make a union with this and vl_point_count if that helps.
+	space_point_id : int;
+	//TODO Could store chord_dim in here instead of at compile-time if we want arbitrary dimensions
+	//but then we would need the array to be somewhere else in memory as well...
+	//TODO Should this be float64 instead. Especially once world_pos is float64 eventually
+	// fun_region_pos : [chord_dim] float;
+	//TODO Rename to fun_region_float?
+	//TODO Remove this gradually and replace with float64 instead
+	//float64 will be world_pos eventually I think so we can have
+	//x_index : float64 for better precision and longer pieces overall
+	// fun_region_pos : [chord_dim] float;
+	/*TODO IMPORTANT Should we store chord_dim in here and then put the fun_region_float in their own array?
+	  This would generalize this for all dimensions and also we could collapse to 1 array VLLinePoint for rendering 
+	  for example, instead of needing vl_rel_poses and those aggregating arrays which may take longer than fetching anyways.
+	  Especially if we can just fetch sequentially. I think I like the idea of putting the values in a separate array
+	  with an index in here and chord_dim so we can fetch directly anyways then. Or we store id in the other array
+	  for now and then we do it with index later once we optimize the data tables.
+	*/
+	fun_region_float : [] float64;
+	/*TODO If chord_dim >= 5 we could have a generalized array system here
+	that fetches the points from somewhere else so we can keep the current vl processing system
+	while 
+	*/
+	//TODO Could remove this if we maintain order in
+	//array as is but leaving just in case we don't
+	order : int;
+	//TODO I am putting this here, but do we actually need it?
+	//I think we do for MemoryUnitToChordSpace highlighting
+	//so we know which memory units were associated to this
+	//specific memory_unit but we can remove it if we don't need it
+	vl_index : int;
+
+	//TODO Could cache SpacePoint3D in here or as SoA
+	vl_point_count : int;
+}
+
+VLPointNoDim :: struct {
+	//TODO Do we even need this?
+	//could just use dspace_id instead
+	//Keeping both for now so we can reference vl_id and dspace_id
+	//especially if eventually if we have a vl that does not start
+	//from a point eventually.
+	vl_id : int;
+	dspace_id : int;
+	//TODO If we generalize 2D can make rel_pos Vector2F for the 2 case
+	//TODO Can we remove this or is this good for optimizations so we don't have to compute every time?
+	// #if chord_dim >= 3 {
+	// rel_pos : Vector3F;
+	// } else #if chord_dim == 2 {
+	// //TODO Can we call this rel_pos as well?
+	// rel_pos : Vector2F;
+	// }
+	//TODO If we pull this out then we have same struct
+	//for 3D and 4D and could store fun_region_pos somewhere
+	//else if we need it for some other reason.
+	//Like SoA for example and just clear it on update for 4D
+	//TODO Could just put fun_region_size since we have an extra
+	//32 bit here even on higher dimensions
+	//TODO Or we pass in at compile time and then have different
+	//cases for fetching rendering data but same case for displaying...
+	// chord_dim : s32;
+	// fun_region_pos : [chord_dim] float;
+	fun_region_float : [] float64;
+
+	//Keep track of the order from one music_pt to another for things like color gradation.
+	order : int;
+}
+
+VLEvent :: struct {
+	voice_leading_sizes : [] float64;
+}
+//TODO Can likely remove all the uncompiled code and comments from here not that it's n-dimensional and working everywhere.
+//We could wait until it's used a bit or tested but I think it's fine to cleanup now.
+//This will be a much cleaner algorithm for voice leadings so anyone can use it clearly.
+ProcessVoiceLeadingEventsNDim :: inline (
+	//TODO May not need this with new model. It depends if we want to store the voice leadings or just convert them to space_rect directly.
+	//I will leave here for now in case we want to use it later.
+	chord_space_id : int,
+	//TODO I think we can just put [chord_dim] float64 here and just [] float64 once we remove chord_dim
+	start_chord : [] float64,
+	//TODO We could possibly make this [][] float64 if that is better.	
+	vl_events : [] VLEvent,
+	music_pt_count : int,
+	//TODO Should we pass this in here or through vl_input. Still need this for 3d
+	vl_index : int = 0)
+-> [] VLEndPoint, [] VLPointNoDim
+{
+//We could have chord_dim == 1 but we don't draw voice leadings on linear space yet...
+//This algorithm is specifically for chord spaces anyways
+// #assert(chord_dim >= 2);
+	// chord_dim : int = start_chord.count;
+	//TODO We can return these as errors instead now.
+	assert(start_chord.count >= 2);
+	for vl_events assert(it.voice_leading_sizes.count == start_chord.count);
+
+	return_vl_point_result : [..] VLEndPoint;
+	return_vl_point_result.allocator = context.allocator;
+	return_voice_leading_point_result : [..] VLPointNoDim;
+	return_voice_leading_point_result.allocator = context.allocator;
+
+	//TODO Can remove this now that we don't use space_point. Also space_point_id from VLLinePoint
+	//Can also remove the same code from below as well once this is tested in all dimensions.
+	#if 0 {
+	//TODO We should not even use space points and just put fun_region_pos and compute it with rendering
+	//or cache that in rel_pos because if our initial points are not in the space we still need to draw them.
+	//The problem with using space_points here is that 1) it is dependent on dimension and 
+	//2) we cannot do points that are in between. Need to consider audio then when we add points outside the tuning system 
+	/*TODO I Cannot fully change until vl_input is done in float64 which requires a bit of work so I will do it
+	soon but a bit later. Maybe do chord_s2 and spiral first before checking this out.
+	*/
+	#if start_chord.count >= 3 {
+	start_pos_fun_region := OrderedPitchSetToFundamentalRegion(vl_input.input_music_pt_poses, music_pt_count);
+	start_point, found_start_point := FunRegionPosToSpacePoint3D(start_pos_fun_region, points_in_space);
+	// start_point, found_start_point := OrderedPitchSetToSpacePoint3D(vl_input.input_music_pt_poses, tuning_system, points_in_space);
+	assert(found_start_point);
+	} else {
+	start_point, found_start_point := ArrayFindFirstByNameId(points_in_space, MakeV2I(start_pos_fun_region), "int_pos");
+	assert(found_start_point);
+	}
+	}
+
+
+	vl_point_result : VLEndPoint;
+	vl_point_result.id = ALL_NEXT_IDS.NEXT_VL_ID;
+	ALL_NEXT_IDS.NEXT_VL_ID += 1;
+	vl_point_result.dspace_id = chord_space_id;
+	// vl_point_result.space_point_id = start_point.id;
+	//TODO Should be able to do this directly but vl_input has to have float64 music_pts
+	// vl_point_result.fun_region_pos = OrderedPitchSetToFundamentalRegion(vl_input.input_music_pt_floats, cast(float64) music_pt_count);
+	vl_point_result.fun_region_float = OrderedPitchSetToFundamentalRegion(start_chord, cast(float64) music_pt_count);
+	// start_pos_fun_region := OrderedPitchSetToFundamentalRegion(start_chord, cast(float64) music_pt_count);
+	// // for start_pos_fun_region vl_point_result.fun_region_pos[it_index] = cast(float) it;
+	// for start_pos_fun_region {
+	// 	//TODO Remove this now once it works everywhere. Can leave here commented in case we want it later.
+	// 	// vl_point_result.fun_region_pos[it_index] = cast(float) it;
+	// 	vl_point_result.fun_region_float[it_index] = it;
+	// }
+	vl_point_result.order = return_vl_point_result.count;
+	vl_point_result.vl_index = vl_index;
+	array_add(*return_vl_point_result, vl_point_result);
+
+	//TODO Using vl_total_int_pos as a check right now to make sure we end on the same space_point as the vl_event
+	//but we can remove it if ever we no longer need that check below.
+	// vl_total_int_pos : [start_chord.count] int = vl_input.input_music_pt_poses;
+	total_float_pos : [] float64 = array_copy(start_chord);
+	vl_increments : [] float64 = NewArray(start_chord.count, float64);
+
+	//TODO We should be able to pass this in so we can adjust it
+	vl_increment_delta : float64 = 0.1;
+	vl_total_float_sizes : [] float64 = NewArray(start_chord.count, float64);
+	vl_acc_increment : [] float64 = NewArray(start_chord.count, float64);
+	for vl_event : vl_events 
+	{
+		/* NOTES ON ALGORITHM LOGIC
+	    We take the ratio = voice_leading_sizes[it] / abs_max_vl where 0<=ratio<=1
+	    So if ratio == 1 then vl_increment = vl_increment_delta (0.2)
+	       if ratio == 0.5 then vl_increment = 0.5 * vl_increment_delta (0.1)
+
+        So if voice_leading_sizes[0] == 2 and voice_leading_sizes[1] == 1 they will reach 2 and 1 
+        at the same time since vl_increment[0] = 0.2 and vl_increment[1] = 0.1 and so they will
+        both take 10 steps and we will have a linear increment.
+		It also accounts for if the voice_leading_sizes[it] is negative then vl_increment is negative and will
+		therefore decrement the total_float_pos and the vl_acc_increment.
+			
+	    If vls are negative then increments will be negative and if vls are positive then inrements will be positive. 
+	    So therefore, the total_float_pos gets += by vl_increment and the remaining_size gets -= by vl_increment below.
+	    So  if voice_leading_sizes[0] == 2 then vl_increment[0] == 0.2 
+	    	then it will take 10 steps to go from 0->2
+	        if voice_leading_sizes[0] == -2 then vl_increment[0] == -0.2 
+	    	then it will take 10 steps to go from 0->-2
+	    */
+		for 0..start_chord.count-1 vl_total_float_sizes[it] = vl_event.voice_leading_sizes[it];
+		abs_max_vl : float64 = abs(vl_total_float_sizes[0]);
+		for 1..start_chord.count-1 {
+			abs_vl : float64 = abs(vl_total_float_sizes[it]);
+			if abs_vl > abs_max_vl abs_max_vl = abs_vl;
+		}
+
+		for 0..start_chord.count-1 vl_increments[it] = vl_increment_delta * vl_event.voice_leading_sizes[it] / abs_max_vl;
+
+		//TODO could pull this out but doing it this way reduces floating point error
+		// for 0..start_chord.count-1 total_float_pos[it] = cast(float) vl_total_int_pos[it];
+		
+		p_order : int = 0;
+		/*TODO If we want to remove the first and last points in voice leading for rendering purposes 
+		to prevent popup behind the cubes, then we could start the vl_acc_increment 1 increment higher and 
+		remove 1 increment from vl_total_float_sizes so we don't go till the end.
+		*/
+		for * vl_acc_increment it.* = 0; //TODO Could do a memset here if that works for float64
+		while !ArraysFloatEqual(vl_acc_increment, vl_total_float_sizes) {
+			/*TODO for finer grained chord spaces (Cent scale maybe) then we would decrease the delta increments to 1/1200
+				setting back to fundamental region will likely be the same and so the algorithm would barely need to change otherwise
+			*/
+			vl_point : VLPointNoDim;
+			vl_point.vl_id = return_vl_point_result[return_vl_point_result.count-1].id;
+			vl_point.dspace_id = chord_space_id;
+			vl_point.order = p_order;
+			p_order += 1;
+			//NOTE : The idea here is that the fundamental region will be small and within the float32 bounds.
+			//Is this always true? Maybe not... then we would have to change the world_pos to being float64
+			//which we should likely do eventually anyways.
+			vl_point.fun_region_float = OrderedPitchSetToFundamentalRegion(total_float_pos, cast(float64) music_pt_count);
+			// fun_region_64 := OrderedPitchSetToFundamentalRegion(total_float_pos, cast(float64) music_pt_count);
+			// for fun_region_64 {
+			// 	// vl_point.fun_region_pos[it_index] = cast(float) it;
+			// 	vl_point.fun_region_float[it_index] = it;
+			// }
+			//TODO Shuold we just compute these at render time? Caching them does save computation but also is dimension specific
+			//Could add the difference in dimension within the function then
+			// #if start_chord.count >= 3 {
+			// //TODO Likely better to compute these in renderer in case we decide to widen it and store the value in chord_s3
+			// //it keeps this function independent of the chord spaces
+			// vl_point.rel_pos = FunRegionFloatPosToRelPos(vl_point.fun_region_pos, music_pt_count);
+			// } else {
+			// // vl_point.rel_pos = FunRegionPosToWorldPosMatrix(vl_point.fun_region_pos, chord_s2);
+			// }
+			array_add(*return_voice_leading_point_result, vl_point);
+
+			for 0..start_chord.count-1 {
+				vl_acc_increment[it] += vl_increments[it];
+				total_float_pos[it] += vl_increments[it];
+			}
+		}
+
+		return_vl_point_result[return_vl_point_result.count-1].vl_point_count = p_order;
+
+		/*Add the last vl_point and then also the next vl_line_segment. This will be a duplicate
+		if we have another one which is ok in case we want to split of vls by line segments.
+		Probably won't but leaving here as a reminder.
+		TODO Maybe we can remove the last point since we have VLLinePoint anyways
+		*/
+		last_point : VLPointNoDim;
+		last_point.vl_id = return_vl_point_result[return_vl_point_result.count-1].id;
+		last_point.dspace_id = chord_space_id;
+		last_point.order = p_order;
+		//NOTE : The idea here is that the fundamental region will be small and within the float32 bounds.
+		//Is this always true? Maybe not... then we would have to change the world_pos to being float64
+		//which we should likely do eventually anyways.
+		last_point.fun_region_float = OrderedPitchSetToFundamentalRegion(total_float_pos, cast(float64) music_pt_count);
+		// fun_region_64 := OrderedPitchSetToFundamentalRegion(total_float_pos, cast(float64) music_pt_count);
+		// for fun_region_64 {
+		// 	// last_point.fun_region_pos[it_index] = cast(float) it;
+		// 	//TODO We can set this directly now since this will use the passed in allocator anyways
+		// 	last_point.fun_region_float[it_index] = it;
+		// }
+
+		//TODO Currently we don't use this for 2D, so if we remove for 3D as well then we can just store fun_region_pos.
+		//Likely make separate function for this which passes in start_chord.count
+		// #if start_chord.count >= 3 {
+		// last_point.rel_pos = FunRegionFloatPosToRelPos(last_point.fun_region_pos, music_pt_count);
+		// } else {
+		// // last_point.rel_pos = FunRegionPosToWorldPosMatrix(next_point.fun_region_pos, chord_s2);
+		// }
+		array_add(*return_voice_leading_point_result, last_point);
+
+		//TODO could remove this check but leaving here for now so we always validate actual endpoint with traversed endpoint
+		#if 0 {
+		check_next_int_pos : [start_chord.count] int;
+		for 0..start_chord.count-1 check_next_int_pos[it] = vl_total_int_pos[it] + vl_event.voice_leading_sizes[it];
+		total_pos_int : [start_chord.count] int;
+		for 0..start_chord.count-1 total_pos_int[it] = round_to_int(total_float_pos[it]);
+		assert(ArraysFixedEqual(check_next_int_pos, total_pos_int));
+		}
+
+		//TODO This would be a 2D/3D difference
+		//TODO Can remove this and loop above once
+		#if 0 {
+		#if start_chord.count >= 3 {
+		next_pos_fun_region := OrderedPitchSetToFundamentalRegion(total_pos_int, music_pt_count);
+		next_point, found_next_point := FunRegionPosToSpacePoint3D(next_pos_fun_region, points_in_space);
+		// next_point, found_next_point := OrderedPitchSetToSpacePoint3D(total_pos_int, tuning_system, points_in_space);
+		assert(found_next_point);
+		} else {
+		next_point, found_next_point := ArrayFindFirstByNameId(points_in_space, MakeV2I(next_pos_fun_region), "int_pos");
+		assert(found_next_point);
+		}
+		}
+		
+		// next_pos_fun_region := OrderedPitchSetToFundamentalRegion(total_pos_int, music_pt_count);
+
+		next_vl_line_point : VLEndPoint;
+		next_vl_line_point.id = ALL_NEXT_IDS.NEXT_VL_ID;
+		ALL_NEXT_IDS.NEXT_VL_ID += 1;
+		next_vl_line_point.dspace_id = chord_space_id;
+		// next_vl_line_point.space_point_id = next_point.id;
+		// next_vl_line_point.fun_region_pos = OrderedPitchSetToFundamentalRegion(vl_input.input_music_pt_poses, music_pt_count);
+		// next_vl_line_point.fun_region_pos = OrderedPitchSetToFundamentalRegion(total_float_pos, cast(float64) music_pt_count);
+		next_vl_line_point.fun_region_float = OrderedPitchSetToFundamentalRegion(total_float_pos, cast(float64) music_pt_count);
+		// next_pos_fun_region := OrderedPitchSetToFundamentalRegion(total_float_pos, cast(float64) music_pt_count);
+		// for next_pos_fun_region {
+		// 	// next_vl_line_point.fun_region_pos[it_index] = cast(float) it;
+		// 	next_vl_line_point.fun_region_float[it_index] = it;
+		// }
+		//TODO We could store the op_space position as an optimization here alone with op_space_id eventually
+		next_vl_line_point.order = return_vl_point_result.count;
+		next_vl_line_point.vl_index = vl_index;
+		array_add(*return_vl_point_result, next_vl_line_point);
+
+
+		// vl_total_int_pos = total_pos_int;
+	}
+
+	return return_vl_point_result, return_voice_leading_point_result;
+}
+PointRectInLinearSpace :: inline (point : SpacePoint, linear : Space2D) -> Rectangle2 {
+	world_pos : Vector2F = linear.dspace_world_pos + point.dspace_pos;
+	rect : Rectangle2 = RectCenterDim(world_pos, linear.dspace_point_dim - Vector2F.{0.1,0.1});
+	return rect;
+}
+
+/*TODO Should we rename this to GlobalDefaults
+since they are not really used as rules anymore?
+*/
+GlobalRules :: struct {
+	check_max_voice_leading : bool;
+	max_voice_leading_size : int;
+
+	check_max_chord : bool;
+	max_chord_size : int;
+
+	tuning_system_id : int;
+	//TODO Caching here for now until i think more about it
+	tuning_system : TuningSystem; 
+
+	//TODO Should likely change name of struct
+	//or move these to a more appropriate place
+	//for overall lane and row dimensions.
+	row_size : int;
+	memory_unit_width : float;
+
+	//TODO should we have a global scale as well?
+}
+
+/*TODO We can differentiate here between linear and non-linear with the same
+tuning_system but technically these are different points so maybe the dspace should
+be different. For now we only have 1 anyways. The rationale here is that each tuning
+system should have 1 representation. Otherwise we cant really tell which is which.
+We can add 2 separate point sets later if needed or just force equal rendering
+at the rendering loop. I am not sure if it is needed right now so let's see until later if we do.
+Making 2 sets of points keep everything the same and we just add that.
+
+TODO Should we put this in LinearPitchSpace like we did for CircleSpace?
+Right now we don't have a LinearPitchSpace since we just create the SpacePoint
+but maybe it would make sense since we sort of need it for op_spaces as well.
+Let's see how we do op_space and then we can homogenize.
+
+IF WE WANT DIFFERENT COLORS for the same tuning_system then we could create that
+in separate data so that it does not need to overlap.
+*/
+LinearToTuningSystem :: struct {
+	// view : LinearPitchSpaceView;
+	dspace_id : int;
+	tuning_system_id : int;
+}
+
+GetOrCreateLinearTuning :: inline (
+	tuning_system_id : int, 
+	linear_view : LinearPitchSpaceView, 
+	all_data : *AllData) 
+-> LinearToTuningSystem
+{
+	tuning_system, found_tuning_system := 
+		ArrayFindFirstConstByNameId(all_data.all_tuning_systems, tuning_system_id, "id");
+	//We just return default tuning_system for now to avoid error checking everywhere.
+	if !found_tuning_system {
+		//TODO Could generalize this to print to inner console.
+		print("Invalid tuning_system_id : %\n", tuning_system_id);
+		tuning_system = all_data.all_tuning_systems[0];
+	}
+	// if !found_tuning_system {
+	// 	//TODO Can likely log this error or send back to player. Maybe better to check input before running it instead of everywhere.
+	// 	//Unless of course we allow an api and then we would have to consider other things.
+	// 	print("Invalid tuning_system_id : %\n", tuning_system_id);
+	// 	return linear_to_tuning_system, false;
+	// }
+
+	linear_to_tuning_system, found_linear_to_tuning_system := 
+		ArrayFindFirstConstByNameId(all_data.all_linear_to_tuning_system, 
+			tuning_system.id, "tuning_system_id");
+
+	/*TODO We could NOT create SpacePoints for equal sized and just draw them at rendering. That seems beneficial
+	actually so maybe do that and only get points if we have proportional. But the proportional, we could
+	also just compute it directly from the tuning_pitches.
+	COULD Not create SpacePoint at all and store the log length ratio in TuningPitch but then we have no visual
+	abstraction and so SpacePoint allows us to make these linear spaces without a TuningSystem.
+
+	TODO Should we be creating here or create when we create the TuningSystem?
+	*/
+	if !found_linear_to_tuning_system {
+		//NOTE : We no longer store it but use to to create the points for now since we still have the old
+		//precise linear rendering method.
+		//TODO Can we remove this altogether and just use the row for MakeLinearSpacePoints?
+		//TODO Maybe we can create LinearPitchSpace from row for convenience and then remove it later if it's unnecessary.
+		//NOTE : It is good to keep this for now so that the SpacePoints remain consistent
+		//with differen dspace_ids
+		linear : *LinearPitchSpace = array_add(*all_data.all_linear_pitch_spaces);
+		linear.dspace_id = ALL_NEXT_IDS.DSPACE_ID;
+		defer ALL_NEXT_IDS.DSPACE_ID += 1;
+		//TODO We have this here in case we want to force an unequal temperament to be equal.
+		//We can remove later if we do the forcing in the rendering directly for efficiency.
+		linear.view = linear_view;
+
+		//TODO Should we call this here or check the FORCE_EQUAL type here and separate here directly.
+		//Let's see once generalize and use the same SpacePoints everywhere
+		//TODO CAN WE JUST CREATE FROM ROW DIRECTLY? Does the linear allow more generalized?
+		space_points : [] SpacePoint = MakeRatioProportionalPoints(tuning_system.music_pt_count, linear,
+			tuning_system, all_data.all_tuning_pitches);
+		ArrayAddAll(space_points, *all_data.all_space_points);
+
+		linear_to_tuning_system.dspace_id = linear.dspace_id;
+		linear_to_tuning_system.tuning_system_id = tuning_system.id;
+		array_add(*all_data.all_linear_to_tuning_system, linear_to_tuning_system);
+	}
+
+	return linear_to_tuning_system;
+}
+
+//TODO Maybe we should make everything in TuningSystem and TuningPitch
+//be float64 to reduce any kind of float errors down the road. Although
+//we have to reduce to float32 for frequency anyways since the audio buffer
+//takes an s16 anyways but still having more precision in calculation could
+//be beneficial. Maybe eventually we also have float64 frequencies!
+MusicPtToFrequency :: (
+	music_pt_float : float64,
+	//TODO We should index pitches in TuningSystem and then
+	//we can do a direct array access for all_tuning_pitches
+	//without having to do any search
+	tuning_system : TuningSystem,
+	all_tuning_pitches : [] TuningPitch,
+	//TODO I think this needs to be separate and not in TuningSystem
+	//so that we can easily change the base or octave of any TuningSystem
+	//without having to create a new one. For example we could get this from
+	//SectionToRow for the world linear structure.
+	base_freq : float = C4) 
+-> float
+{
+	//TODO MAYBE WE RETURN frequency = 0 if music_pt_float < 0
+	//Technically it works if base_freq is C4 for example since we can go below it...
+	//OR we just ClampMin frequency to 0 so we can still go music_pt_float < 0 for convenience but never frequency < 0
+	frequency : float64;
+	if tuning_system.type == TuningSystemType.EQUAL_TEMPERAMENT {
+		//TODO Need to pass in ref_freq either from TuningSystem OR from SectionToRow so we can change the
+		//base note and keep the same tuning system.
+		frequency = PitchWithOctaveToFrequency(music_pt_float, 
+			tuning_system.music_pt_count, tuning_system.compass_interval, ref_freq = base_freq);
+	} else {
+		//TODO We add VF_EPSILON_64 to be consistent so we avoid issues with something like 1.999999 being cast down to 1.
+		//Maybe we should increase the value precision. Right now it's to 5 decimal places.
+		//TODO Could make a floor_to_int function where we do this automatically and consistently.
+		//can also use the jai floor function to make sure the float64 fits into the int
+		//TODO FROM HERE make a more consistent floor_to_int function and then use this for circles
+		//and also do a circle float for fun. Can use floor_to_int in create circle space too
+		//also and indices for getting tuning_pitches eventually
+		// music_pt_int := cast(int) (music_pt_float + VF_EPSILON_64);
+		music_pt_int : int = floor_to_int(music_pt_float);
+		compass_multiple : int = music_pt_int / tuning_system.music_pt_count;
+		music_pt_mod : int = music_pt_int % tuning_system.music_pt_count;
+		//TODO all_tuning_pitches should be indexed and sorted by tuning_system_id
+		//and then also by music_pt_pos for immediate fetching since they wont change order.
+		tuning_pitch, found_tuning_pitch := 
+			ArrayFindFirstConstByAndOp(all_tuning_pitches,
+				tuning_system.id, "tuning_system_id",
+				music_pt_mod, "music_pt_pos");
+		assert(found_tuning_pitch);
+
+		//TODO Need to pass in ref_freq either from TuningSystem OR from SectionToRow so we can change the
+		//base note and keep the same tuning system.
+		frequency = RatioToFrequency(tuning_pitch.ratio_from_start, compass_multiple, tuning_system.compass_interval, ref_freq = base_freq);
+
+		//TODO We could remove this check and just always do the interpolation if that is more efficient
+		music_pt_remainder : float64 = music_pt_float - music_pt_int;
+		//TODO What should the remainder be here? 64-bit has 15 decimal digits of precision i think.
+		if music_pt_remainder > VF_EPSILON_64 {
+			next_music_pt : int = music_pt_int + 1;
+			next_compass_multiple : int = next_music_pt / tuning_system.music_pt_count;
+			next_music_pt_mod : int = next_music_pt % tuning_system.music_pt_count;
+			next_tuning_pitch, found_next_tuning_pitch := 
+				ArrayFindFirstConstByAndOp(all_tuning_pitches,
+					tuning_system.id, "tuning_system_id",
+					next_music_pt_mod, "music_pt_pos");
+			assert(found_next_tuning_pitch);
+
+			next_frequency : float64 = RatioToFrequency(next_tuning_pitch.ratio_from_start, next_compass_multiple, tuning_system.compass_interval, ref_freq = base_freq);
+			interp_frequncy : float64 = (next_frequency - frequency) * music_pt_remainder;
+			frequency += interp_frequncy;
+		}
+	}
+	return cast(float) frequency;
+}
+AsmCreateTuningData :: struct {
+	ret_tuning_system_id : int;
+	create_tuning_type : CreateTuningType;
+	name : AsmString;
+	short_name : AsmString;
+	compass_interval : float64;
+	//Use point_count for eq temp and values for other create types.
+	point_count : int;
+	//Values depend on the create tuning type above
+	values : AsmArray(float64);
+} @LibraryAsmGen
+CreateTuningType :: enum {
+	EQUAL_TEMPERAMENT;
+	RATIOS_FROM_START;
+	RATIOS_TO_NEXT;
+	LINEAR_FROM_START;
+	LINEAR_TO_NEXT;
+} @LibraryAsmGen
+AsmGetTuningSystemData :: struct {
+	ret_tuning_system_id : int;
+	short_name : AsmString;
+} @LibraryAsmGen
+
+/*TODO
+	should maybe eventually pull these out as thegame_data_query
+	or maybe only when we begin optimizing the tables
+*/
+
+//TODO Update this with new ,, operator to have no allocator
+CreateArray :: inline (
+	//TODO maybe report this as we must add this here,
+	//otherwise it does not compile with the ..$T
+	$T : Type,
+	allocator : Allocator,
+	values : ..T)
+-> [] T
+{
+	array : [] T = NewArray(values.count, T, false,, allocator);
+	for values array[it_index] = it;
+	return array;
+}
+
+TempArray :: inline (values : ..$T) -> [] T {
+	array : [] T = NewArray(values.count, T, false,, temp);
+	for values array[it_index] = it;
+	return array;
+}
+
+ContextArray :: inline (values : ..$T) -> [] T {
+	array : [] T = NewArray(values.count, T, false,, context.allocator);
+	for values array[it_index] = it;
+	return array;
+}
+
+CreateArray :: inline (values : ..$T) -> [] T {
+	array : [] T = NewArray(values.count, T, false,, context.allocator);
+	for values array[it_index] = it;
+	return array;
+}
+
+#if 0 {
+//Note : this does not work i believe because the stack frame 
+//is destroyed once we step out of this function
+CreateFixedArray :: inline (
+	$array_count : int, 
+	values : ..$T)
+-> [] T
+{
+	array : [array_count] T;
+	for values array[it_index] = it;
+	return array;
+}
+}
+
+//TODO Update this with new ,, operator to have no allocator
+ArrayCopy :: (array: [] $T, allocator : Allocator = temp) -> [] T {
+    dest := NewArray(array.count, T, false,, allocator);
+    memcpy(dest.data, array.data, array.count * size_of(T));
+    return dest;
+}
+
+//TODO should we separate this general data array code from the
+//more game-specific data code
+/*Probably can replace with an array_resize and memcpy
+*/
+ArrayAddAll :: inline (array : [] $T, add_to : *[..] T) {
+	//TODO probably a faster way to do this with memcpy
+	//if we have enough space in the resizable array,
+	//otherwise we need to reserve more space
+	//array_resize and then memcpy
+	for array array_add(add_to, it);
+}
+
+ArraySubtract :: (a : [] $T, b : [] T) -> [] T {
+	assert(a.count == b.count);
+
+	result := NewArray(a.count, T);
+	for 0..a.count-1 {
+		result[it] = a[it] - b[it];
+	}
+	return result;
+}
+
+AddToAllArrays :: inline (
+	element : $T,
+	many_arrays : .. *[..] T)
+{
+	for array : many_arrays {
+		array_add(array, element);
+	}
+}
+
+ArrayUnorderedRemoveFirstByValue :: inline (array: *[] $T, item: T) -> is_removed : bool {
+	is_removed : bool = false;
+    for <<array  if it == item { 
+        remove it;
+        is_removed = true;
+        break;
+    }
+    return is_removed;
+}
+
+//TODO with a memcpy generic remove and then memcpy everything over
+// ArrayOrderedRemoveByIndex :: inline () {
+// }
+
+my_add_if_unique :: (array: *[..] $T, item: T) -> bool, s64 {   // Return true if newly added; also return index.
+    found, index := ArrayFindByValue(<<array, item);
+    if found return false, index;
+
+    array_add(array, item);
+    return true, array.count-1;
+}
+
+ArrayFindByValue :: (array: [] $T, item: T) -> bool, s64 {
+    for array if it == item return true, it_index; 
+    return false, -1;  // Not found.
+}
+
+ArrayFindByValue :: (array: [] $T, item: T, EqualsProc : (T,T) -> bool) -> bool, s64 {
+    for array if EqualsProc(it, item) return true, it_index; 
+    return false, -1;  // Not found.
+}
+
+ArrayFindByValueProc :: (
+	array: [] $T, item: T,
+	EqualsProc : (T, T) -> bool) 
+-> bool, s64 
+{
+    for array if EqualsProc(it, item) return true, it_index; 
+    return false, -1;  // Not found.
+}
+
+ArrayFindByValue :: (array: [] float64, item: float64) -> bool, s64 {
+    for array if Float64Equal(it, item) return true, it_index; 
+    return false, -1;  // Not found.
+}
+
+ArrayFindByValue :: (array: [] float, item: float) -> bool, s64 {
+    for array if FloatEqual(it, item) return true, it_index; 
+    return false, -1;  // Not found.
+}
+
+array_find_by_pointer :: (array: [] $T, item: T) -> bool, *T {
+    for * array if <<it == item return true, it;
+    return false, null;  // Not found.
+}
+
+//TODO could do a version where we pass in an increment function
+//for non-numeric types
+ArrayFindMaxByNameId :: inline (
+	array: [] $T, 
+	$name_id : string, min : $S) 
+-> S 
+{
+	max : S = min;
+    for array 
+    {
+    	is_greater : bool = #insert -> string {
+    		return builder_string("it.% > max;", name_id);
+    	}
+    	if is_greater 
+    	{
+    		max = #insert -> string {
+	    		return builder_string("it.%;", name_id);
+	    	}
+	    }
+    }
+    return max;
+}
+
+ArrayFindMin :: inline (array: [] $T, max : T) -> T 
+{
+	min : T = ArrayFindByProc(array, max, (t1,t2) => t1 < t2);
+	return min;
+}
+
+ArrayFindMax :: inline (array: [] $T, min : T) -> T 
+{
+	max : T = ArrayFindByProc(array, min, (t1,t2) => t1 > t2);
+	return max;
+}
+
+ArrayFindByProc :: inline (
+	array : [] $T, 
+	initial_value : T, 
+	proc : (x1:T,x2:T) -> bool)
+-> T
+{
+	value : T = initial_value;
+    for array if proc(it,value) value = it;
+    return value;	
+}
+
+ArrayFindMinByNameId :: (
+	array: [] $T, 
+	$name_id : string, max : $S)
+-> S 
+{
+	min : S = max;
+    for array {
+    	is_less : bool = #insert -> string {
+    		return builder_string("it.% < min;", name_id);
+    	}
+    	if is_less {
+    		min = #insert -> string {
+	    		return builder_string("it.%;", name_id);
+	    	}
+	    }
+    }
+    return min;
+}
+
+ArrayFindMinValueByNameId :: (
+	array: [] $T, 
+	$name_id : string, max : $S)
+-> T, bool
+{
+	value : T;
+	found_value : bool = false;
+	min : S = max;
+    for array 
+    {
+    	is_less : bool = #insert -> string {
+    		return builder_string("it.% < min;", name_id);
+    	}
+    	if is_less 
+    	{
+    		found_value = true;
+    		value = it;
+    		min = #insert -> string {
+	    		return builder_string("it.%;", name_id);
+	    	}
+	    }
+    }
+    return value, found_value;
+}
+
+DSPACE_ID_NAME :: "dspace_id";
+default_builder : String_Builder;
+builder_string :: (format_string : string, args : .. string) -> string {
+	print_to_builder(*default_builder, format_string, args[0]);
+	return builder_to_string(*default_builder);
+}
+
+builder_string_2 :: (format_string : string, args : .. string) -> string {
+	print_to_builder(*default_builder, format_string, args[0], args[1]);
+	return builder_to_string(*default_builder);
+}
+
+ArrayFindFirstConstByNameId :: (
+	array: [] $T, 
+	id: $S, $name_id : string) 
+-> T, bool 
+{
+    for array {
+    	equal_ids := #insert -> string {
+    		return builder_string("it.% == id;", name_id);
+    	}
+    	if equal_ids return it, true;
+    }
+    return T.{}, false;  // Not found.
+    //TODO could assert in here and add a compiler flag
+}
+
+//TODO could have a query builder for &&, ||, ==, !=, multiple values, etc...
+//TODO for multiple values .. string at the end and then loop add && == name
+//TODO Should this return an index or just the value?
+ArrayFindFirstByNameId :: (
+	array: [] $T, 
+	id: $S, $name_id : string)
+-> *T, bool 
+{
+    for * array {
+    	equal_ids := #insert -> string {
+    		return builder_string("(<<it).% == id;", name_id);
+    	}
+    	if equal_ids return it, true;
+    }
+    return null, false;  // Not found.
+    //TODO could assert in here and add a compiler flag
+}
+
+ArrayFindFirstIndexByNameId :: (
+	array: [] $T, 
+	id: $S, $name_id : string)
+-> int, bool 
+{
+    for array {
+    	equal_ids := #insert -> string {
+    		return builder_string("it.% == id;", name_id);
+    	}
+    	if equal_ids return it_index, true;
+    }
+    return -1, false;  // Not found.
+    //TODO could assert in here and add a compiler flag
+}
+
+ArrayFindFirstByNameIdCheck :: inline (
+	array: [] $T, 
+	id: $S, $name_id : string) 
+-> bool, *T 
+{
+	pointer, check := 
+		ArrayFindFirstByNameId(array, id, name_id);
+	return check, pointer;
+}
+
+ArrayFindFirstByAndOpCheck :: inline (array: [] $T,
+	id_1: $S, $name_1 : string,
+	id_2: $D, $name_2 : string) 
+-> bool, *T
+{
+	result, check := ArrayFindFirstByAndOp(array, 
+		id_1, name_1, id_2, name_2);
+    return check, result;
+}
+
+ArrayFindFirstByAndOp :: (array: [] $T,
+	id_1: $S, $name_1 : string,
+	id_2: $D, $name_2 : string) 
+-> *T, bool
+{
+    for * array {
+    	equal_ids := #insert -> string {
+    		return builder_string_2("it.% == id_1 && it.% == id_2;", name_1, name_2);
+    	}
+    	if equal_ids return it, true;
+    }
+    return null, false;
+}
+
+ArrayFindFirstConstByAndOp :: (array: [] $T,
+	id_1: $S, $name_1 : string,
+	id_2: $D, $name_2 : string) 
+-> T, bool
+{
+    for * array {
+    	equal_ids := #insert -> string {
+    		return builder_string_2("it.% == id_1 && it.% == id_2;", name_1, name_2);
+    	}
+    	if equal_ids return it, true;
+    }
+    return T.{}, false;
+}
+
+ArrayFindFirstByAndOp :: (array: [] $T,
+	EqualsProc1 : (S, S) -> bool, $name_1 : string, id_1: $S,
+	EqualsProc2 : (D, D) -> bool, $name_2 : string, id_2: $D) 
+-> *T, bool
+{
+    for * array {
+    	equal_ids := #insert -> string {
+    		return builder_string_2("EqualsProc1(it.%, id_1) && EqualsProc2(it.%, id_2);", name_1, name_2);
+    	}
+    	if equal_ids return it, true;
+    }
+    return null, false;
+}
+
+ArrayFindFirstByAndOp :: (array: [] $T,
+	EqualsProc1 : (S, [] S) -> bool, $name_1 : string, id_1: [] $S,
+	EqualsProc2 : (D, [] D) -> bool, $name_2 : string, id_2: [] $D) 
+-> *T, bool
+{
+    for * array {
+    	equal_ids := #insert -> string {
+    		return builder_string_2("EqualsProc1(it.%, id_1) && EqualsProc2(it.%, id_2);", name_1, name_2);
+    	}
+    	if equal_ids return it, true;
+    }
+    return null, false;
+}
+
+ArrayFindFirstByAndOpCheck :: inline (array: [] $T,
+	EqualsProc1 : (S, S) -> bool, $name_1 : string, id_1: [] $S,
+	EqualsProc2 : (D, D) -> bool, $name_2 : string, id_2: [] $D) 
+-> bool, *T
+{
+	pointer, check := ArrayFindFirstByAndOp(array,
+		EqualsProc1, name_1, id_1, 
+		EqualsProc2, name_2, id_2);
+    return check, pointer;
+}
+
+ArrayFindFirstMultiArrayByNameId :: (id: $S, $name_id : string, $type : Type, arrays : .. $T) -> *type, bool {
+	#assert type_info(T).type == Type_Info_Tag.ARRAY;
+    for array_in_array : arrays {
+    	for * array_in_array {
+	    	equal_ids := #insert -> string {
+	    		return builder_string("(<<it).% == id;", name_id);
+	    	}
+	    	if equal_ids return it, true;
+	    }
+    }
+    return null, false;  // Not found.
+}
+
+//TODO i am not sure how a feel about camel case procedure as variable inputs
+//should we use that or snake case?
+ArrayFindFirstByNameId :: (
+	array: [] $T, 
+	id: $S, $name_id : string, 
+	EqualsProc : (S, S) -> bool) 
+-> *T, bool 
+{
+    for * array {
+    	equal_ids := #insert -> string { 
+    		return builder_string("EqualsProc((<<it).%, id);", name_id); 
+    	}
+    	if equal_ids return it, true;
+    }
+    return null, false;  // Not found.
+}
+
+ArrayFindAllVarNameByIndex :: (
+	array: [] $T, 
+	id: $S, 
+	$name_id : string,
+	allocator : Allocator = temp)
+-> [] int 
+{
+	result : [..] int;
+	result.allocator = allocator;
+    for array {
+    	equal_ids := #insert -> string {
+    		return builder_string("it.% == id;", name_id);
+    	}
+    	if equal_ids array_add(*result, it_index);
+    }
+    return result;
+}
+
+/*Yes use new allocator with context allocator model, can and should update this everywhere
+since this is the new convention and is more clear and consisten than the function parameter
+passing method.
+*/
+//TODO Can replace with context allocator once we update jai
+//TODO should we make temp the default allocator for these?
+//TODO could make a version where allocator is passed in at compile-time
+ArrayFindAllVarName :: (
+	array: [] $T, 
+	id: $S, 
+	$name_id : string,
+	allocator : Allocator = .{})
+-> [] T 
+{
+    a := ifx allocator.proc then allocator else context.allocator;
+	result : [..] T;
+	result.allocator = a;
+    for array {
+    	equal_ids := #insert -> string {
+    		return builder_string("it.% == id;", name_id);
+    	}
+    	if equal_ids {
+    		array_add(*result, it);
+    	}
+    }
+    return result;
+}
+
+ArrayFindAllMultiArrayByNameId :: (id: $S, $name_id : string, $type : Type, arrays : .. $T) -> [] type {
+	#assert type_info(T).type == Type_Info_Tag.ARRAY;
+	result : [..] type;
+	for array_in_array : arrays {
+	    for array_in_array {
+	    	equal_ids := #insert -> string {
+	    		return builder_string("it.% == id;", name_id);
+	    	}
+	    	if equal_ids array_add(*result, it);
+	    }
+	}
+    return result;
+}
+
+//TODO this should just be part of the larger generated query 
+ArrayCountAllVarName :: (
+	array: [] $T, 
+	id: $S, $name_id : string)
+-> int 
+{
+	result_count : int = 0;
+    for array {
+    	equal_ids := #insert -> string {
+    		return builder_string("it.% == id;", name_id);
+    	}
+    	if equal_ids result_count += 1;
+    }
+    return result_count;
+}
+
+ArrayAggregateMultiArrays :: ($type : Type, arrays : .. $T) -> [] type {
+	#assert type_info(T).type == Type_Info_Tag.ARRAY;
+	result : [..] type;
+	for array_in_array : arrays {
+	    for array_in_array {
+	    	array_add(*result, it);
+	    }
+	}
+    return result;
+}
+
+ArrayAggregatePointerMultiArrays :: ($type : Type, arrays : .. $T) -> [] *type {
+	#assert type_info(T).type == Type_Info_Tag.ARRAY;
+	result : [..] *type;
+	for array_in_array : arrays {
+	    for * array_in_array {
+	    	array_add(*result, it);
+	    }
+	}
+    return result;
+}
+
+ArrayFindAllVarName :: (
+	array: [] $T, 
+	id: $S, $name_id : string, 
+	$EqualsProc : (S, S) -> bool,
+	allocator : Allocator = .{}) 
+-> [] T 
+{
+    a := ifx allocator.proc then allocator else context.allocator;
+	result : [..] T;
+	result.allocator = a;
+    for array {
+    	equal_ids := #insert -> string {
+    		return builder_string("EqualsProc(it.%, id);", name_id);
+    	}
+    	if equal_ids array_add(*result, it);
+    }
+    return result;
+}
+
+/*TODO
+	a version where both $name_id and id are are arrays
+*/
+ArrayFindAllArrayVarName :: (
+	array : [] $T,
+	all_ids : [] $S, $name_id : string,
+	$EqualsProc : (S, [] S) -> bool,
+	allocator : Allocator = .{})
+-> [] T 
+{
+    a := ifx allocator.proc then allocator else context.allocator;
+	result : [..] T;
+	result.allocator = a;
+    for array {
+    	equal_ids := #insert -> string {
+    		return builder_string("EqualsProc(it.%, all_ids);\n", name_id);
+    	}
+    	if equal_ids array_add(*result, it);
+    }
+    return result;
+}
+
+/*Note : this is like a join table
+TODO rename to something with the word JOIN
+*/
+/*TODO Don't use this anymore instead just use a double loop, this is very unclear,
+causes compiler issues on compiler updates and is generally difficult to maintain.
+*/
+ArrayFindAllByBothNames :: (
+	array : [] $T, $array_var_name : string,
+	all_ids : [] $S, 
+	$EqualsProc : (v: int, a: [] S, $n: string) -> bool,
+	$compare_var_name : string,
+	allocator : Allocator = .{})
+-> [] T 
+{
+    a := ifx allocator.proc then allocator else context.allocator;
+	result : [..] T;
+	result.allocator = a;
+    for array {
+    	equal_ids := #insert -> string {
+    		return builder_string(
+    		"EqualsProc(it.%, all_ids, compare_var_name);\n", array_var_name);
+    	}
+    	if equal_ids array_add(*result, it);
+    }
+    return result;
+}
+
+/*TODO Don't use this anymore instead just use a double loop, this is very unclear,
+causes compiler issues on compiler updates and is generally difficult to maintain.
+*/
+ArrayFindAllByValueBothNames :: (
+	array : [] $T, $array_var_name : string,
+	all_ids : [] $S, 
+	$EqualsProc : (v: int, a: [] S, $n: string) -> bool,
+	$compare_var_name : string,
+	$return_value_name : string, 
+	$R : Type,
+	allocator : Allocator = .{})
+-> [] R
+{
+    a := ifx allocator.proc then allocator else context.allocator;
+	result : [..] R;
+	result.allocator = a;
+    for array {
+    	equal_ids := #insert -> string {
+    		return builder_string(
+    		"EqualsProc(it.%, all_ids, compare_var_name);\n", array_var_name);
+    	}
+    	if equal_ids {
+    		value : R = #insert -> string {return builder_string(
+    		"it.%;\n", return_value_name);
+    		}
+    		array_add(*result, value);
+    	}
+    }
+    return result;
+}
+
+/*Note : In this case the order of array matters and 
+we want the return value of all_ids. So we maintain
+the order of array but grab the value of type of all_ids.
+*/
+/*TODO Don't use this anymore instead just use a double loop, this is very unclear,
+causes compiler issues on compiler updates and is generally difficult to maintain.
+*/
+ArrayFindAllByBothNamesInOrder :: (
+	array : [] $T, $array_var_name : string,
+	all_ids : [] $S, 
+	$EqualsProc : (v: int, a: [] T, $n: string) -> bool,
+	$compare_var_name : string,
+	allocator : Allocator = .{})
+-> [] S
+{
+    a := ifx allocator.proc then allocator else context.allocator;
+	result : [..] S;
+	result.allocator = a;
+    for all_ids {
+    	equal_ids := #insert -> string {
+    		return builder_string(
+    		"EqualsProc(it.%, array, compare_var_name);\n", array_var_name);
+    	}
+    	if equal_ids array_add(*result, it);
+    }
+    return result;
+}
+
+/*TODO Don't use this anymore instead just use a double loop, this is very unclear,
+causes compiler issues on compiler updates and is generally difficult to maintain.
+*/
+ArrayFindAllPointersByBothNames :: (
+	array : [] $T, $array_var_name : string,
+	all_ids : [] $S, 
+	$EqualsProc : (v: int, a: [] S, $n: string) -> bool,
+	$compare_var_name : string,
+	allocator : Allocator = .{})
+-> [] *T 
+{
+    a := ifx allocator.proc then allocator else context.allocator;
+	result : [..] *T;
+	result.allocator = a;
+    for * array {
+    	equal_ids := #insert -> string {
+    		return builder_string(
+    		"EqualsProc(it.%, all_ids, compare_var_name);\n", array_var_name);
+    	}
+    	if equal_ids array_add(*result, it);
+    }
+    return result;
+}
+
+ArrayFindAllPointersByNameId :: (
+	array : [] $T,
+	all_ids : [] $S,
+	$name_id : string,
+	EqualsProc : (S, [] S) -> bool,
+	allocator : Allocator = .{}) 
+-> [] *T 
+{
+    a := ifx allocator.proc then allocator else context.allocator;
+	result : [..] *T;
+	result.allocator = a;
+    for * array {
+    	equal_ids := #insert -> string {
+    		return builder_string("EqualsProc(it.%, all_ids);\n", name_id);
+    	}
+    	if equal_ids array_add(*result, it);
+    }
+    return result;
+}
+
+ArrayFindAllPointersByNameId :: (
+	array: [] $T, 
+	id: $S, 
+	$name_id : string,
+	allocator : Allocator = .{}) 
+-> [] *T 
+{
+    a := ifx allocator.proc then allocator else context.allocator;
+	result : [..] *T;
+	result.allocator = a;
+    for * array {
+		//TODO test if this is working when changing args accessing
+    	equal_ids := #insert -> string {
+    		return builder_string("it.% == id;", name_id);
+    	}
+    	if equal_ids array_add(*result, it);
+    }
+    return result;
+}
+
+ArrayFindAllPointersByNameId :: (
+	array: [] $T, 
+	id: $S, 
+	$name_id : string, 
+	EqualsProc : (S, S) -> bool,
+	allocator : Allocator = .{})
+-> [] *T 
+{
+    a := ifx allocator.proc then allocator else context.allocator;
+	result : [..] *T;
+	result.allocator = a;
+    for * array {
+		//TODO test if this is working when changing args accessing
+    	equal_ids := #insert -> string {
+    		return builder_string("EqualsProc(it.%, id);", name_id);
+    	}
+    	if equal_ids array_add(*result, it);
+    }
+    return result;
+}
+
+/*TODO SoA
+	Can generalize an SoA by having a query with pointers
+	to all the arrays and then search a subset of the arrays
+	based on a value and then return by aggregating all the 
+	arrays together into the struct automatically.
+*/
+/*TODO
+	more robust version of this search function with array of :
+	values (size n) 
+	variable names (size n) 
+	procedure validations (size n)
+	logical operators between each sequential validation pair (size n-1)
+
+	can have multiple chunks like the above for each query set
+*/
+ArrayFindAllByOp :: (array: [] $T, 
+	id_1: $S, $name_1 : string, EqualsProc1 : (S,S) -> bool, 
+	id_2: $D, $name_2 : string, EqualsProc2 : (D,D) -> bool,
+	OpProc : (bool,bool) -> bool,
+	allocator : Allocator = .{})
+-> [] T 
+{
+    a := ifx allocator.proc then allocator else context.allocator;
+	result : [..] T;
+	result.allocator = a;
+    for array {
+    	equal_ids := #insert -> string {
+    		return builder_string_2(
+    			"OpProc(EqualsProc1(it.%, id_1), EqualsProc2(it.%, id_2));", 
+    			name_1, name_2);
+    	}
+    	if equal_ids array_add(*result, it);
+    }
+    return result;
+}
+
+ArrayFindAllByArrayOp :: (array: [] $T, 
+	id_1: [] $S, $name_1 : string, EqualsProc1 : (S, [] S) -> bool, 
+	id_2: [] $D, $name_2 : string, EqualsProc2 : (D, [] D) -> bool,
+	OpProc : (bool,bool) -> bool,
+	allocator : Allocator = .{})
+-> [] T 
+{
+    a := ifx allocator.proc then allocator else context.allocator;
+	result : [..] T;
+	result.allocator = a;
+    for array {
+    	equal_ids := #insert -> string {
+    		return builder_string_2(
+    			"OpProc(EqualsProc1(it.%, id_1), EqualsProc2(it.%, id_2));", 
+    			name_1, name_2);
+    	}
+    	if equal_ids array_add(*result, it);
+    }
+    return result;
+}
+
+//TODO should also maybe change the order for name and id
+//i seem to make the mistake of order quite often
+ArrayFindAllByAndOp :: (array: [] $T,
+	id_1: $S, $name_1 : string,
+	id_2: $D, $name_2 : string,
+	allocator : Allocator = .{})
+-> [] T 
+{
+    a := ifx allocator.proc then allocator else context.allocator;
+	result : [..] T;
+	result.allocator = a;
+    for array {
+    	equal_ids := #insert -> string {
+    		return builder_string_2("it.% == id_1 && it.% == id_2;", name_1, name_2);
+    	}
+    	if equal_ids array_add(*result, it);
+    }
+    return result;
+}
+
+ArrayFindAllByValueAndOp :: (array: [] $T,
+	id_1: $S, $name_1 : string,
+	id_2: $D, $name_2 : string,
+	$return_value_name : string,
+	$R : Type,
+	allocator : Allocator = .{})
+-> [] R
+{
+    a := ifx allocator.proc then allocator else context.allocator;
+	result : [..] T;
+	result.allocator = a;
+    for array {
+    	equal_ids := #insert -> string {
+    		return builder_string_2("it.% == id_1 && it.% == id_2;", name_1, name_2);
+    	}
+    	if equal_ids {
+    		value : R = #insert -> string {return builder_string(
+    		"it.%;\n", return_value_name);
+    		}
+    		array_add(*result, value);
+    	}
+    }
+    return result;
+}
+
+ArrayFindAllPointersByAndOp :: (array: [] $T, 
+	id_1: $S, $name_1 : string, 
+	id_2: $D, $name_2 : string,
+	allocator : Allocator = .{}) 
+-> [] *T 
+{
+    a := ifx allocator.proc then allocator else context.allocator;
+	result : [..] *T;
+	result.allocator = a;
+    for * array {
+    	equal_ids := #insert -> string {
+    		return builder_string_2("it.% == id_1 && it.% == id_2;", name_1, name_2);
+    	}
+    	if equal_ids array_add(*result, it);
+    }
+    return result;
+}
+
+ArrayFindAllByAndOp :: (array: [] $T, 
+	id_1: $S, $name_1 : string, EqualsProc1 : (S, S) -> bool, 
+	id_2: $D, $name_2 : string, EqualsProc2 : (D, D) -> bool,
+	allocator : Allocator = .{})
+-> [] T 
+{
+    a := ifx allocator.proc then allocator else context.allocator;
+	result : [..] T;
+	result.allocator = a;
+    for array {
+    	equal_ids := #insert -> string {
+    		return builder_string_2(
+    			"EqualsProc1(it.%, id_1) && EqualsProc2(it.%, id_2);",
+    			name_1, name_2);
+    	}
+    	if equal_ids array_add(*result, it);
+    }
+    return result;
+}
+
+ArrayFindAllByArrayAndOp :: (array: [] $T, 
+	id_1: [] $S, $name_1 : string, EqualsProc1 : (S, [] S) -> bool, 
+	id_2: [] $D, $name_2 : string, EqualsProc2 : (D, [] D) -> bool,
+	allocator : Allocator = .{})
+-> [] T 
+{
+    a := ifx allocator.proc then allocator else context.allocator;
+	result : [..] T;
+	result.allocator = a;
+    for array {
+    	equal_ids := #insert -> string {
+    		return builder_string_2(
+    			"EqualsProc1(it.%, id_1) && EqualsProc2(it.%, id_2);", 
+    			name_1, name_2);
+    	}
+    	if equal_ids array_add(*result, it);
+    }
+    return result;
+}
+
+ArrayFindAllByAndOpArrayEquals :: (array: [] $T, 
+	id_1: [] $S, $name_1 : string, 
+		EqualsProcArray1 : (S, [] S, (S,S) -> bool) -> bool, 
+		EqualsProc1 : (S, S) -> bool, 
+	id_2: [] $D, $name_2 : string, 
+		EqualsProcArray2 : (D, [] D, (D,D) -> bool) -> bool, 
+		EqualsProc2 : (D, D) -> bool)
+-> [] T 
+{
+	result : [..] T;
+    for array {
+    	equal_ids := #insert -> string {
+    		return builder_string_2(
+    			"EqualsProcArray1(it.%, id_1, EqualsProc1) && EqualsProcArray2(it.%, id_2, EqualsProc2);", 
+    			name_1, name_2);
+    	}
+    	if equal_ids array_add(*result, it);
+    }
+    return result;
+}
+
+ArrayFindAllPointersByAndOp :: (array: [] $T,
+	id_1: $S, $name_1 : string, EqualsProc1 : (S, S) -> bool,
+	id_2: $D, $name_2 : string, EqualsProc2 : (D, D) -> bool)
+-> [] *T
+{
+	result : [..] *T;
+    for * array {
+    	equal_ids := #insert -> string {
+    		return builder_string_2(
+    			"EqualsProc1(it.%, id_1) && EqualsProc2(it.%, id_2);",
+    			name_1, name_2);
+    	}
+    	if equal_ids array_add(*result, it);
+    }
+    return result;
+}
+
+ArrayRemoveAllByAndOp :: (array: *[] $T, 
+	id_1: $S, $name_1 : string, 
+	id_2: $D, $name_2 : string) 
+{
+    for <<array {
+    	equal_ids := #insert -> string {
+    		return builder_string_2("it.% == id_1 && it.% == id_2;", name_1, name_2);
+    	}
+    	if equal_ids remove it;
+    }
+}
+
+ArrayRemoveAllByAndOpAndReturn :: (
+	array: *[] $T, 
+	id_1: $S, $name_1 : string, 
+	id_2: $D, $name_2 : string) 
+-> [] T 
+{
+	result : [..] T;
+    for <<array {
+    	equal_ids := #insert -> string {
+    		return builder_string_2("it.% == id_1 && it.% == id_2;", name_1, name_2);
+    	}
+    	if equal_ids {
+    		array_add(*result, it);
+    		remove it;
+    	}
+    }
+    return result;
+}
+
+ArrayRemoveFirstByAndOp :: (
+	array: *[] $T, 
+	id_1: $S, $name_1 : string, 
+	id_2: $D, $name_2 : string) 
+-> found : bool 
+{
+    for <<array {
+    	equal_ids := #insert -> string {
+    		return builder_string_2("it.% == id_1 && it.% == id_2;", name_1, name_2);
+    	}
+    	if equal_ids {
+    		remove it;
+    		return true;
+    	}
+    }
+    return false;
+}
+
+ArrayRemoveFirstByNameId :: (
+	array: *[] $T, 
+	id: $S, $name_id : string) 
+-> found : bool
+{
+    for <<array {
+    	equal_ids := #insert -> string {
+    		return builder_string("it.% == id;", name_id);
+    	}
+    	if equal_ids {
+    		remove it;
+    		return true;
+    	}
+    }
+    return false;
+}
+
+ArrayRemoveFirstByNameIdAndReturn :: (
+	array: *[] $T, id: $S, $name_id : string) 
+-> found : bool, result : T 
+{
+    for <<array {
+    	equal_ids := #insert -> string {
+    		return builder_string("it.% == id;", name_id);
+    	}
+    	if equal_ids {
+    		result := it;
+    		remove it;
+    		return true, result;
+    	}
+    }
+    return false, .{};
+}
+
+ArrayRemoveAllByNameId :: (
+	array: *[] $T, 
+	id: $S, 
+	$name_id : string) 
+{
+    for <<array {
+    	equal_ids := #insert -> string {
+    		return builder_string("it.% == id;", name_id);
+    	}
+    	if equal_ids remove it;
+    }
+}
+
+ArrayRemoveAllByNameIdAndReturn :: (
+	array: *[] $T, 
+	id: $S, $name_id : string,
+	allocator : Allocator = .{}) 
+-> [] T 
+{
+    a := ifx allocator.proc then allocator else context.allocator;
+	result : [..] T;
+	result.allocator = a;
+    for <<array {
+    	equal_ids := #insert -> string {
+    		return builder_string("it.% == id;", name_id);
+    	}
+    	if equal_ids {
+    		array_add(*result, it);
+    		remove it;
+    	}
+    }
+    return result;
+}
+
+ArrayRemoveAllByNameIdAndReturn :: (
+	array: *[] $T, 
+	id: $S, $name_id : string,
+	EqualsProc : (S, S) -> bool,
+	allocator : Allocator = .{}) 
+-> [] T 
+{
+    a := ifx allocator.proc then allocator else context.allocator;
+	result : [..] T;
+	result.allocator = a;
+    for <<array {
+    	equal_ids := #insert -> string {
+    		return builder_string("EqualsProc(it.%, id);\n", name_id);
+    	}
+    	if equal_ids {
+    		array_add(*result, it);
+    		remove it;
+    	}
+    }
+    return result;
+}
+
+ArrayRemoveAllByNameId :: (
+	array: *[] $T, 
+	id: $S, $name_id : string, 
+	EqualsProc : (S, S) -> bool) 
+{
+    for <<array {
+    	equal_ids := #insert -> string {
+    		return builder_string("EqualsProc(it.%, id);\n", name_id);
+    	}
+    	if equal_ids remove it;
+    }
+}
+
+ArrayRemoveAllByArrayNameId :: (
+	array : *[] $T,
+	all_ids : [] $S, $name_id : string,
+	EqualsProc : (S, [] S) -> bool)
+{
+    for <<array {
+    	equal_ids := #insert -> string {
+    		return builder_string("EqualsProc(it.%, all_ids);\n", name_id);
+    	}
+    	if equal_ids remove it;
+    }
+}
+
+ArrayRemoveAllByArrayBothNames :: (
+	array : *[] $T, $array_var_name : string,
+	all_ids : [] $S, 
+	$EqualsProc : (v: int, a: [] S, $n: string) -> bool,
+	$compare_var_name : string)
+{
+    for <<array {
+    	equal_ids := #insert -> string {
+    		return builder_string(
+    		"EqualsProc(it.%, all_ids, compare_var_name);\n", array_var_name);
+    	}
+    	if equal_ids remove it;
+    }
+}
+
+ArrayRemoveAllByArrayNameIdAndReturn :: (
+	array : *[] $T,
+	all_ids : [] $S, $name_id : string,
+	EqualsProc : (S, [] S) -> bool,
+	allocator : Allocator = .{})
+-> [] T 
+{
+    a := ifx allocator.proc then allocator else context.allocator;
+	result : [..] T;
+	result.allocator = a;
+    for <<array {
+    	equal_ids := #insert -> string {
+    		return builder_string("EqualsProc(it.%, all_ids);\n", name_id);
+    	}
+    	if equal_ids {
+    		array_add(*result, it);
+    		remove it;
+    	}
+    }
+    return result;
+}
+
+ArrayRemoveAllByArrayBothNamesAndReturn :: (
+	array : *[] $T, $array_var_name : string,
+	all_ids : [] $S, 
+	$EqualsProc : (v: S, a: [] S, $n: string) -> bool,
+	$compare_var_name : string,
+	allocator : Allocator = .{})
+-> [] T 
+{
+    a := ifx allocator.proc then allocator else context.allocator;
+	result : [..] T;
+	result.allocator = a;
+    for <<array {
+    	equal_ids := #insert -> string {
+    		return builder_string(
+    		"EqualsProc(it.%, all_ids, compare_var_name);\n", array_var_name);
+    	}
+    	if equal_ids {
+    		array_add(*result, it);
+    		remove it;
+    	}
+    }
+    return result;
+}
+
+
+AllOrEqualsVarName :: inline (
+	value : $T, or_checks : [] $S,
+	$var_name : string)
+-> bool
+{
+	for or_checks {
+    	equal_ids := #insert -> string {
+    		return builder_string("it.% == value;\n", var_name);
+    	}
+		if equal_ids return true;
+	}
+	return false;
+}
+
+AllOrEqualsProc :: inline (
+	value : $T, 
+	or_checks : [] T,
+	EqualsProc : (T,T) -> bool) 
+-> bool 
+{
+	for or_checks if EqualsProc(value, it) return true;
+	return false;
+}
+
+NoneEquals :: inline (value : $T, or_checks : [] T) -> bool {
+	for or_checks if value == it return false;
+	return true;
+}
+
+ToByteArray :: (a: *$T, count : int) -> [] u8 {
+	bytes : [] u8;
+	bytes.data = cast(*u8) a;
+	bytes.count = count * size_of(T);
+	return bytes;
+}
+ToByteArray :: (a: [] $T) -> [] u8 {
+	return ToByteArray(a.data, a.count);
+}
+/*Circle Buffer operations
+*/
+//TODO We could keep write and read bytes in here or just externally anyways.
+//Could have this for convenience and keep the generalized functions and then just
+//have some extra functions
+CircleBuffer :: struct($T : Type) {
+	buffer : [] T;
+	write_cursor : int;
+	read_cursor : int;
+}
+WriteToCircleBuffer :: (write_buffer : [] $T, circle : [] T, write_cursor : *int) {
+	write_b : [] u8;
+	write_b.data = cast(*u8) write_buffer.data;
+	write_b.count = write_buffer.count * size_of(T);
+	circle_b : [] u8;
+	circle_b.data = cast(*u8) circle.data;
+	circle_b.count = circle.count * size_of(T);
+	write_cursor_in_bytes : int = write_cursor.* * size_of(T);
+	WriteBytesToCircleBuffer(write_b, circle_b, *write_cursor_in_bytes);
+	write_cursor.* = write_cursor_in_bytes / size_of(T);
+	print("write_cursor=%\n", write_cursor.*);
+}
+//TODO FROM HERE unit test these functions and then update the os layer here and cleanup code and split up windows and mac.
+//Can likely cleanup the audio to float32 later once we know that i works on windows and mac.
+//TODO Likely put these in thegame_data
+WriteBytesToCircleBuffer :: (write_buffer : [] u8, circle : [] u8, write_cursor_in_bytes : *int) {
+	//TODO Technically we could error this out so this would overwrite the circular buffer.
+	if write_cursor_in_bytes.* > circle.count log("Writing over 1 entire cycle in circle buffer.\n");
+
+	current_write_byte : int = write_cursor_in_bytes.*;
+	bytes_to_write : int = write_buffer.count;
+	write_data : *u8 = write_buffer.data;
+	while bytes_to_write > 0 {
+		circle_data : *u8 = circle.data + current_write_byte;
+		if current_write_byte + bytes_to_write >= circle.count {
+			bytes_to_copy := circle.count - current_write_byte;
+			memcpy(circle_data, write_data, bytes_to_copy);
+			write_data += bytes_to_copy;
+			bytes_to_write -= bytes_to_copy;
+			current_write_byte = 0;
+		} else {
+			memcpy(circle_data, write_data, bytes_to_write);
+			write_data += bytes_to_write;
+			current_write_byte += bytes_to_write;
+			bytes_to_write = 0;
+		}
+	}
+	write_cursor_in_bytes.* = current_write_byte;
+
+	assert(bytes_to_write == 0);
+	assert(current_write_byte < circle.count);
+	assert((write_data - write_buffer.data) == write_buffer.count);
+}
+ReadFromCircleBuffer :: (output_buffer : [] $T, circle : [] T, read_cursor : *int) {
+	output_b : [] u8;
+	output_b.data = cast(*u8) write_buffer.data;
+	output_b.count = write_buffer.count * size_of(T);
+	circle_b : [] u8;
+	circle_b.data = cast(*u8) circle.data;
+	circle_b.count = circle.count * size_of(T);
+	read_cursor_in_bytes : int = read_cursor.* * size_of(T);
+	ReadBytesFromCircleBuffer(output_b, circle_b, *read_cursor_in_bytes);
+	read_cursor.* = read_cursor_in_bytes / size_of(T);
+}
+ReadBytesFromCircleBuffer :: (output_buffer : [] u8, circle : [] u8, read_cursor_in_bytes : *int) {
+	if read_cursor_in_bytes.* > circle.count log("Reading over 1 entire cycle in circle buffer.\n");
+
+	current_read_byte : int = read_cursor_in_bytes.*;
+	bytes_to_read := output_buffer.count;
+	output_data := output_buffer.data;
+	while bytes_to_read > 0 {
+		ring_bytes : *u8 = circle.data + current_read_byte;
+		if current_read_byte + bytes_to_read >= circle.count {
+			bytes_to_copy := circle.count - current_read_byte;
+			memcpy(output_data, ring_bytes, bytes_to_copy);
+			output_data += bytes_to_copy;
+			bytes_to_read -= bytes_to_copy;
+			current_read_byte = 0;
+		} else {
+			memcpy(output_data, ring_bytes, bytes_to_read);
+			output_data += bytes_to_read;
+			current_read_byte += bytes_to_read;
+			bytes_to_read = 0;
+		}
+	}
+	read_cursor_in_bytes.* = current_read_byte;
+
+	assert(bytes_to_read == 0);
+	assert(current_read_byte < circle.count);
+	assert((output_data - output_buffer.data) == output_buffer.count);
+}	
+
+//TODO do dspace_dim and rel_pos have to be integer
+SpacePointHeader2DToIndex :: (pos : Vector2F, space : DimensionalSpace) -> int {
+	index : int = round_to_int(pos.x + pos.y * space.dspace_dim.x);
+	return index;
+}
+
+SpacePointHeader2DToIndex :: (pos : Vector2I, space : DimensionalSpace) -> int {
+	index : int = round_to_int(pos.x + pos.y * space.dspace_dim.x);
+	return index;
+}
+
+TuningTransposition :: inline (
+	music_pt_pos : int,
+	transpose_size : int,
+	$is_inverse : bool)
+-> int 
+{
+	transpose_result : int = ---;
+	#if is_inverse transpose_result = music_pt_pos - transpose_size;
+	else transpose_result = music_pt_pos + transpose_size;
+	return transpose_result;
+}
+
+/* Interscalar Interval Matrix
+	TODO could have this in float as well if needed
+*/
+ScaleIntervalMatrix :: struct {
+	matrix : [][] int;
+	a_chord : [] int;
+	b_chord : [] int;
+}
+
+MakeInterscalarIntervalMatrix :: (
+	a_chord : [] int, 
+	b_chord : [] int, 
+	tuning_system_music_pt_count : int) 
+-> ScaleIntervalMatrix 
+{
+	assert(a_chord.count == b_chord.count);
+
+	si_matrix : ScaleIntervalMatrix;
+	si_matrix.matrix = NewArray(a_chord.count, [] int);
+	for 0..a_chord.count-1 {
+		si_matrix.matrix[it] = NewArray(b_chord.count, int);
+	}
+	si_matrix.a_chord = a_chord;
+	si_matrix.b_chord = b_chord;
+
+	b_temp : [] int = array_copy(b_chord);
+	defer free(b_temp.data);
+	for 0..a_chord.count-1 {
+		si_matrix.matrix[it] = ArraySubtract(b_temp,a_chord);
+		// for * si_matrix.matrix[it] {
+		// 	<<it = PosMod(<<it, 12.0);
+		// }
+
+		first_temp : int = b_temp[0];
+		for 0..b_temp.count-2 {
+			b_temp[it] = b_temp[it + 1];
+		}
+		b_temp[b_temp.count-1] = first_temp + tuning_system_music_pt_count;
+	}
+	return si_matrix;
+}
+
+ShiftScale :: (original_scale : [] int, start_degree : int, tuning_shift : int, tuning_system_music_pt_count : int) -> [] int {
+	shifted_scale : [] int = NewArray(original_scale.count, int);
+	shifted_index : int = 0;
+	for original_index : start_degree..original_scale.count-1 {
+		shifted_scale[shifted_index] = original_scale[original_index];
+		shifted_index += 1;
+	}
+
+	for original_index : 0..start_degree-1 {
+		shifted_scale[shifted_index] = original_scale[original_index] + tuning_system_music_pt_count;
+		shifted_index += 1;		
+	}
+
+	shifted_start_degree : int = shifted_scale[0];
+	for * shifted_scale {
+		<< it -= shifted_start_degree;
+		<< it += tuning_shift;
+	}
+
+	return shifted_scale;
+}
+TestInterscalarIntervalMatrix :: () {
+    ts_count : int = 12;
+    diatonic_scale_int_array :: int.[0,2,4,5,7,9,11];
+    acoustic_scale_int_array :: int.[0,2,4,6,7,9,10];
+    // scale_interval_matrix := MakeInterscalarIntervalMatrix(int.[0,3,6,10], int.[0,4,7,10]);
+    // scale_interval_matrix := MakeInterscalarIntervalMatrix(int.[0,2,4,5,7,9,11], int.[0,2,4,6,7,9,10], 12);
+    // scale_interval_matrix := MakeInterscalarIntervalMatrix(int.[0,2,4,5,7,9,11], int.[-10,-8,-6,-5,-3,-2,0], 12);
+    // scale_interval_matrix := MakeInterscalarIntervalMatrix(int.[0,2,4,5,7,9,11], 
+    // 	ShiftScale(acoustic_scale_int_array, 1, -10, ts_count), ts_count);
+    // scale_interval_matrix := MakeInterscalarIntervalMatrix(int.[0,2,4,5,7,9,11], int.[2,4,6,7,9,10,12], 12);
+    scale_interval_matrix := MakeInterscalarIntervalMatrix(int.[0,2,4,5,7,9,11], 
+    	ShiftScale(acoustic_scale_int_array, 1, 0, ts_count), ts_count);
+	print("si_matrix is %\n", scale_interval_matrix);
+}
+
+/*End of Interscalar Interval Matrix
+*/
+
+/**
+	Data Models
+**/
+
+/*
+Generic data model for a table that is indexed (and sorted) by id
+where each new id is an incremental value
+GetById -> O(1)
+GetPointerById -> O(1)
+UpdateValueById -> O(1)
+InsertNextValue -> O(1)
+DeleteById -> O(1)
+
+Limitations : looping requires if statement to check for DEFAULT_UNINITIALIZED_ID
+MusicPts : if looping is not needed, can also replace this with a hash table
+*/
+
+//TODO can do a version with a fixed compile-time size and counter
+TableIndexById :: struct(type : $T) {
+	table_id : int;
+	table : [..] T;
+	next_value_id : int;
+	free_list : [..] int;
+	//TODO other tables that hook into this one and react to operations done to this table
+	// hooked_table_ids : [..] int;
+}
+
+//TODO this needs a free list to work properly
+DEFAULT_UNINITIALIZED_ID : int : -666666;
+DeleteById :: inline (table : *[..] $T, id : int) -> bool {
+	if id >= table.count return false;
+	table[id].id = DEFAULT_UNINITIALIZED_ID;
+	return true;
+}
+
+InsertNextValue :: inline (table : *[..] $T, value : *T, next_id : *int) {
+	value.id = <<next_id;
+	<<next_id += 1; //TODO make update more hash-like / specific?
+	array_add(table, value);
+}
+
+UpdateValueById :: inline (table : [..] $T, id : int, value : T) -> bool {
+	if id >= table.count return false;
+	table[id] = value;
+	return true;
+}
+
+GetPointerById :: inline (table : [..] $T, id : int) -> *T, bool {
+	if id >= table.count return null, false;
+	value : *T = *table[id];
+	return value, true;	
+}
+
+GetById :: inline (table : [] $T, id : int) -> T, bool {
+	if id >= table.count return T.{}, false;
+	value : T = table[id];
+	return value, true;	
+}
+
+/*
+Generic data model for a table that is sorted by id
+where each new id is an incremental value
+GetById -> O(log n)
+GetPointerById -> O(log n)
+UpdateValueById -> O(log n)
+InsertNextValue -> O(1)
+DeleteById -> O(n)
+
+Advantage : array is in tact with no uninitialized values during looping
+*/
+
+TableSortedById :: struct(type : $T) {
+	table : [..] T;
+	next_id : int;
+}
+
+DeleteById :: inline (table : *TableSortedById, id : int) -> bool {
+	if id >= table.count return false;
+	removed : bool = false;
+	for * table if <<it.id == id {
+		remove it;
+		removed = true;
+		break;
+	}
+	return removed;
+}
+
+InsertNextValue :: inline (table : TableSortedById, value : *table.type, next_id : *int) {
+	value.id = <<next_id;
+	<<next_id += 1; //TODO make update more hash-like / specific?
+	array_add(table, value);
+}
+
+UpdateValueById :: inline (table : TableSortedById, id : int, value : table.type) -> bool {
+	if id >= table.count return false;
+	table[id] = value;
+	return true;
+}
+
+//TODO this needs to use binary search
+GetPointerById :: inline (table : TableSortedById, id : int) -> *table.type, bool {
+	if id >= table.count return null, false;
+	value : *T = *table[id];
+	return value, true;	
+}
+
+//TODO this needs to use binary search
+GetById :: inline (table : TableSortedById, id : int) -> table.type, bool {
+	if id >= table.count return T.{}, false;
+	value : T = table[id];
+	return value, true;	
+}
+
+//TODO implement hash table with size (and free list and linked list or linear probing)
+//TODO implement BTree
+
+/**
+	End of Data Models
+**/
+
+/**
+	DynamicMemory
+**/
+DynamicMemory :: struct($data_type : Type) {
+	using memory : MemoryData;
+	//TODO need to attach this to our permanent allocator
+	size_stack : [..] int;
+}
+
+PushStruct :: inline (data : *DynamicMemory, $type : Type) -> *type {
+	//TODO could initialize this externally
+	if data.size_stack.count == 0 {
+		array_add(*data.size_stack, 0);
+	}
+	previous_size : int = data.size_stack[data.size_stack.count - 1];
+	array_add(*data.size_stack, previous_size + size_of(type));
+	return PushStruct(*data.memory, type);	
+}
+
+for_expansion :: (memory : *DynamicMemory($dyn_type), body : Code, flags : For_Flags) #expand {
+	#assert(flags != For_Flags.REVERSE);
+    index : int = 0;
+    while index < memory.size_stack.count {
+    	defer index += 1;
+    	byte_offset : int = memory.size_stack[index];
+    	grid_header := cast(*dyn_type) ((cast(*u8)memory.base) + byte_offset);
+		`it_index := index;
+    	`it := grid_header;
+    	if flags != For_Flags.POINTER {
+    		copy_header := <<grid_header;
+    		it = *copy_header;
+    	}
+		#insert body;
+    }
+}
+
+operator [] :: (memory : DynamicMemory($dyn_type), index : int) -> *dyn_type {
+	assert(index <= memory.size_stack.count);
+	byte_offset : int = memory.size_stack[index];
+	grid_header := cast(*dyn_type) ((cast(*u8)memory.base) + byte_offset);
+	return grid_header;
+}
+
+//TODO Should we put this in thegame_platform_data
+//Or maybe a separate thegame_input or thegame_keymapping module
+INPUT_MAP_TYPE_NAMES :: #run enum_names(InputMapType);
+INPUT_MAP_TYPE_ENUMS :: #run enum_values_as_enum(InputMapType);
+//TODO Could rename InputMapType or KeymapShortcut or KeyAction
+//something else
+InputMapType :: enum {
+	//Terminal Shortcuts
+	TERMINAL_TOGGLE;
+
+	//Text Space Shortcuts
+	//Debug control
+	TEXT_DEBUG_TOGGLE;
+	TEXT_CONSOLE_TOGGLE;
+	TEXT_DISASM_TOGGLE;
+	TEXT_COMPILE;
+	TEXT_SET_FIXED_MAIN_COMPILE;
+	TEXT_RUN_CONTINUE;
+	//TODO These are only used for debug but eventually can be
+	//used while running as well so should we change name to 
+	//DEBUG_STOP and DEBUG_RESTART or leave as is?
+	TEXT_STOP;
+	TEXT_RESTART;
+	//Pane switching
+	TEXT_PANE;
+	TEXT_WATCH_PANE;
+	TEXT_BOTTOM_LEFT_PANE;
+	TEXT_BOTTOM_RIGHT_PANE;
+
+	TEXT_CALL_STACK;
+
+	TEXT_SPACE_REFRESH;
+
+	//File shortcuts
+	TEXT_FILE_TAB_RIGHT;
+	TEXT_FILE_TAB_LEFT;
+	TEXT_FILE_TAB_BAR;
+	TEXT_FILE_TAB_CLOSE;
+	TEXT_FILE_TAB_OPEN;
+	TEXT_FILE_TAB_SWAP_LEFT;
+	TEXT_FILE_TAB_SWAP_RIGHT;
+	TEXT_FILE_RIGHT_CHAR_BOUND;
+	TEXT_FILE_LEFT_CHAR_BOUND;
+	TEXT_FILE_FIND_TEXT_BAR;
+	TEXT_FILE_BACK_FIND;
+	TEXT_FILE_REPLACE_TEXT_BAR;
+	TEXT_FILE_GOTO_LINE_BAR;
+	TEXT_FILE_SINGLE_REPLACE;
+	TEXT_FILE_REPLACE_ALL;
+	TEXT_FILE_SAVE;
+	TEXT_FILE_UPDATE_DATA;
+
+	TEXT_SELECT_ALL;
+	TEXT_COPY;
+	TEXT_SHOW_STATUS_BAR;
+
+	//TODO Should this be separate from text?
+	//I guess for debug specific things like breakpoint and watch window maybe.
+	//NOTE : These happen in text space but only in debug mode
+	//so they were TEXT_STEP_OVER... before and we can reuse that if
+	//those names seem better eventually.
+	//We could also remove DEBUG if that helps.
+	//Debug Space Shortcuts
+	DEBUG_SET_BREAKPOINT;
+	DEBUG_STEP_OVER;
+	DEBUG_STEP_INTO;
+	DEBUG_STEP_OUT;
+
+	DEBUG_WATCH_EDIT;
+
+
+	NEXT_MUSIC_SPACE;
+	PREVIOUS_MUSIC_SPACE;
+
+	//This is ctrl+shift+zoom buttons
+	//TODO SHOULD THIS BE ctrl+zoom buttons instead by default?
+	//OR even shift+zoom I think?
+	//This avoids overlapping ctrl+scroll with ctrl+shift+scroll
+	GLOBAL_ZOOM_IN;
+	GLOBAL_ZOOM_OUT;
+	GLOBAL_ZOOM_RESET;
+	GLOBAL_MOVE_INSTANTLY;
+
+	//This is alt+zoom buttons
+	OP_SPACE_MOVE_INSTANTLY;
+	OP_SPACE_ZOOM_IN;
+	OP_SPACE_ZOOM_OUT;
+	OP_SPACE_ZOOM_RESET;
+
+	PLAY_PAUSE_MUSIC;
+	STOP_MUSIC;
+
+	RUN_EXTERNAL_UPDATE;
+
+	DEV_TEST_MODE;
+}
+
+KeyPressType :: enum u8 {
+	IS_DOWN_WITH_PAUSE;
+	DOWN_THIS_FRAME;
+	UP_THIS_FRAME;
+}
+/*TODO If we want to allow multiple mappings
+then we can have an array for keyboard and midi inputs in here
+*/
+InputMapping :: struct {
+	/*DOC : This is unecessary but we store it in here for debugging
+	convenience so we can see which input map we are updating.
+	*/
+	input_map_type : InputMapType;
+	//TODO Should this be utf32 : u32 instead for text input?
+	//Maybe utf32 is more general than this for other inputs.
+	//Maybe we include Event_Type so we can differentiate.
+	//and then have a function which takes this and does a cast.
+	//TODO Could make this an array for multiple mappings
+	//So pull this out into a keyboard mapping object and then
+	//we coudl check those if the event is KEYBOARD and then have
+	//other event types
+	keyboard_maps : [] KeyboardMap;
+	// midi_keymaps : [] MIDIKeymap;
+	// key_code : Input.Key_Code;
+	// modifier_flags: Input.Event.Modifier_Flags;
+	//TODO Can have some extra info for other inputs like midi or gamepad or alt
+
+	//TODO We could allow a custom mapping which calls a function implemented by them here.
+	//This is tricky because when would we call these. Probably at the beginning by default so
+	//they can do whatever they want or maybe right after all the internal input and then we 
+	//can have a slightly different system for that. I like that idea but if it's
+	//general then we could just make a CUSTOM InputMapType and then check all the custom ones
+	//by string here so they can name it whatever they want, but it still won't run whenever they want.
+	//ALSO SINCE THEY CAN write their own code, likely better to just stick to that for custom input
+	//and just have it happen at a specific place or even several with several functions like an engine.
+	// cmd_string : string;
+	// custom_proc : *void;
+
+	//TODO Can remove leaving here from jai but I don't think I need to use them at all.
+	// respect_ignore_modifier_keys := true;  // controls whether the mapping respects the keymap's ignore_modifier_keys option or ignores it and does the opposite
+	// toggled_on := false;  // state variable to prevent redundant notifications for "toggle" callbacks
+
+	// Any mapping entry can either be a proc
+	// or a command string (but not both!)
+
+	// command_string: string;
+	// proc_index: s32 = -1;  // To make copying mappings easy.
+}
+
+all_key_code_names : [] string : #run enum_names(Input.Key_Code);
+all_key_code_enums : [] Input.Key_Code : #run enum_values_as_enum(Input.Key_Code);
+KeyboardMap :: struct {
+	key_code : Input.Key_Code;
+	modifier_flags: Input.Event.Modifier_Flags;
+	//TODO Can set this or in a separate array so that
+	// description : string;
+}
+
+//TODO Can add default midi keymaps as well later based on an 88-key piano
+//Text input would be grabbed externally by just loading the buffer and we
+//could have default midi values for that but then also use keymaps there.
+//TODO Could allow multiple midi notes to be assocaited to 1 input map
+//so then a chord could have an alternate siginificance for example.
+MIDIKeyMap :: struct {
+	// midi_message : MIDI_Message;
+}
+DEFAULT_INPUT_MAPPINGS, IM_DESCRIPTIONS :: #run () -> 
+[] InputMapping,        [] string 
+{
+ 	imd := NewArray(INPUT_MAP_TYPE_ENUMS.count, string);	
+ 	d := NewArray(INPUT_MAP_TYPE_ENUMS.count, InputMapping);
+	for INPUT_MAP_TYPE_ENUMS if #complete it == {
+	case .TERMINAL_TOGGLE; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "T", .{ctrl_pressed=true,alt_pressed=true}};
+		d[it] = .{it, k_maps};
+		imd[it] = "Open/close terminal op space";
+	} 
+	case .TEXT_DEBUG_TOGGLE; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "D", .{ctrl_pressed=true,alt_pressed=true}};
+		d[it] = .{it, k_maps};
+	} 
+	case .TEXT_CONSOLE_TOGGLE; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "O", .{ctrl_pressed=true,alt_pressed=true}};
+		d[it] = .{it, k_maps};
+	} 
+	case .TEXT_DISASM_TOGGLE; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "I", .{ctrl_pressed=true,alt_pressed=true}};
+		d[it] = .{it, k_maps};
+	} 
+	case .TEXT_COMPILE; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "C", .{ctrl_pressed=true,alt_pressed=true}};
+		d[it] = .{it, k_maps};
+	} 
+	case .TEXT_SET_FIXED_MAIN_COMPILE; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "M", .{ctrl_pressed=true,alt_pressed=true}};
+		d[it] = .{it, k_maps};
+	} 
+	case .TEXT_RUN_CONTINUE; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{.F5, .{}};
+		d[it] = .{it, k_maps};
+	} 
+	case .DEBUG_STEP_OVER; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{.F10, .{}};
+		d[it] = .{it, k_maps};
+	} 
+	case .DEBUG_STEP_INTO; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{.F11, .{}};
+		d[it] = .{it, k_maps};
+	} 
+	case .DEBUG_STEP_OUT; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{.F11, .{shift_pressed=true}};
+		d[it] = .{it, k_maps};
+	} 
+	case .TEXT_STOP; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{.F5, .{shift_pressed=true}};
+		d[it] = .{it, k_maps};
+	} 
+	case .TEXT_RESTART; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{.F5, .{shift_pressed=true,ctrl_pressed=true}};
+		d[it] = .{it, k_maps};
+	}
+	case .TEXT_PANE; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "1", .{ctrl_pressed=true,alt_pressed=true}};
+		d[it] = .{it, k_maps};		
+	}
+	case .TEXT_WATCH_PANE; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "2", .{ctrl_pressed=true,alt_pressed=true}};
+		d[it] = .{it, k_maps};
+	} 
+	case .TEXT_BOTTOM_LEFT_PANE; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "3", .{ctrl_pressed=true,alt_pressed=true}};
+		d[it] = .{it, k_maps};
+	} 
+	case .TEXT_BOTTOM_RIGHT_PANE; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "4", .{ctrl_pressed=true,alt_pressed=true}};
+		d[it] = .{it, k_maps};
+	} 
+	case .TEXT_CALL_STACK; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "S", .{ctrl_pressed=true,alt_pressed=true}};
+		d[it] = .{it, k_maps};
+	} 
+	case .TEXT_SPACE_REFRESH; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{.F12, .{ctrl_pressed=true,alt_pressed=true}};
+		d[it] = .{it, k_maps};
+	} 
+	case .TEXT_FILE_TAB_RIGHT; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "L", .{ctrl_pressed=true,alt_pressed=true}};
+		d[it] = .{it, k_maps};
+	}
+	case .TEXT_FILE_TAB_LEFT; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "J", .{ctrl_pressed=true,alt_pressed=true}};
+		d[it] = .{it, k_maps};
+	}
+	case .TEXT_FILE_TAB_BAR; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{.F8, .{ctrl_pressed=true}};
+		d[it] = .{it, k_maps};
+	}
+	case .TEXT_FILE_TAB_CLOSE; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "W", .{ctrl_pressed=true}};
+		d[it] = .{it, k_maps};
+	}
+	case .TEXT_FILE_TAB_OPEN; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "O", .{ctrl_pressed=true}};
+		d[it] = .{it, k_maps};
+	}
+	case .TEXT_FILE_TAB_SWAP_LEFT; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "J", .{ctrl_pressed=true,alt_pressed=true,shift_pressed=true}};
+		d[it] = .{it, k_maps};
+	}
+	case .TEXT_FILE_TAB_SWAP_RIGHT; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "L", .{ctrl_pressed=true,alt_pressed=true,shift_pressed=true}};
+		d[it] = .{it, k_maps};
+	}
+	case .TEXT_FILE_RIGHT_CHAR_BOUND; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "8", .{ctrl_pressed=true}};
+		d[it] = .{it, k_maps};
+	}
+	case .TEXT_FILE_LEFT_CHAR_BOUND; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "7", .{ctrl_pressed=true}};
+		d[it] = .{it, k_maps};
+	}
+	case .TEXT_FILE_FIND_TEXT_BAR; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "F", .{ctrl_pressed=true}};
+		d[it] = .{it, k_maps};
+	}
+	case .TEXT_FILE_REPLACE_TEXT_BAR; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "H", .{ctrl_pressed=true}};
+		d[it] = .{it, k_maps};
+	}
+	case .TEXT_FILE_GOTO_LINE_BAR; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "G", .{ctrl_pressed=true}};
+		d[it] = .{it, k_maps};
+	}
+	case .TEXT_FILE_BACK_FIND; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{.BACKSPACE, .{ctrl_pressed=true}};
+		d[it] = .{it, k_maps};
+	}
+	case .TEXT_FILE_SINGLE_REPLACE; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "H", .{ctrl_pressed=true,shift_pressed=true}};
+		d[it] = .{it, k_maps};
+	}
+	case .TEXT_FILE_REPLACE_ALL; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{.ENTER, .{ctrl_pressed=true,alt_pressed=true}};
+		d[it] = .{it, k_maps};
+	}
+	case .TEXT_FILE_SAVE; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "S", .{ctrl_pressed=true}};
+		d[it] = .{it, k_maps};
+	}
+	case .TEXT_FILE_UPDATE_DATA; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "U", .{ctrl_pressed=true,shift_pressed=true}};
+		d[it] = .{it, k_maps};
+	}
+	case .TEXT_SELECT_ALL; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "A", .{ctrl_pressed=true}};
+		d[it] = .{it, k_maps};
+	}
+	case .TEXT_COPY; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "C", .{ctrl_pressed=true}};
+		d[it] = .{it, k_maps};
+	}
+	case .TEXT_SHOW_STATUS_BAR; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{.F7, .{ctrl_pressed=true}};
+		d[it] = .{it, k_maps};
+	}
+	case .DEBUG_SET_BREAKPOINT; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{.F9, .{}};
+		d[it] = .{it, k_maps};
+	}
+	case .DEBUG_WATCH_EDIT; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "E", .{ctrl_pressed=true}};
+		d[it] = .{it, k_maps};		
+	}
+	case .NEXT_MUSIC_SPACE; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char ".", .{ctrl_pressed=true,shift_pressed=true}};
+		d[it] = .{it, k_maps};		
+	}
+	case .PREVIOUS_MUSIC_SPACE; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char ",", .{ctrl_pressed=true,shift_pressed=true}};
+		d[it] = .{it, k_maps};		
+	}
+	//TODO Could set these back if we want alternative custom zoom
+	case .GLOBAL_ZOOM_IN; {
+		k_maps := NewArray(1, KeyboardMap);
+		//This does not work on jai since jai interprets "=" as "+" char
+		//ALSO this might get confused for other zooms which is no bueno
+		// k_maps[0] = .{xx #char "=",.{ctrl_pressed=true,shift_pressed=true}};
+		k_maps[0] = .{xx #char "]",.{ctrl_pressed=true,shift_pressed=true}};
+		d[it] = .{it, k_maps};		
+	}
+	case .GLOBAL_ZOOM_OUT; {
+		k_maps := NewArray(1, KeyboardMap);
+		// k_maps[0] = .{xx #char "-", .{ctrl_pressed=true,shift_pressed=true}};
+		k_maps[0] = .{xx #char "[", .{ctrl_pressed=true,shift_pressed=true}};
+		d[it] = .{it, k_maps};		
+	}
+	case .GLOBAL_ZOOM_RESET; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "R", .{ctrl_pressed=true,shift_pressed=true}};
+		d[it] = .{it, k_maps};		
+	}
+	case .GLOBAL_MOVE_INSTANTLY; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{.MOUSE_BUTTON_RIGHT, .{ctrl_pressed=true}};
+		d[it] = .{it, k_maps};	
+	}
+	case .OP_SPACE_MOVE_INSTANTLY; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{.MOUSE_BUTTON_RIGHT, .{alt_pressed=true}};
+		d[it] = .{it, k_maps};		
+	}
+	case .OP_SPACE_ZOOM_IN; {
+		k_maps := NewArray(1, KeyboardMap);
+		//This does not work on jai since jai interprets "=" as "+" char
+		//ALSO this might get confused for other zooms which is no bueno
+		// k_maps[0] = .{xx #char "=",.{alt_pressed=true}};
+		k_maps[0] = .{xx #char "]",.{alt_pressed=true}};
+		d[it] = .{it, k_maps};		
+	}
+	case .OP_SPACE_ZOOM_OUT; {
+		k_maps := NewArray(1, KeyboardMap);
+		// k_maps[0] = .{xx #char "-", .{alt_pressed=true}};
+		k_maps[0] = .{xx #char "[", .{alt_pressed=true}};
+		d[it] = .{it, k_maps};		
+	}
+	case .OP_SPACE_ZOOM_RESET; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "R", .{alt_pressed=true,shift_pressed=true}};
+		d[it] = .{it, k_maps};		
+	}
+	case .PLAY_PAUSE_MUSIC; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "P", .{ctrl_pressed=true}};
+		d[it] = .{it, k_maps};		
+	}
+	case .STOP_MUSIC; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "P", .{ctrl_pressed=true,shift_pressed=true}};
+		d[it] = .{it, k_maps};		
+	}
+	case .RUN_EXTERNAL_UPDATE; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "E", .{ctrl_pressed=true,alt_pressed=true}};
+		d[it] = .{it, k_maps};		
+	}
+	case .DEV_TEST_MODE; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "T", .{ctrl_pressed=true,shift_pressed=true}};
+		d[it] = .{it, k_maps};		
+	}
+	}
+	return d, imd;
+}();
+
+//TODO Should this array be in GameInput or global or in Persist?
+//OR we could just put it in GameInput and have a general
+//input memory allocator
+//AND we are already passing in GameInput anyways.
+// ALL_INPUT_MAPPINGS : [] InputMapping;
+//TODO Could have a function that just takes in key_code and modifier flags
+//and checks those directly and then this could just call that general function
+//so that then we could just use the events array.
+//Would just have to process text input before every frame maybe
+//but that would similar to what we do now.
+//TODO Could call this IsShortcut
+IsInputMapPress :: inline (
+	im_type : InputMapType, 
+	press_type : KeyPressType, 
+	game_input : GameInput) 
+-> bool 
+{
+	//TODO If we allowed multiple keymappings, then we would just
+	//have to loop through each possibility somewhere down this function chain.
+	// input_map : InputMapping = game_input.game_input_mappings[im_type];
+	for game_input.frame_input_events if it.event_type == {
+	case .KEYBOARD; {
+		result : bool = IsInputMapEvent(im_type, press_type, it, game_input.game_input_mappings);
+		if result return true;
+	}
+	}
+	return false;
+}
+IsInputMapEvent :: inline (
+	im_type : InputMapType, 
+	press_type : KeyPressType, 
+	event : FrameInputEvent,
+	input_mappings : [] InputMapping) 
+-> bool 
+{
+	//TODO If we allowed multiple keymappings, then we would just
+	//have to loop through each possibility somewhere down this function chain.
+	input_map : InputMapping = input_mappings[im_type];
+	for map : input_map.keyboard_maps if IsKeyboardEvent(map.key_code, map.modifier_flags, press_type, event) {
+		return true;
+	}
+	return false;
+}
+//TODO Rename to IsKeyPress or IsInputPress since we also do mouse input now.
+IsKeyboardPress :: inline (
+	key_code : Input.Key_Code, 
+	press_type : KeyPressType, 
+	//TODO Could just pass in FrameInputEvents
+	game_input : GameInput) 
+-> bool 
+{
+	return IsKeyboardPress(key_code, .{}, press_type, game_input);
+}
+/*TODO REMINDER : 
+COULD MAKE A FUNCTION IsFirstKeyboardPress that only checks that first (or last)
+press to avoid multiple key presses for some actions where we don't want overlap.
+Then we can pull out the key check here and just check frame_input_events[0].
+*/
+//TODO Could generalize this to TEXT_INPUT and mouse but might be better to just have separate functions for that.
+//TODO Rename to IsKeyboardEvent
+IsKeyboardPress :: inline (
+	key_code : Input.Key_Code, 
+	mod_flags : Input.Event.Modifier_Flags,
+	press_type : KeyPressType, 
+	//TODO Could just pass in FrameInputEvents
+	game_input : GameInput)
+-> bool 
+{
+	//TODO Could put a bool in GameInput that prevents values from being
+	//pressed here so we can not have it be pressed in certain cases.
+	//Like when we are testing or when certain things are running.
+	//Could also do it with a flag if that makes more sense.
+
+	// key_map : InputMapping = game_input.game_input_mappings[ks];
+	//TODO Since we have an array of frame_events, we can do 2 note clicks for example here.
+	//Like ctrl+c,ctrl+k or any sequential key presses. Or maybe not
+	//I guess we would need an extra array that would store the input frame_events for a certain
+	//amount of time so that then we could check them.
+	for game_input.frame_input_events if IsKeyboardEvent(key_code, mod_flags, press_type, it) {
+		return true;
+	}
+
+	//TODO I think we can check input_button_states here
+	//to see if something is down
+	return false;
+}
+IsKeyboardEvent :: inline (key_code : Input.Key_Code, press_type : KeyPressType, event : FrameInputEvent) -> bool {
+	return IsKeyboardEvent(key_code, .{}, press_type, event);
+}
+IsKeyboardEvent :: inline (
+	key_code : Input.Key_Code, 
+	mod_flags : Input.Event.Modifier_Flags,
+	press_type : KeyPressType, 
+	event : FrameInputEvent,
+	input_event_type := Input.Event_Type.KEYBOARD)
+-> bool 
+{
+	if key_code == event.key_code && mod_flags.packed == event.packed && event.type == input_event_type {
+		result : bool = IsKeyPressByType(press_type, event);
+		return result;
+	}
+	return false;	
+}
+IsKeyboardEventAnyFlag :: inline (
+	key_code : Input.Key_Code, 
+	press_type : KeyPressType, 
+	event : FrameInputEvent,
+	input_event_type := Input.Event_Type.KEYBOARD)
+-> bool 
+{
+	if key_code == event.key_code && event.type == input_event_type {
+		result : bool = IsKeyPressByType(press_type, event);
+		return result;
+	}
+	return false;	
+}
+IsKeyPressByType :: inline (press_type : KeyPressType, event : FrameInputEvent) -> bool {
+	//TODO Should we use utf32 here instead of key_code
+	is_down := cast(bool) event.key_pressed;
+	is_repeat := cast(bool) event.repeat;
+	result : bool;
+	if #complete press_type == {
+	//NOTE : Need to check this first to make sure !is_repeat
+	case .DOWN_THIS_FRAME;
+		result = is_down && !is_repeat;
+	case .IS_DOWN_WITH_PAUSE; //Could rename IS_STILL_DOWN or ENDED_DOWN or something else if that's clearer
+	//NOTE : This is equivalent to (DOWN_THIS_FRAME || (is_down && is_repeat))
+		result = is_down;
+	case .UP_THIS_FRAME;
+		result = !is_down;
+	}
+	return result;
+}
+IsTextInputEvent :: inline (press_type : KeyPressType, event : FrameInputEvent) -> bool {
+	if event.type == .TEXT_INPUT
+		&& event.utf32 >= 0 && event.utf32 <= 255
+	{
+		result : bool = false;
+		is_down : bool = event.utf32 > 0;
+		if #complete press_type == {
+		case .DOWN_THIS_FRAME;
+			assert(false, "no down_this_frame for text input only use is_down_with_pause or up_this_frame");
+			result = false;
+		case .IS_DOWN_WITH_PAUSE; //Could rename IS_STILL_DOWN or ENDED_DOWN or something else if that's clearer
+		//NOTE : This is equivalent to (DOWN_THIS_FRAME || (is_down && is_repeat))
+			result = is_down;
+		case .UP_THIS_FRAME;
+			result = !is_down;
+		}
+		return result;
+	}
+	return false;
+}
+//TODO Can pass the input_button_states through game_input so that
+//we can INJECT the code for tests with whatever state we want
+IsInputDown :: inline (
+	key_code : Input.Key_Code,
+	game_input : GameInput) 
+//TODO Add GameInput here to allow for testing
+-> bool
+{
+	/*DOC : Checking this way allows us to trigger a button press even if we got a down_this_frame and
+	up_this_frame event on the same frame. If we did, then is_down = false up both up_this_frame and down_this_frame = true
+	and so we still get the button press with this function.
+	NOTE WE DO NOT DO THE ABOVE ANYMORE
+	ALSO FOR down_this_frame and up_this_frame we use events. This is ONLY for holding input down without pause.
+	*/
+	//NOTE : We keep is_down now if we started_this_frame and up_this_frame on the same frame for consistency and clarity.
+	//We still reset the input on the next frame, but this way is_down = true whenever we are down this frame
+	//and we can still have a down and up on the same frame and we will register the down correctly.
+	is_down : bool = game_input.my_input_states[key_code].is_down;
+	//No longer do this way in favor of checking started_this_frame in UpdateInputStatesFromEvents and keeping is_down=true
+	//even if we have a started_this_frame and an up_this_frame
+	// is_down : bool = game_input.my_input_states[key_code].is_down || 
+	// 	game_input.my_input_states[key_code].started_this_frame;
+	return is_down;
+}
+IsMouseWheelWithoutModifiers :: inline (game_input : GameInput) -> bool {
+	only_mouse_wheel : bool = game_input.mouse_wheel != 0 &&
+		!IsInputDown(.CTRL, game_input) && 
+		!IsInputDown(.SHIFT, game_input) &&
+		!IsInputDown(.ALT, game_input);
+	return only_mouse_wheel;
+}
+
+/*DOC : Code to add inputs programatically.
+We could move this into tests if we only use it there but maybe we will
+use it in game sometimes to run something? Or not since we can just run the code?
+Hmmm I'll leave it here for now and see.
+*/
+//TODO Maybe we should rename this AddAction? Is that word clear?
+AddPressInputMap :: inline (
+	im_type : InputMapType,
+	press_type : KeyPressType,
+	game_input : *GameInput)
+{
+	//Safety check
+	assert(game_input.game_input_mappings[im_type].keyboard_maps.count > 0);
+	km : KeyboardMap = game_input.game_input_mappings[im_type].keyboard_maps[0];
+	AddPressKeyboard(km.key_code, km.modifier_flags, press_type, game_input);
+}
+DownUpInputMap :: inline (
+	im_type : InputMapType,
+	game_input : *GameInput)
+{
+	//Safety check
+	assert(game_input.game_input_mappings[im_type].keyboard_maps.count > 0);
+	km : KeyboardMap = game_input.game_input_mappings[im_type].keyboard_maps[0];
+	AddPressKeyboard(km.key_code, km.modifier_flags, .DOWN_THIS_FRAME, game_input);
+	AddPressKeyboard(km.key_code, km.modifier_flags, .UP_THIS_FRAME, game_input);
+}
+//TODO We could add a function that takes an array but I think we only want down and up as an exception
+//so we can call 1 function for keyboard input and make sure that it still works if the down and up are done on the same frame.
+DownUpThisFrame :: inline (
+	key_code : Input.Key_Code, 
+	mod_flags : Input.Event.Modifier_Flags,
+	game_input : *GameInput)
+{
+	AddPressKeyboard(key_code, mod_flags, .DOWN_THIS_FRAME, game_input);
+	AddPressKeyboard(key_code, mod_flags, .UP_THIS_FRAME, game_input);
+}
+DownUpThisFrame :: inline (
+	key_code : Input.Key_Code,
+	game_input : *GameInput)
+{
+	AddPressKeyboard(key_code, .{}, .DOWN_THIS_FRAME, game_input);
+	AddPressKeyboard(key_code, .{}, .UP_THIS_FRAME, game_input);
+}
+//TODO Should rename to AddDownUpKeyboard and then have AddPressKeyboard for specific ones without upt
+AddPressKeyboard :: inline (key_code : Input.Key_Code, press_type : KeyPressType, game_input : *GameInput) {
+	AddPressKeyboard(key_code, .{}, press_type, game_input);
+}
+//TODO We could add ctrl, shift and alt for convenience here or do it manually for each keyboard press
+//Although I don't really check for shift and alt alone ever, so maybe it does not matter 
+//since we set the down checks and mouse double clicks in UpdateInputStatesFromEvents
+//TODO Should this just be for tests?
+//TODO Will likely need a different function for different inputs
+//since the info from the event or midi will be different.
+//NOTE : This will be cleared on the next frame.
+AddPressKeyboard :: (
+	key_code : Input.Key_Code, 
+	mod_flags : Input.Event.Modifier_Flags,
+	press_type : KeyPressType, 
+	game_input : *GameInput)
+{
+	e : *FrameInputEvent = array_add(*game_input.frame_input_events);
+	SetFrameInputEvent(key_code, mod_flags, press_type, e);
+}
+CreateFrameInputEvent :: inline (
+	key_code : Input.Key_Code, 
+	mod_flags : Input.Event.Modifier_Flags,
+	press_type : KeyPressType) 
+-> FrameInputEvent
+{
+	e : FrameInputEvent;
+	SetFrameInputEvent(key_code, mod_flags, press_type, *e);
+	return e;
+}
+SetFrameInputEvent :: inline (
+	key_code : Input.Key_Code, 
+	mod_flags : Input.Event.Modifier_Flags,
+	press_type : KeyPressType,
+	e : *FrameInputEvent)
+{
+	e.type = .KEYBOARD;
+	e.key_code = key_code;
+	e.modifier_flags = mod_flags;
+	if #complete press_type == {
+	case .DOWN_THIS_FRAME;
+		e.key_pressed = cast(u32) true;
+		e.repeat = false;
+	case .IS_DOWN_WITH_PAUSE;
+		e.key_pressed = cast(u32) true;
+		e.repeat = true;
+	case .UP_THIS_FRAME;
+		e.key_pressed = cast(u32) false;
+	}
+}
+
+/*DOC : This is used for when we just want a start and down
+input key_code and for it to be cleared next frame. For events
+we should use the events array and to keep it down for longer
+but should just set it to start and end manually for clarity.
+*/
+//TODO We can remove this now if we don't use it since we set
+//everything from the events like in the platform layer
+#if 0 {
+AddTestKeyStartEnd :: inline (
+	key_code : Input.Key_Code,
+	game_input : *GameInput)
+{
+	game_input.my_input_states[key_code].started_this_frame = true;
+	game_input.my_input_states[key_code].is_down = true;
+	//NOTE : This ensures that we reset this key next frame
+	game_input.my_input_states[key_code].is_up_this_frame = true;
+}
+}
+
+//TODO FROM HERE Make this pass in separate text_input events now
+//for the text editor and should be set.
+//ALSO update the text selection code and cleanup the undo
+//before testing (maybe add copy and text ctrl+arrow movement first)
+//TODO We should just add multiple events here instead of text block and have a separate creation for text blocks.
+//TODO This should be updated once text buffer in game_input is a string.
+AddTextBlock :: inline (input : string, game_input : *GameInput) {
+	event : *FrameInputEvent = array_add(*game_input.frame_input_events);
+	SetTextBlock(input, event);
+}
+SetTextBlock :: inline (input : string, e : *FrameInputEvent) {
+	e.event_type = .TEXT_BLOCK;
+	e.text_block = input;
+}
+
+AddTextInput :: inline (input : string, game_input : *GameInput) {
+	#if 0 {
+	kb := *game_input.Controllers[0];
+	assert(input.count <= kb.text_input_buffer.count);
+	kb.text_buffer_count = input.count;
+	memcpy(kb.text_input_buffer.data, input.data, kb.text_buffer_count);
+	kb.text_input.is_down_with_pause = true;
+	}
+	/*DOC : We are adding 1 char at a time now since this will keep
+	the chars in the right order if other events if we press multiple keys
+	in 1 frame. This matters for the text editor because it is possible
+	to type in 2-3 chars at once when typing very quickly or do something like
+	text,arrow,text in the same frame. Especially if the frame rate is < 60hz.
+	*/
+	for 0..input.count-1 {
+		e : *FrameInputEvent = array_add(*game_input.frame_input_events);
+		e.type = .TEXT_INPUT;
+		e.utf32 = input[it];
+	}
+}
+
+
+/*
+	Input processing code
+	should this have its own file?
+*/
+
+MoveCamWASD :: inline (
+	keyboard : ControllerInput,
+	pixels_per_square : float) 
+-> Vector2F
+{
+	move_this_frame : Vector2F;
+    if keyboard.Right.EndedDown {
+    	move_this_frame += MakeV2F(1.0, 0);
+    }
+    if keyboard.Left.EndedDown {
+    	move_this_frame += MakeV2F(-1.0, 0);
+    }
+    if keyboard.Up.EndedDown {
+    	move_this_frame += MakeV2F(0, 1.0);
+    }
+    if keyboard.Down.EndedDown {
+    	move_this_frame += MakeV2F(0, -1.0);
+    }
+
+    if move_this_frame.x != 0 && move_this_frame.y != 0 {
+    	move_this_frame *= 2.0*(1.0 / pixels_per_square);
+    	// move_this_frame *= 1.0*(1.0 / pixels_per_square);
+ 	} else {
+    	move_this_frame *= 2.0*(1.5 / pixels_per_square);
+    	// move_this_frame *= 1.0*(1.5 / pixels_per_square);
+    }
+    return move_this_frame;
+}
+
+/*
+	End of Input processing
+*/
+
+/*
+	Mouse Collision System
+
+	TODO other collision shapes (eg circles)
+
+	***TODO we can do all collisions by checking if we collided
+	with a rect and then go grab the collided entity based
+	on the corresponding id and some entity type***
+
+	We are technically using these to group collision data but that can be done with the collision_id
+	straight I think... so maybe we don't need this data at all.
+	We can remove it if collision work and we never use since the collision_id is enough to group things.
+*/
+//TODO where should we put the collision detection? separate file?
+//TODO is separate CollisionData struct necessary?
+//or is duck typing with collision_id enough
+//maybe if we have multiple collision types
+CollisionData :: struct {
+	id : int;
+	// collision_type : CollisionType;
+}
+
+CollisionType :: enum {
+	//TODO Not sure we need this type since we store collision_id in active_op_space for covenience
+	OP_SPACE;
+	//TODO Need to differentiate between linear and background linear spaces.
+	//Could put an is_background flag for now to make it robust.
+	LINEAR_SPACE;
+	CIRCLE_SPACE;
+	CHORD_S2;
+}
+
+MakeCollisionData :: inline () -> CollisionData {
+	collision_data : CollisionData;
+	collision_data.id = ALL_NEXT_IDS.NEXT_COLLISION_ID;
+	defer ALL_NEXT_IDS.NEXT_COLLISION_ID += 1;
+	return collision_data;
+}
+
+CollisionRect :: struct {
+	collision_id : int;
+	world_rect : Rectangle2;
+}
+
+Collidable :: struct {
+	collision_id : int;
+}
+
+//TODO should this take a Collidable or just a collision_id?
+IsCollidingCamSpace :: inline (
+	cam_pos : Vector2F,
+	collidable : $T/interface Collidable,
+	cam : Camera2D,
+	all_collision_rects : [] CollisionRect)
+-> bool
+{
+	collision_rects : [] CollisionRect = 
+		ArrayFindAllVarName(all_collision_rects, collidable.collision_id, "collision_id", temp);
+	for collision_rect : collision_rects {
+		cam_rect : Rectangle2 = WorldRectToCamRect(collision_rect.world_rect, cam);
+		if IsInRectangle(cam_pos, cam_rect) {
+			return true;	
+		}
+	}
+	return false;
+}
+
+IsCollidingWorldSpace :: inline (
+	world_pos : Vector2F,
+	collidable : $T/interface Collidable,
+	all_collision_rects : [] CollisionRect)
+-> bool
+{
+	collision_rects : [] CollisionRect = 
+		ArrayFindAllVarName(all_collision_rects, collidable.collision_id, "collision_id", temp);
+	for collision_rect : collision_rects {
+		if IsInRectangle(world_pos, collision_rect.world_rect) {
+			return true;	
+		}
+	}
+	return false;
+}
+
+CreateColliderAndRect :: inline (
+	world_pos : Vector2F, world_size : Vector2F,
+	collision_type : CollisionType,
+	all_collision_data : *[..] CollisionData,
+	all_collision_rects : *[..] CollisionRect)
+-> CollisionData
+{
+	collision_data : CollisionData = MakeCollisionData();
+	array_add(all_collision_data, collision_data);
+
+	collision_rect : CollisionRect;
+	collision_rect.collision_id = collision_data.id;
+	collision_rect.world_rect = RectCenterDim(world_pos, world_size);
+	array_add(all_collision_rects, collision_rect);
+
+	return collision_data;
+}
+
+CreateColliderAndManyRects :: inline (
+	create_world_poses : [] Vector2F,
+	create_world_sizes : [] Vector2F,
+	all_collision_data : *[..] CollisionData,
+	all_collision_rects : *[..] CollisionRect)
+-> CollisionData
+{
+	assert(create_world_poses.count == create_world_sizes.count);
+
+	collision_data : CollisionData = MakeCollisionData();
+	array_add(all_collision_data, collision_data);
+
+	for 0..create_world_poses.count-1 
+	{
+		world_pos  : Vector2F = create_world_poses[it];
+		world_size : Vector2F = create_world_sizes[it];
+
+		collision_rect : CollisionRect;
+		collision_rect.collision_id = collision_data.id;
+		collision_rect.world_rect = RectCenterDim(world_pos, world_size);
+		array_add(all_collision_rects, collision_rect);
+	}
+
+	return collision_data;
+}
+
+RemoveColliderAndRects :: inline (
+	collision_id : int,
+	all_collision_data : *[..] CollisionData,
+	all_collision_rects : *[..] CollisionRect)
+{
+	ArrayRemoveAllByNameId(all_collision_rects, collision_id, "collision_id");
+	ArrayRemoveFirstByNameId(all_collision_data, collision_id, "id");
+}
+/*
+	End of Mouse Collision System
+*/
