@@ -14,6 +14,12 @@ SharedLibraryData :: struct {
 	all_tuning_systems : *[..] TuningSystem;
 	all_tuning_pitches : *[..] TuningPitch;
 	audio_data : *AudioData;
+	global_rules : GlobalRules;
+
+	//Linear row data
+	all_linear_to_tuning_system : *[..] LinearToTuningSystem;
+	all_linear_pitch_spaces : *[..] LinearPitchSpace;
+	all_space_points : *[..] SpacePoint;
 
 	//TODO How should we pass this in? Or should we pass it in at all?
 	//I guess we need to pass it for each function that creates things as we add them.
@@ -23,7 +29,13 @@ SharedLibraryData :: struct {
 
 	//TODO We could add a pointer for my_shared_data here if global data does not work.
 	// my_shared_data : *void;
+
+	//This works! so we can use this method for custom synths for example and set function pointers back to call
+	//We could have to check them. The other method is using more dll functions but that seems like something
+	//more for if we want to call functions in different places within the main code base.
+	test_foo : TestFooProc;
 }
+TestFooProc :: #type (t : int) -> int;
 
 /*TODO Should we rename this to GlobalDefaults
 since they are not really used as rules anymore?
@@ -630,6 +642,11 @@ AsmBoolToBool :: inline (ab: AsmBool) -> bool {
 	else return true;
 }
 
+/*Start of row data
+TODO Put all row data here so we have it in 1 place and then maybe we can make it's own module eventually.
+Maybe put tuning and geometries all in 1 module or just here
+*/
+
 //TODO should we separate music_pts/OscWave out for multi-beat music_pts and more efficient use of space
 //TODO then we would also only have to loop through music_pts instead of all values
 Space2D :: struct {
@@ -846,81 +863,6 @@ MakeRowSectionData :: inline (tuning_system_id : int, x_length : int, linear_vie
 	return section_data;
 }
 
-default_builder : String_Builder;
-builder_string :: (format_string : string, args : .. string) -> string {
-	print_to_builder(*default_builder, format_string, args[0]);
-	return builder_to_string(*default_builder);
-}
-
-builder_string_2 :: (format_string : string, args : .. string) -> string {
-	print_to_builder(*default_builder, format_string, args[0], args[1]);
-	return builder_to_string(*default_builder);
-}
-//TODO Maybe we can move all these into their own module, but in general I don't really like them
-//and likely we will move them anyways once we access data specific to each array.
-ArrayFindFirstByNameId :: (
-	array: [] $T, 
-	id: $S, $name_id : string)
--> *T, bool 
-{
-    for * array {
-    	equal_ids := #insert -> string {
-    		return builder_string("(<<it).% == id;", name_id);
-    	}
-    	if equal_ids return it, true;
-    }
-    return null, false;  // Not found.
-    //TODO could assert in here and add a compiler flag
-}
-ArrayFindFirstConstByNameId :: (
-	array: [] $T, 
-	id: $S, $name_id : string) 
--> T, bool 
-{
-    for array {
-    	equal_ids := #insert -> string {
-    		return builder_string("it.% == id;", name_id);
-    	}
-    	if equal_ids return it, true;
-    }
-    return T.{}, false;  // Not found.
-    //TODO could assert in here and add a compiler flag
-}
-//TODO Can replace with context allocator once we update jai
-//TODO should we make temp the default allocator for these?
-//TODO could make a version where allocator is passed in at compile-time
-ArrayFindAllVarName :: (
-	array: [] $T, 
-	id: $S, 
-	$name_id : string,
-	allocator : Allocator = .{})
--> [] T 
-{
-    a := ifx allocator.proc then allocator else context.allocator;
-	result : [..] T;
-	result.allocator = a;
-    for array {
-    	equal_ids := #insert -> string {
-    		return builder_string("it.% == id;", name_id);
-    	}
-    	if equal_ids {
-    		array_add(*result, it);
-    	}
-    }
-    return result;
-}
-//TODO should we separate this general data array code from the
-//more game-specific data code
-/*Probably can replace with an array_resize and memcpy
-*/
-ArrayAddAll :: inline (array : [] $T, add_to : *[..] T) {
-	//TODO probably a faster way to do this with memcpy
-	//if we have enough space in the resizable array,
-	//otherwise we need to reserve more space
-	//array_resize and then memcpy
-	for array array_add(add_to, it);
-}
-
 MUSIC_ROW_GAP : float = 1;
 CreateMusicRow :: inline (
 	create_row_data : CreateRowData,
@@ -928,7 +870,7 @@ CreateMusicRow :: inline (
 	global_rules : GlobalRules,
 	all_tuning_systems : [] TuningSystem,
 	all_tuning_pitches : [] TuningPitch,
-	//TODO Need to pass these through shared library and then test in dynamic library
+	//TODO Need to pass these through shared library and then test in dynamic library and check mac
 	all_linear_to_tuning_system : *[..] LinearToTuningSystem,
 	all_linear_pitch_spaces : *[..] LinearPitchSpace,
 	all_space_points : *[..] SpacePoint) 
@@ -1551,6 +1493,8 @@ AsmRowMidiData :: struct {
 	midi_control_change : int;	
 } @LibraryAsmGen
 
+/*End of row data
+*/
 
 CollisionShape :: enum u8 {
 	RECTANGLE;
@@ -1673,6 +1617,8 @@ hover_entity_type_order :: #run () -> [] int {
 	// }
 }();
 
+/*Start of tuning system data
+*/
 /*TODO
 	USE FIGURE 3.1 and draw in op_space or world to show how the first
 	intervals are used to create a simple tuning_system.
@@ -2146,6 +2092,8 @@ TuningPitch :: struct {
 	linear_from_start : float;
 	linear_to_next : float;
 }
+/* End of tuning system data
+*/
 
 //TODO how should we actually do ids? UUIDS or systematic?
 //TODO should this be in a separate file?
@@ -2209,4 +2157,79 @@ AllNextIds :: struct {
 	// NEXT_SHAPE_QUAD_ID : int = 0;
 	// NEXT_SHAPE_TRIANGLE_ID : int = 0;
 	// NEXT_SHAPE_TEXT_ID : int = 0;
+}
+
+default_builder : String_Builder;
+builder_string :: (format_string : string, args : .. string) -> string {
+	print_to_builder(*default_builder, format_string, args[0]);
+	return builder_to_string(*default_builder);
+}
+
+builder_string_2 :: (format_string : string, args : .. string) -> string {
+	print_to_builder(*default_builder, format_string, args[0], args[1]);
+	return builder_to_string(*default_builder);
+}
+//TODO Maybe we can move all these into their own module, but in general I don't really like them
+//and likely we will move them anyways once we access data specific to each array.
+ArrayFindFirstByNameId :: (
+	array: [] $T, 
+	id: $S, $name_id : string)
+-> *T, bool 
+{
+    for * array {
+    	equal_ids := #insert -> string {
+    		return builder_string("(<<it).% == id;", name_id);
+    	}
+    	if equal_ids return it, true;
+    }
+    return null, false;  // Not found.
+    //TODO could assert in here and add a compiler flag
+}
+ArrayFindFirstConstByNameId :: (
+	array: [] $T, 
+	id: $S, $name_id : string) 
+-> T, bool 
+{
+    for array {
+    	equal_ids := #insert -> string {
+    		return builder_string("it.% == id;", name_id);
+    	}
+    	if equal_ids return it, true;
+    }
+    return T.{}, false;  // Not found.
+    //TODO could assert in here and add a compiler flag
+}
+//TODO Can replace with context allocator once we update jai
+//TODO should we make temp the default allocator for these?
+//TODO could make a version where allocator is passed in at compile-time
+ArrayFindAllVarName :: (
+	array: [] $T, 
+	id: $S, 
+	$name_id : string,
+	allocator : Allocator = .{})
+-> [] T 
+{
+    a := ifx allocator.proc then allocator else context.allocator;
+	result : [..] T;
+	result.allocator = a;
+    for array {
+    	equal_ids := #insert -> string {
+    		return builder_string("it.% == id;", name_id);
+    	}
+    	if equal_ids {
+    		array_add(*result, it);
+    	}
+    }
+    return result;
+}
+//TODO should we separate this general data array code from the
+//more game-specific data code
+/*Probably can replace with an array_resize and memcpy
+*/
+ArrayAddAll :: inline (array : [] $T, add_to : *[..] T) {
+	//TODO probably a faster way to do this with memcpy
+	//if we have enough space in the resizable array,
+	//otherwise we need to reserve more space
+	//array_resize and then memcpy
+	for array array_add(add_to, it);
 }

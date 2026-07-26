@@ -95,14 +95,6 @@ AsmClearOpData :: struct {
 	op_space_id : int;
 	clear_not_filter_3D : bool;
 }
-RowSystemType :: enum {
-	none;
-	internal_message;
-	internal_pitch;
-	midi_control_change;
-	midi_velocity;
-	midi_pitch;
-}
 OscWaveType :: enum {
 	SINE;
 	SQUARE;
@@ -117,6 +109,14 @@ OscWaveType :: enum {
 	PIANO_2;
 	PIANO_3;
 	NONE;
+}
+RowSystemType :: enum {
+	none;
+	internal_message;
+	internal_pitch;
+	midi_control_change;
+	midi_velocity;
+	midi_pitch;
 }
 LinearPitchSpaceView :: enum {
 	RATIO_PROPORTIONAL;
@@ -291,22 +291,32 @@ AsmShapeData :: struct {
 	rect_pos : Vector2;
 	rect_dim : Vector2;
 }
-AsmCircleData :: struct {
-	ret_dspace_id : int;
-	radius : float64;
-	world_center : Vector2;
-	rotate_theta : float64;
-	point_dim : Vector2;
-	is_clockwise : bool;
-	repeating_interval_ratio : float64;
-	tuning_system_id : int;
-	non_repeating : bool;
-	start_note : int;
-	is_sound_float : bool;
-	inner_circle_mute : float64;
+AsmShape3D :: struct {
 	op_space_id : int;
-	show_text : bool;
-	no_base_points : bool;
+	group_id : int;
+	rel_pos : Vector3;
+	fun_region : [] float64;
+	pitch_set : [] float64;
+	shape_text : string;
+	draw_wire_mesh : bool;
+	not_selectable : bool;
+	color : Vector4;
+	scale_value : float64;
+}
+AsmChordS2Data :: struct {
+	ret_dspace_id : int;
+	op_space_id : int;
+	world_pos : Vector2;
+	scale_world_unit : float64;
+	point_dim : Vector2;
+	lp_count : int;
+	tuning_system_id : int;
+	is_sound_float : bool;
+	vl_order_text : bool;
+	vl_order_color : bool;
+	asm_cs_filters : [] AsmCSFilter;
+	cs_filter_aggregate : ChordSpaceFilterAggregate;
+	osc_wave_type : OscWaveType;
 }
 AsmCreateSpiral :: struct {
 	ret_dspace_id : int;
@@ -330,30 +340,20 @@ AsmCreateSpiral :: struct {
 	base_chord : [] float64;
 	base_index : int;
 }
-AsmChordS2Data :: struct {
+AsmCircleData :: struct {
 	ret_dspace_id : int;
-	op_space_id : int;
-	world_pos : Vector2;
-	scale_world_unit : float64;
+	radius : float64;
+	world_center : Vector2;
+	rotate_theta : float64;
 	point_dim : Vector2;
-	lp_count : int;
+	is_clockwise : bool;
+	repeating_interval_ratio : float64;
 	tuning_system_id : int;
+	non_repeating : bool;
+	start_note : int;
 	is_sound_float : bool;
-	vl_order_text : bool;
-	vl_order_color : bool;
-	asm_cs_filters : [] AsmCSFilter;
-	cs_filter_aggregate : ChordSpaceFilterAggregate;
-	osc_wave_type : OscWaveType;
-}
-AsmShape3D :: struct {
+	inner_circle_mute : float64;
 	op_space_id : int;
-	group_id : int;
-	rel_pos : Vector3;
-	fun_region : [] float64;
-	pitch_set : [] float64;
-	shape_text : string;
-	draw_wire_mesh : bool;
-	not_selectable : bool;
-	color : Vector4;
-	scale_value : float64;
+	show_text : bool;
+	no_base_points : bool;
 }

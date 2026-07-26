@@ -5629,10 +5629,14 @@ for abs_path_name : perm.all_data.all_run_external_update_events
 	//TODO We can make this a function AllDataToSharedLibraryData if needed
 	//We can also set values in here and then check them on return to do some in game updates for example
 	shared_lib : SharedLibraryData;
+	shared_lib.global_rules = perm.all_data.global_rules;
 	shared_lib.audio_data = audio_data;
 	shared_lib.all_mspace_data = *perm.all_data.all_mspace_data;
 	shared_lib.all_tuning_systems = *perm.all_data.all_tuning_systems;
 	shared_lib.all_tuning_pitches = *perm.all_data.all_tuning_pitches;
+	shared_lib.all_linear_to_tuning_system = *perm.all_data.all_linear_to_tuning_system;
+	shared_lib.all_linear_pitch_spaces = *perm.all_data.all_linear_pitch_spaces;
+	shared_lib.all_space_points = *perm.all_data.all_space_points;
 	//TODO How should be actually pass this in? Should we just put it in shared library?
 	//It can't be global anymore...
 	// shared_lib.all_next_ids = *ALL_NEXT_IDS;
@@ -5641,6 +5645,8 @@ for abs_path_name : perm.all_data.all_run_external_update_events
 	//keep 1 pointer and dont have to reset it all the time.
 	ExternalUpdate := cast(Type_ExternalUpdate) dl.ExternalUpdate_proc_address;
 	ExternalUpdate(*shared_lib);
+
+	// print("test foo = %\n", shared_lib.test_foo(1));
 }
 array_reset_keeping_memory(*perm.all_data.all_run_external_update_events);
 
@@ -5989,6 +5995,8 @@ if perm.all_data.all_start_playing_music_pts.count > 0 {
 				case .SUBTRACTIVE_SYNTH; {
 					//TODO 
 				}
+				//TODO Can add a custom synth here with *void for custom data
+				//OR just call a synth function directly with that data for this music_pt
 				}
 
 				//TODO Can use this if we want
