@@ -5631,9 +5631,11 @@ for abs_path_name : perm.all_data.all_run_external_update_events
 	shared_lib : SharedLibraryData;
 	shared_lib.global_rules = perm.all_data.global_rules;
 	shared_lib.audio_data = audio_data;
-	shared_lib.all_mspace_data = *perm.all_data.all_mspace_data;
 	shared_lib.all_tuning_systems = *perm.all_data.all_tuning_systems;
 	shared_lib.all_tuning_pitches = *perm.all_data.all_tuning_pitches;
+
+	shared_lib.all_mspace_data = *perm.all_data.all_mspace_data;
+	shared_lib.free_mspace_data_pool = *perm.all_data.free_mspace_data_pool;
 
 	shared_lib.all_linear_to_tuning_system = *perm.all_data.all_linear_to_tuning_system;
 	shared_lib.all_linear_pitch_spaces = *perm.all_data.all_linear_pitch_spaces;

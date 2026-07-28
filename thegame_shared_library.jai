@@ -14,10 +14,12 @@ WE COULD put all shared data in a common struct here and all data and then just 
 That would likely be the best option.
 */
 SharedLibraryData :: struct {
-	all_tuning_systems : *[..] TuningSystem;
-	all_tuning_pitches : *[..] TuningPitch;
 	audio_data : *AudioData;
 	global_rules : GlobalRules;
+
+	//Tuning system data
+	all_tuning_systems : *[..] TuningSystem;
+	all_tuning_pitches : *[..] TuningPitch;
 
 	//Music space data
 	all_mspace_data : *[..] MusicSpaceData;

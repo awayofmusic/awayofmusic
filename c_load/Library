@@ -44,14 +44,14 @@ AsmOpSpaceType :: enum {
 	space_2d;
 	space_3d;
 }
+AsmDeleteSimpleSynthData :: struct {
+	synth_id : int;
+}
 AsmClearMSpaceData :: struct {
 	mspace_id : int;
 }
 AsmDeleteMSpaceData :: struct {
 	mspace_id : int;
-}
-AsmDeleteSimpleSynthData :: struct {
-	synth_id : int;
 }
 AsmRowMidiData :: struct {
 	midi_channel : int;
@@ -82,6 +82,31 @@ AsmGetOrCreateSimpleSynthData :: struct {
 	ret_synth_id : int;
 	synth_name : string;
 }
+GetOrCreateMSpaceType :: enum {
+	GET_BY_NAME;
+	GET_BY_ID;
+	GET_BY_INDEX;
+}
+LinearPitchSpaceView :: enum {
+	RATIO_PROPORTIONAL;
+	FORCE_EQUAL;
+}
+RowSystemType :: enum {
+	none;
+	internal_message;
+	internal_pitch;
+	midi_control_change;
+	midi_velocity;
+	midi_pitch;
+}
+SimpleSynthMessageType :: enum {
+	VOLUME;
+	WAVE_TYPE;
+	ATTACK_SECONDS;
+	RELEASE_SECONDS;
+	ATTACK_CURVE;
+	RELEASE_CURVE;
+}
 OscWaveType :: enum {
 	SINE;
 	SQUARE;
@@ -96,31 +121,6 @@ OscWaveType :: enum {
 	PIANO_2;
 	PIANO_3;
 	NONE;
-}
-LinearPitchSpaceView :: enum {
-	RATIO_PROPORTIONAL;
-	FORCE_EQUAL;
-}
-RowSystemType :: enum {
-	none;
-	internal_message;
-	internal_pitch;
-	midi_control_change;
-	midi_velocity;
-	midi_pitch;
-}
-GetOrCreateMSpaceType :: enum {
-	GET_BY_NAME;
-	GET_BY_ID;
-	GET_BY_INDEX;
-}
-SimpleSynthMessageType :: enum {
-	VOLUME;
-	WAVE_TYPE;
-	ATTACK_SECONDS;
-	RELEASE_SECONDS;
-	ATTACK_CURVE;
-	RELEASE_CURVE;
 }
 S3CamStartType :: enum {
 	MIN_ZY;
