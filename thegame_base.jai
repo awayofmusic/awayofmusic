@@ -5634,9 +5634,15 @@ for abs_path_name : perm.all_data.all_run_external_update_events
 	shared_lib.all_mspace_data = *perm.all_data.all_mspace_data;
 	shared_lib.all_tuning_systems = *perm.all_data.all_tuning_systems;
 	shared_lib.all_tuning_pitches = *perm.all_data.all_tuning_pitches;
+
 	shared_lib.all_linear_to_tuning_system = *perm.all_data.all_linear_to_tuning_system;
 	shared_lib.all_linear_pitch_spaces = *perm.all_data.all_linear_pitch_spaces;
 	shared_lib.all_space_points = *perm.all_data.all_space_points;
+
+	shared_lib.all_simple_synths = *perm.all_data.all_simple_synths;
+	shared_lib.free_simple_synth_pool = *perm.all_data.free_simple_synth_pool;
+
+
 	//TODO How should be actually pass this in? Should we just put it in shared library?
 	//It can't be global anymore...
 	// shared_lib.all_next_ids = *ALL_NEXT_IDS;

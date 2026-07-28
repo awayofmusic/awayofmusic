@@ -1,5 +1,6 @@
 #import "Math";
 #import "thegame_math";
+#import "thegame_array_poly";
 //This is just for array_add for the synth so maybe we can move that out eventually and then remove this import
 //OR maybe we'll use this more later and also assertions and logging eventually...
 #import "Basic";

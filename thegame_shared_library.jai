@@ -3,11 +3,15 @@
 #import "Math";
 #import "thegame_math";
 #import "thegame_audio";
+#import "thegame_array_poly";
 #import "shared_names";
 
 //TODO Maybe eventually we can collapse this with AllData so we only have 1 struct both internally and externally
 /*DOC : This is a combinary of Dynamic Library and Shared Object file which sounds good in general imo.
 We pass this in to the dynamic lib / shared object so that the arrays can be used directly.
+
+WE COULD put all shared data in a common struct here and all data and then just pass a pointer with just that.
+That would likely be the best option.
 */
 SharedLibraryData :: struct {
 	all_mspace_data : *[..] MusicSpaceData;
@@ -20,6 +24,11 @@ SharedLibraryData :: struct {
 	all_linear_to_tuning_system : *[..] LinearToTuningSystem;
 	all_linear_pitch_spaces : *[..] LinearPitchSpace;
 	all_space_points : *[..] SpacePoint;
+
+	//Synth data
+	all_simple_synths : *[..] SimpleSynth;
+	free_simple_synth_pool : *[..] SimpleSynth;
+
 
 	//TODO How should we pass this in? Or should we pass it in at all?
 	//I guess we need to pass it for each function that creates things as we add them.
@@ -59,6 +68,198 @@ GlobalRules :: struct {
 
 	//TODO should we have a global scale as well?
 }
+
+/*Synth Data creation start 
+*/
+AsmGetOrCreateSimpleSynthData :: struct {
+	ret_synth_id : int;
+	synth_name : AsmString;
+} @LibraryAsmGen
+GetOrCreateSimpleSynthData :: struct {
+	synth_name : string;
+}
+/*TODO Should this be separate from synths we add later like subtractive synth?
+Maybe we won't add it and we'll just do custom synths.
+I think it's better this way and then if we add a subtractive synth later
+we can separate it especially for update and custom synths will run completely separately anyways.
+
+We could also pass in runtime settings here if we want to set some defaults from there eventually
+*/
+GetOrCreateSimpleSynth :: (
+	gcsd : GetOrCreateSimpleSynthData,
+	all_simple_synths : *[..] SimpleSynth,
+	free_simple_synth_pool : *[..] SimpleSynth)
+-> *SimpleSynth 
+{
+	synth_data, found_synth := ArrayFindFirstByNameId(all_simple_synths.*,
+		gcsd.synth_name, "synth_name");
+	if found_synth return synth_data;
+
+	synth : *SimpleSynth;
+	if free_simple_synth_pool.count > 0 {
+		popped_synth : SimpleSynth = pop(free_simple_synth_pool);
+		array_add(all_simple_synths, popped_synth);
+		synth = peek_pointer(all_simple_synths.*);
+	} else {
+		synth = array_add(all_simple_synths);
+	}
+	//TODO We only need to set the id for a new synth but to avoid errors ill just always generate a new id there
+	synth.synth_id = ALL_NEXT_IDS.NEXT_SYNTH_ID;
+	ALL_NEXT_IDS.NEXT_SYNTH_ID += 1;
+	synth.wave_type = OscWaveType.SINE;
+	synth.envelope = MakeVolumeEnvelope();
+	synth.volume = 0.1;
+	array_reset_keeping_memory(*synth.simple_waves);
+
+	update : UpdateSimpleSynthData;
+	update.update_synth_name = true;
+	update.synth_name = gcsd.synth_name;
+	UpdateSimpleSynth(synth, update);
+	return synth;
+}
+SimpleSynthMessageType :: enum {
+	VOLUME;
+	WAVE_TYPE;
+	ATTACK_SECONDS;
+	RELEASE_SECONDS;
+	ATTACK_CURVE;
+	RELEASE_CURVE;
+} @LibraryAsmGen
+AsmUpdateSimpleSynthData :: struct {
+	synth_id : int;
+
+	update_synth_name : AsmBool;
+	synth_name : AsmString;
+
+	update_volume : AsmBool;
+	volume : float64;
+
+	update_wave_type : AsmBool;
+	wave_type : OscWaveType;
+
+	update_attack_seconds : AsmBool;
+	attack_seconds : float64;
+
+	update_attack_curve : AsmBool;
+	attack_curve : float64;
+
+	update_release_seconds : AsmBool;
+	release_seconds : float64;
+
+	update_release_curve : AsmBool;
+	release_curve : float64;
+} @LibraryAsmGen
+UpdateSimpleSynthData :: struct {
+	synth_id : int;
+
+	update_synth_name : bool;
+	synth_name : string;
+
+	update_volume : bool;
+	volume : float;
+
+	update_wave_type : bool;
+	wave_type : OscWaveType;
+
+	update_attack_seconds : bool;
+	attack_seconds : float;
+
+	update_attack_curve : bool;
+	attack_curve : float;
+
+	update_release_seconds : bool;
+	release_seconds : float;
+
+	update_release_curve : bool;
+	release_curve : float;
+}
+UpdateSimpleSynth :: (
+	update : UpdateSimpleSynthData,
+	all_simple_synths : [] SimpleSynth) 
+-> *SimpleSynth, success : bool, msg : string
+{
+	synth, found_synth := ArrayFindFirstByNameId(all_simple_synths,
+		update.synth_id, "synth_id");
+	if !found_synth {
+		return null, false, tprint("synth_id % not found.\n", update.synth_id);
+	}
+
+	success, msg := UpdateSimpleSynth(synth, update);
+	return synth, success, msg;
+}
+UpdateSimpleSynth :: (
+	synth : *SimpleSynth,
+	update : UpdateSimpleSynthData) 
+-> success : bool, msg : string
+{
+	if update.update_synth_name {
+		if synth.synth_name.data != null && synth.synth_name.count > 0 {
+			free(synth.synth_name);
+		}
+		synth.synth_name = copy_string(update.synth_name);
+	}
+	if update.update_volume {
+		synth.volume = update.volume;
+	}
+	if update.update_wave_type {
+		synth.wave_type = update.wave_type;
+	}
+	if update.update_attack_seconds {
+		synth.envelope.attack_seconds = update.attack_seconds;
+	}
+	if update.update_release_seconds {
+		synth.envelope.release_seconds = update.release_seconds;
+	}
+	if update.update_attack_curve {
+		synth.envelope.n_attack = update.attack_curve;
+	}
+	if update.update_release_curve {
+		synth.envelope.n_release = update.release_curve;
+	}
+	return true, "";
+}
+AsmDeleteSimpleSynthData :: struct {
+	synth_id : int;
+} @LibraryAsmGen
+DeleteSimpleSynthData :: struct {
+	synth_id : int;
+}
+DeleteSimpleSynth :: (
+	delete : DeleteSimpleSynthData,
+	all_simple_synths : *[..] SimpleSynth,
+	free_simple_synth_pool : *[..] SimpleSynth)
+-> success : bool, msg : string
+{
+	synth_index, found_synth := ArrayFindFirstIndexByNameId(all_simple_synths.*,
+		delete.synth_id, "synth_id");
+	if !found_synth {
+		return false, tprint("synth_id % not found.\n", delete.synth_id);
+	}
+	/*DOC : We reset the synth on creation if we take it back from the pool.*/
+	deleted_synth : SimpleSynth = all_simple_synths.*[synth_index];
+	array_add(free_simple_synth_pool, deleted_synth);
+	array_ordered_remove_by_index(all_simple_synths, synth_index);
+	return true, "";
+}
+//TODO We can also delete all subtractive synths here eventually if we add those
+DeleteAllSynths :: (
+	all_simple_synths : *[..] SimpleSynth,
+	free_simple_synth_pool : *[..] SimpleSynth)
+{
+	//We don't want to delete the default simple synth
+	// assert(all_simple_synths.count >= 1);
+	if all_simple_synths.count <= 1 return;
+
+	delete : DeleteSimpleSynthData;
+	for 1..all_simple_synths.count-1 {
+		delete.synth_id = all_simple_synths.*[it].synth_id;
+		DeleteSimpleSynth(delete, all_simple_synths, free_simple_synth_pool);
+	}
+	//We reset the synth id to 1 since the default synth should always be in the array
+	ALL_NEXT_IDS.NEXT_SYNTH_ID = 1;
+}
+/*Synth Data creation end
+*/
 
 //TODO rename all_base_collision_entities -> mspace_collision_entities
 //TODO I think the ids for these arrays should be stored in here so we can reset them
@@ -641,6 +842,12 @@ AsmBoolToBool :: inline (ab: AsmBool) -> bool {
 	if ab.value == 0 return false;
 	else return true;
 }
+AsmString :: struct {
+	count : int;
+	data_address : int;
+}
+
+
 
 /*Start of row data
 TODO Put all row data here so we have it in 1 place and then maybe we can make it's own module eventually.
@@ -919,6 +1126,7 @@ CreateMusicRow :: inline (
 	row.row_height = create_row_data.row_height;
 	row.row_midi_data = create_row_data.row_midi_data;
 	row.row_system_type = create_row_data.row_system_type;
+	row.system_id = create_row_data.row_system_id;
 	// row.sound_on = create_row_data.sound_on;
 	row.is_muted_row = create_row_data.muted_row;
 	// row.num_of_points = GetRowNumOfPoints(create_row_data.tuning_system_count, create_row_data);
@@ -2157,79 +2365,4 @@ AllNextIds :: struct {
 	// NEXT_SHAPE_QUAD_ID : int = 0;
 	// NEXT_SHAPE_TRIANGLE_ID : int = 0;
 	// NEXT_SHAPE_TEXT_ID : int = 0;
-}
-
-default_builder : String_Builder;
-builder_string :: (format_string : string, args : .. string) -> string {
-	print_to_builder(*default_builder, format_string, args[0]);
-	return builder_to_string(*default_builder);
-}
-
-builder_string_2 :: (format_string : string, args : .. string) -> string {
-	print_to_builder(*default_builder, format_string, args[0], args[1]);
-	return builder_to_string(*default_builder);
-}
-//TODO Maybe we can move all these into their own module, but in general I don't really like them
-//and likely we will move them anyways once we access data specific to each array.
-ArrayFindFirstByNameId :: (
-	array: [] $T, 
-	id: $S, $name_id : string)
--> *T, bool 
-{
-    for * array {
-    	equal_ids := #insert -> string {
-    		return builder_string("(<<it).% == id;", name_id);
-    	}
-    	if equal_ids return it, true;
-    }
-    return null, false;  // Not found.
-    //TODO could assert in here and add a compiler flag
-}
-ArrayFindFirstConstByNameId :: (
-	array: [] $T, 
-	id: $S, $name_id : string) 
--> T, bool 
-{
-    for array {
-    	equal_ids := #insert -> string {
-    		return builder_string("it.% == id;", name_id);
-    	}
-    	if equal_ids return it, true;
-    }
-    return T.{}, false;  // Not found.
-    //TODO could assert in here and add a compiler flag
-}
-//TODO Can replace with context allocator once we update jai
-//TODO should we make temp the default allocator for these?
-//TODO could make a version where allocator is passed in at compile-time
-ArrayFindAllVarName :: (
-	array: [] $T, 
-	id: $S, 
-	$name_id : string,
-	allocator : Allocator = .{})
--> [] T 
-{
-    a := ifx allocator.proc then allocator else context.allocator;
-	result : [..] T;
-	result.allocator = a;
-    for array {
-    	equal_ids := #insert -> string {
-    		return builder_string("it.% == id;", name_id);
-    	}
-    	if equal_ids {
-    		array_add(*result, it);
-    	}
-    }
-    return result;
-}
-//TODO should we separate this general data array code from the
-//more game-specific data code
-/*Probably can replace with an array_resize and memcpy
-*/
-ArrayAddAll :: inline (array : [] $T, add_to : *[..] T) {
-	//TODO probably a faster way to do this with memcpy
-	//if we have enough space in the resizable array,
-	//otherwise we need to reserve more space
-	//array_resize and then memcpy
-	for array array_add(add_to, it);
 }

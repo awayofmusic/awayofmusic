@@ -12528,6 +12528,7 @@ Test_LoadDL :: (
 		//I will just run the function and then check next frame
 		count_equal := AssertEquals(1, global_dynamic_libraries.count);
 		if count_equal {
+			AssertEquals(2, perm.all_data.all_simple_synths.count);
 			AssertEquals(1, perm.all_data.all_mspace_data[0].all_music_lane_rows.count);
 			AssertEquals(3, perm.all_data.all_mspace_data[0].all_music_pts.count);
 			RemoveDynamicLibrary(*global_dynamic_libraries[0]);

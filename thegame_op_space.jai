@@ -3422,23 +3422,6 @@ OpSpecData3D :: struct {
 	spec_3D_pool : Flat_Pool;
 	spec_3D_alloc : Allocator;
 }
-AsmString :: struct {
-	count : int;
-	data_address : int;
-}
-//DOC : This return the string directly from memory so we need to copy it with or without an allocator
-//to allocate it properly depending on where the string needs to be allocated.
-AsmStringToString :: inline (
-	asm_s : AsmString,
-	ram : RAMMemory)
--> string, CPUError
-{
-	s_data, err := GetMemory(asm_s.data_address, asm_s.count, ram);
-	if err.is_error return "", err;
-
-	s := string.{asm_s.count, s_data};
-	return s, NO_CPU_ERROR;
-}
 //TODO Could make this into a compile-time list if needed.
 AsmOpSpaceData :: struct {
 	//return data

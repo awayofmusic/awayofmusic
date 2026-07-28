@@ -1,5 +1,6 @@
 #import "Basic";
 #import "thegame_shared_library";
+#import "thegame_audio";
 
 found_new_points : bool = false;
 
@@ -14,16 +15,33 @@ WE COULD ALSO allow rendering to an op_space once we add op spaces since the ren
 //TODO should pass in audio somehow for synth and audio creation levels
 #program_export
 ExternalUpdate :: (shared_lib : *SharedLibraryData) {
+	//TODO We could set ids from context everywhere so its the same everywhere and then we don't need it here.
+	ALL_NEXT_IDS = context.ALL_NEXT_IDS;
 	// print("run external update\n");
 	// found_new_points = !found_new_points;
 	// print("found_new_points=%\n", found_new_points);
+
+	gocss : GetOrCreateSimpleSynthData;
+	gocss.synth_name = "s0";
+	synth : *SimpleSynth = GetOrCreateSimpleSynth(gocss, shared_lib.all_simple_synths, shared_lib.free_simple_synth_pool);
+	update_synth : UpdateSimpleSynthData;
+	update_synth.synth_id = synth.synth_id;
+	update_synth.update_wave_type = true;
+	update_synth.wave_type = OscWaveType.SAW;
+	//Volume is between 0-1 and is set for each neume
+	//so 0.1 for 3 values will be 0.3 overall
+	//anything above 1 will be clipped and likely cause audible distortion
+	update_synth.update_volume = true;
+	update_synth.volume = 0.1;
+	UpdateSimpleSynth(synth, update_synth);
+
 
 	crd : CreateRowData;
 	crd.octave_height = 12;
 	crd.row_height = 12;
 	crd.row_system_type = RowSystemType.internal_pitch;
 	//TODO Add a synth at set it here like this
-	crd.row_system_id = 0;
+	crd.row_system_id = synth.synth_id;
 	row_sections : [1] RowSectionData;
 	row_sections[0].tuning_system_id = shared_lib.all_tuning_systems.*[0].id;
 	row_sections[0].x_length = 12;
