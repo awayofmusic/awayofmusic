@@ -1774,7 +1774,6 @@ CreateTextOpSpace :: inline (
 {
 	return CreateTextOpSpace(.[text_file_id], text_editor_data, pixels_per_square, all_data, renderer_data);
 }
-DEFAULT_TEXT_OP_SIZE : Vector2F : #run 1.115*OP_SPACE_DEFAULT_SIZE;
 CreateTextOpSpace :: inline (
 	//TODO I think this is not optional because even if we don't alreayd have a TextFile we want to be able
 	//to save to a text file so we would create one. 
@@ -3533,7 +3532,6 @@ OP_SPACE_MIN_SIZE :: Vector2F.{8,5};
 //We could remove it once we do settings through dynamic libraries.
 OP_SPACE_MAX_SIZE :: Vector2F.{500,500};
 // OP_SPACE_MIN_SIZE :: Vector2F.{5,5};
-OP_SPACE_DEFAULT_SIZE :: Vector2F.{40,30};
 //TODO NEED TO PUT THESE IN TextOpSpaceData and compute them
 //on creation and also on update if we change the window size
 //or change proportions for example.

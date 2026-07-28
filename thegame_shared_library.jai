@@ -14,11 +14,14 @@ WE COULD put all shared data in a common struct here and all data and then just 
 That would likely be the best option.
 */
 SharedLibraryData :: struct {
-	all_mspace_data : *[..] MusicSpaceData;
 	all_tuning_systems : *[..] TuningSystem;
 	all_tuning_pitches : *[..] TuningPitch;
 	audio_data : *AudioData;
 	global_rules : GlobalRules;
+
+	//Music space data
+	all_mspace_data : *[..] MusicSpaceData;
+	free_mspace_data_pool : *[..] MusicSpaceData;
 
 	//Linear row data
 	all_linear_to_tuning_system : *[..] LinearToTuningSystem;
@@ -299,6 +302,255 @@ MusicSpaceData :: struct {
 	//op_space_id and maybe just rect if that's the only shape in the base.
 	all_base_collision_entities : [..] CollisionEntity;	
 }
+AsmGetOrCreateMSpaceData :: struct {
+	ret_mspace_id : int;
+
+	gc_type : GetOrCreateMSpaceType;
+	mspace_id : int;
+	mspace_index : int;
+	mspace_name : AsmString;
+} @LibraryAsmGen
+GetOrCreateMSpaceType :: enum {
+	GET_BY_NAME;
+	GET_BY_ID;
+	GET_BY_INDEX;
+	// CREATE;
+} @LibraryAsmGen
+GetOrCreateMSpaceData :: struct {
+	gc_type : GetOrCreateMSpaceType;
+	mspace_id : int;
+	mspace_index : int;
+	mspace_name : string;
+}
+GetOrCreateMusicSpace :: (
+	gcmd : GetOrCreateMSpaceData,
+	rs : RuntimeSettingsData,
+	all_mspace_data : *[..] MusicSpaceData,
+	free_mspace_data_pool : *[..] MusicSpaceData) 
+-> *MusicSpaceData
+{
+	if gcmd.gc_type == {
+	case GetOrCreateMSpaceType.GET_BY_INDEX; {
+		if gcmd.mspace_index >= 0 && gcmd.mspace_index < all_mspace_data.count {
+			return *(all_mspace_data.*[gcmd.mspace_index]);
+		}
+	}
+	case GetOrCreateMSpaceType.GET_BY_ID; {
+		mspace_data, found_mspace := ArrayFindFirstByNameId(all_mspace_data.*,
+			gcmd.mspace_id, "mspace_id");
+		if found_mspace return mspace_data;
+	}
+	case GetOrCreateMSpaceType.GET_BY_NAME; {
+		mspace_data, found_mspace := ArrayFindFirstByNameId(all_mspace_data.*,
+			gcmd.mspace_name, "mspace_name");
+		if found_mspace return mspace_data;
+	}
+	}
+
+	//We did not find the mspace so we create it
+	//DOC : We will reuse mspaces eventually so having this as default allocator
+	//is fine since we can just clear it and then reuse later when needed
+	mspace_data : *MusicSpaceData;
+	if free_mspace_data_pool.count > 0 {
+		popped_mspace : MusicSpaceData = pop(free_mspace_data_pool);
+		ClearMusicSpace(*popped_mspace);
+		array_add(all_mspace_data, popped_mspace);
+		mspace_data = peek_pointer(all_mspace_data.*);
+	} else {
+		mspace_data = array_add(all_mspace_data);
+	}
+	//TODO We only need to set the id for a new mspace but to avoid errors ill just always generate a new id there
+	mspace_data.mspace_id = ALL_NEXT_IDS.NEXT_MSPACE_ID;
+	ALL_NEXT_IDS.NEXT_MSPACE_ID += 1;
+	#insert #run SetResizableArrays(MusicSpaceData, 
+		"mspace_data.%.allocator = context.allocator;\n");
+
+	//This will set all the default values from runtime settings to the new mspace by default
+	//We could pass this in to create but I think it's ok to separate them right now.
+	//Setting the name here ensures that we free the old string if neede.
+	update : UpdateMSpaceData;
+	update.update_mspace_name = true;
+	update.mspace_name = gcmd.mspace_name;
+	UpdateMusicSpace(mspace_data, update, rs, all_mspace_data);
+
+	return mspace_data;
+}
+AsmUpdateMSpaceData :: struct {
+	mspace_id : int;
+
+	update_mspace_index : AsmBool;
+	mspace_index : int;
+
+	update_mspace_name : AsmBool;
+	mspace_name : AsmString;
+
+	update_tano_x_unit_width : AsmBool;
+	tano_x_unit_width : float64;
+
+	update_mspace_audio_row_size : AsmBool;
+	set_fixed_audio_row_size : AsmBool;
+	mspace_audio_row_size : int;
+} @LibraryAsmGen
+UpdateMSpaceData :: struct {
+	mspace_id : int;
+
+	update_mspace_index : bool;
+	mspace_index : int;
+
+	update_mspace_name : bool;
+	mspace_name : string;
+
+	update_tano_x_unit_width : bool;
+	tano_x_unit_width : float64;
+
+	update_mspace_audio_row_size : bool;
+	set_fixed_audio_row_size : bool;
+	mspace_audio_row_size : int;
+}
+UpdateMusicSpace :: (
+	update : UpdateMSpaceData,
+	rsd : RuntimeSettingsData,
+	all_mspace_data : *[..] MusicSpaceData)
+-> *MusicSpaceData, success : bool, msg : string
+{
+	mspace, found_mspace := ArrayFindFirstByNameId(all_mspace_data.*,
+		update.mspace_id, "mspace_id");
+	if !found_mspace {
+		return null, false, tprint("mspace_id % not found.\n", update.mspace_id);
+	}
+
+	success, msg := UpdateMusicSpace(mspace, update, rsd, all_mspace_data);
+	return mspace, success, msg;
+}
+UpdateMusicSpace :: (
+	mspace : *MusicSpaceData,
+	update : UpdateMSpaceData,
+	rsd : RuntimeSettingsData,
+	all_mspace_data : *[..] MusicSpaceData)
+-> success : bool, msg : string
+{
+	if update.update_mspace_index {
+		if update.mspace_index >= 0 && update.mspace_index < all_mspace_data.count {
+			swap(mspace, *(all_mspace_data.*[update.mspace_index]));
+		}
+	}
+	if update.update_mspace_name {
+		//TODO If we ever have an mspace allocator, then we can also use that here instead
+		//although we only clear it on clearing mspace so maybe this is better overall
+		if mspace.mspace_name.data != null && mspace.mspace_name.count > 0 {
+			free(mspace.mspace_name);
+		}
+		mspace.mspace_name = copy_string(update.mspace_name);
+	}
+	if update.update_tano_x_unit_width {
+		mspace.tano_x_unit_width = update.tano_x_unit_width;
+	} else {
+		mspace.tano_x_unit_width = rsd.default_tano_x_unit_width;
+	}
+	if update.update_mspace_audio_row_size {
+		mspace.is_fixed_audio_row_size = update.set_fixed_audio_row_size;
+		if update.set_fixed_audio_row_size {
+			mspace.mspace_audio_row_size = update.mspace_audio_row_size;
+		} else {
+			mspace.mspace_audio_row_size = ArrayFindMaxByNameId(mspace.all_music_lane_rows, "row_size", 0);
+		}
+	}
+
+	return true, "";
+}
+
+AsmDeleteMSpaceData :: struct {
+	mspace_id : int;
+} @LibraryAsmGen
+DeleteMSpaceData :: struct {
+	mspace_id : int;
+}
+DeleteMusicSpace :: (
+	delete : DeleteMSpaceData,
+	all_mspace_data : *[..] MusicSpaceData,
+	free_mspace_data_pool : *[..] MusicSpaceData)
+-> success : bool, msg : string
+{
+	mspace_index, found_mspace := ArrayFindFirstIndexByNameId(all_mspace_data.*,
+		delete.mspace_id, "mspace_id");
+	if !found_mspace {
+		return false, tprint("mspace_id % not found.\n", delete.mspace_id);
+	}
+	/*DOC : We don't reset or clear the mspace here because in case we accidentally
+	deleted it, we still have the info, so we can make a terminal command or function
+	to keep these back (or dynamic lib can just get it back directly from free_mspace_data_pool)
+	*/
+	deleted_mspace : MusicSpaceData = all_mspace_data.*[mspace_index];
+	array_add(free_mspace_data_pool, deleted_mspace);
+	array_ordered_remove_by_index(all_mspace_data, mspace_index);
+	return true, "";
+}
+AsmClearMSpaceData :: struct {
+	mspace_id : int;
+} @LibraryAsmGen
+ClearMSpaceData :: struct {
+	mspace_id : int;
+}
+ClearMusicSpace :: (
+	clear : ClearMSpaceData,
+	all_mspace_data : *[..] MusicSpaceData) 
+-> success : bool, msg : string
+{
+	//TODO We could do by index or id here and the do a GetMusicSpace and pull that out from get or create
+	//and then fetch by that here
+	// if !InRange(0, clear.mspace_index, all_mspace_data.count-1) {
+	// 	return false, tprint("mspace_id % not found.\n", clear.mspace_id);
+	// }
+	mspace, found_mspace := ArrayFindFirstByNameId(all_mspace_data.*,
+		clear.mspace_id, "mspace_id");
+	if !found_mspace {
+		return false, tprint("mspace_id % not found.\n", clear.mspace_id);
+	}
+
+	ClearMusicSpace(mspace);
+	return true, "";
+}
+ClearMusicSpace :: (mspace_data : *MusicSpaceData) {
+	#insert #run SetResizableArrays(MusicSpaceData, 
+		"array_reset_keeping_memory(*mspace_data.%);\n");
+
+	ResetCamera2D(*mspace_data.mspace_cam);
+}
+
+OP_SPACE_DEFAULT_SIZE :: Vector2F.{40,30};
+DEFAULT_TEXT_OP_SIZE : Vector2F : #run 1.115*OP_SPACE_DEFAULT_SIZE;
+RuntimeSettingsData :: struct {
+	//TODO Add these to ParsedRuntimeSettings
+	default_zero_pitch_frequency : float64 = C4;
+	default_tano_x_units_per_second : float64 = 1.0;
+	default_tano_x_unit_width : float64 = 1.75;
+
+	//TODO What is a good default here? Should we test it somehow?
+	//Will likely be different on different cpus
+	asm_instructions_per_frame : int = 200;
+
+	//I am removing this and setting it through the terminal instead for testing
+	//eventually we have some file names here for dynamic libraries once we do that
+	//but for now its easier to avoid string memory allocation and freeing
+	// default_input_mappings_file : string = INPUT_MAPPINGS_REL_PATH;
+	save_file_on_focus_lost : bool = false;
+
+	//TODO Should this be in it's own file eventually so we can have custom shareable themes with just 1 file?
+	//Maybe we wait till there are too many setting options or if we want to add colors/settings as variables as well.
+	//TODO We could add that as part of the language and have a specific file for current theme which is just code...
+	//and then have a specific asm instruction to do that. ALSO can do it with external dynamic libraries
+	//ACTUALLY external dynamic library is even better I think. Gives an example of using external dynamic libraries as well
+	//which could be fun to play around with how things look
+	//Theme settings
+	default_font_size : float = 18.0;
+	default_font_color : Vector4F;
+	default_text_op_background_color : Vector4F;
+	default_text_op_border_color : Vector4F;
+
+	terminal_size : Vector2F = OP_SPACE_DEFAULT_SIZE;
+	text_op_size : Vector2F = DEFAULT_TEXT_OP_SIZE;
+	default_op_space_size : Vector2F = OP_SPACE_DEFAULT_SIZE;
+}
 
 //TODO We don't use most of the things in here anymore so we
 //can remove them like the transform and cam_dim especially.
@@ -317,6 +569,10 @@ Camera2D :: struct {
 	// cam_dim : Rectangle2;
 	//TODO should we combine world_pos and transform into Matrix3x2F?
 	// is_fixed : bool = false;
+}
+ResetCamera2D :: inline (cam : *Camera2D) {
+	cam.world_pos = Vector2F.{0,0};
+	// cam.move_this_frame = Vector2F.{0,0};
 }
 
 /*TODO

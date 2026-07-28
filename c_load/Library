@@ -16,12 +16,6 @@ Vector4 :: struct {
 	z : float;
 	w : float;
 }
-AsmClearMSpaceData :: struct {
-	mspace_id : int;
-}
-AsmDeleteMSpaceData :: struct {
-	mspace_id : int;
-}
 CreateTuningType :: enum {
 	EQUAL_TEMPERAMENT;
 	RATIOS_FROM_START;
@@ -46,14 +40,15 @@ SpiralType :: enum {
 	CONCENTRIC_CIRCLE;
 	BOOK;
 }
-GetOrCreateMSpaceType :: enum {
-	GET_BY_NAME;
-	GET_BY_ID;
-	GET_BY_INDEX;
-}
 AsmOpSpaceType :: enum {
 	space_2d;
 	space_3d;
+}
+AsmClearMSpaceData :: struct {
+	mspace_id : int;
+}
+AsmDeleteMSpaceData :: struct {
+	mspace_id : int;
 }
 AsmDeleteSimpleSynthData :: struct {
 	synth_id : int;
@@ -67,6 +62,10 @@ AsmGetTuningSystemData :: struct {
 	ret_tuning_system_id : int;
 	short_name : string;
 }
+AsmClearOpData :: struct {
+	op_space_id : int;
+	clear_not_filter_3D : bool;
+}
 AsmUpdateMSpaceData :: struct {
 	mspace_id : int;
 	update_mspace_index : bool;
@@ -79,33 +78,9 @@ AsmUpdateMSpaceData :: struct {
 	set_fixed_audio_row_size : bool;
 	mspace_audio_row_size : int;
 }
-AsmClearOpData :: struct {
-	op_space_id : int;
-	clear_not_filter_3D : bool;
-}
 AsmGetOrCreateSimpleSynthData :: struct {
 	ret_synth_id : int;
 	synth_name : string;
-}
-RowSystemType :: enum {
-	none;
-	internal_message;
-	internal_pitch;
-	midi_control_change;
-	midi_velocity;
-	midi_pitch;
-}
-SimpleSynthMessageType :: enum {
-	VOLUME;
-	WAVE_TYPE;
-	ATTACK_SECONDS;
-	RELEASE_SECONDS;
-	ATTACK_CURVE;
-	RELEASE_CURVE;
-}
-LinearPitchSpaceView :: enum {
-	RATIO_PROPORTIONAL;
-	FORCE_EQUAL;
 }
 OscWaveType :: enum {
 	SINE;
@@ -121,6 +96,31 @@ OscWaveType :: enum {
 	PIANO_2;
 	PIANO_3;
 	NONE;
+}
+LinearPitchSpaceView :: enum {
+	RATIO_PROPORTIONAL;
+	FORCE_EQUAL;
+}
+RowSystemType :: enum {
+	none;
+	internal_message;
+	internal_pitch;
+	midi_control_change;
+	midi_velocity;
+	midi_pitch;
+}
+GetOrCreateMSpaceType :: enum {
+	GET_BY_NAME;
+	GET_BY_ID;
+	GET_BY_INDEX;
+}
+SimpleSynthMessageType :: enum {
+	VOLUME;
+	WAVE_TYPE;
+	ATTACK_SECONDS;
+	RELEASE_SECONDS;
+	ATTACK_CURVE;
+	RELEASE_CURVE;
 }
 S3CamStartType :: enum {
 	MIN_ZY;
@@ -148,13 +148,6 @@ ChordSpaceFilterAggregate :: enum {
 	INTERSECTION;
 	UNION;
 }
-AsmGetOrCreateMSpaceData :: struct {
-	ret_mspace_id : int;
-	gc_type : GetOrCreateMSpaceType;
-	mspace_id : int;
-	mspace_index : int;
-	mspace_name : string;
-}
 AsmOpSpaceData :: struct {
 	ret_op_space_id : int;
 	op_space_type : AsmOpSpaceType;
@@ -177,6 +170,13 @@ RowSectionData :: struct {
 	linear_view : LinearPitchSpaceView;
 	tuning_system_id : int;
 	x_length : int;
+}
+AsmGetOrCreateMSpaceData :: struct {
+	ret_mspace_id : int;
+	gc_type : GetOrCreateMSpaceType;
+	mspace_id : int;
+	mspace_index : int;
+	mspace_name : string;
 }
 AsmUpdateSimpleSynthData :: struct {
 	synth_id : int;
@@ -211,12 +211,6 @@ AsmMapCircle :: struct {
 	pitches : [] float64;
 	draw_vl_type : DrawVLType;
 }
-AsmCSFilter :: struct {
-	filter_index : int;
-	filter_value : float64;
-	value_set : [] float64;
-	filter_type : ChordSpaceFilterType;
-}
 AsmMapSpiral :: struct {
 	op_space_id : int;
 	dspace_id : int;
@@ -240,12 +234,6 @@ AsmCreateRowData :: struct {
 	row_sections : [] RowSectionData;
 	row_midi_data : AsmRowMidiData;
 }
-MapChordS3Data :: struct {
-	op_space_id : int;
-	vl_start_chord : [] float64;
-	vl_deltas : [] float64;
-	vl_index_ref : int;
-}
 AsmSpace3Data :: struct {
 	op_space_id : int;
 	tuning_system_id : int;
@@ -258,6 +246,18 @@ AsmSpace3Data :: struct {
 	depth : float64;
 	n : float64;
 	f : float64;
+}
+MapChordS3Data :: struct {
+	op_space_id : int;
+	vl_start_chord : [] float64;
+	vl_deltas : [] float64;
+	vl_index_ref : int;
+}
+AsmCSFilter :: struct {
+	filter_index : int;
+	filter_value : float64;
+	value_set : [] float64;
+	filter_type : ChordSpaceFilterType;
 }
 AsmGeom2D :: struct {
 	dspace_id : int;

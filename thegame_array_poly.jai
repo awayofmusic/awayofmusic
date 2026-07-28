@@ -1170,3 +1170,18 @@ AllOrEqualsProc :: inline (
 	for or_checks if EqualsProc(value, it) return true;
 	return false;
 }
+
+//TODO Could have a version where we pass in the whole string with and then it will set both
+SetResizableArrays :: ($t : Type, $code : string) -> string #expand {
+	sb : String_Builder;
+	comp_data_type_info := cast(*Type_Info_Struct) type_info(t);
+	for ti_member : comp_data_type_info.members {
+		if ti_member.type.type == Type_Info_Tag.ARRAY {
+			ti_array := cast(*Type_Info_Array) ti_member.type;
+			if ti_array.array_type == .RESIZABLE {
+				print_to_builder(*sb, code, ti_member.name);
+			}
+		}
+	}
+	return builder_to_string(*sb);
+}
