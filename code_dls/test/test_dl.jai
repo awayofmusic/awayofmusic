@@ -16,7 +16,7 @@ WE COULD ALSO allow rendering to an op_space once we add op spaces since the ren
 #program_export
 ExternalUpdate :: (shared_lib : *SharedLibraryData) {
 	//TODO We could set ids from context everywhere so its the same everywhere and then we don't need it here.
-	ALL_NEXT_IDS = context.ALL_NEXT_IDS;
+	// ALL_NEXT_IDS = context.ALL_NEXT_IDS.;
 	// print("run external update\n");
 	// found_new_points = !found_new_points;
 	// print("found_new_points=%\n", found_new_points);
@@ -59,7 +59,7 @@ ExternalUpdate :: (shared_lib : *SharedLibraryData) {
 		shared_lib.all_linear_pitch_spaces,
 		shared_lib.all_space_points);
 	
-	test : int = ALL_NEXT_IDS.NEXT_MSPACE_ID;
+	test : int = context.ALL_NEXT_IDS.NEXT_MSPACE_ID;
 	CreateManyMusicPtsInMemory(float64.[0,4,7], 0, 0, 2, *shared_lib.all_mspace_data.*[0].all_music_pts);	
 
 	// for ts : shared_lib.all_tuning_systems.* {

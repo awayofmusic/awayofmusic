@@ -14041,8 +14041,8 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 			// PushQuadLineViewport(previous_point_cam_pos, cam_pos, GREY_DARKER_V, 0.05, op_space.render_groups.scissor_group, order = 6);
 
 			rect : *SpaceRect = array_add(*op_spec_data.ass.all_space_rects);
-			rect.shape_id = ALL_NEXT_IDS.NEXT_SHAPE_ID;
-			ALL_NEXT_IDS.NEXT_SHAPE_ID += 1;
+			rect.shape_id = context.ALL_NEXT_IDS.NEXT_SHAPE_ID;
+			context.ALL_NEXT_IDS.NEXT_SHAPE_ID += 1;
 			rect.op_space_id = map_data.op_space_id;
 			rect.dspace_id = map_data.dspace_id;
 			rect.dspace_shape_group = map_data.dspace_shape_group;
@@ -14272,8 +14272,8 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 
 				// if equal_diffs {
 				rect : *SpaceRect = array_add(*op_spec_data.ass.all_space_rects);
-				rect.shape_id = ALL_NEXT_IDS.NEXT_SHAPE_ID;
-				ALL_NEXT_IDS.NEXT_SHAPE_ID += 1;
+				rect.shape_id = context.ALL_NEXT_IDS.NEXT_SHAPE_ID;
+				context.ALL_NEXT_IDS.NEXT_SHAPE_ID += 1;
 				rect.op_space_id = asm_data.op_space_id;
 				rect.dspace_id = asm_data.dspace_id;
 				rect.dspace_shape_group = asm_data.dspace_shape_group;
@@ -14300,8 +14300,8 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 					//TODO Maybe we should do this as triangles? Let's see if we use quads often
 					//otherwise might be better to just have rects, triangles and circles
 					quad : *SpaceQuad = array_add(*op_spec_data.ass.all_space_quads);
-					quad.shape_id = ALL_NEXT_IDS.NEXT_SHAPE_ID;
-					ALL_NEXT_IDS.NEXT_SHAPE_ID += 1;
+					quad.shape_id = context.ALL_NEXT_IDS.NEXT_SHAPE_ID;
+					context.ALL_NEXT_IDS.NEXT_SHAPE_ID += 1;
 					quad.op_space_id = asm_data.op_space_id;
 					quad.dspace_id = asm_data.dspace_id;
 					quad.dspace_shape_group = asm_data.dspace_shape_group;
@@ -14311,8 +14311,8 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 					quad.quad = line;
 
 					tri : *SpaceTriangle = array_add(*op_spec_data.ass.all_space_triangles);
-					tri.shape_id = ALL_NEXT_IDS.NEXT_SHAPE_ID;
-					ALL_NEXT_IDS.NEXT_SHAPE_ID += 1;
+					tri.shape_id = context.ALL_NEXT_IDS.NEXT_SHAPE_ID;
+					context.ALL_NEXT_IDS.NEXT_SHAPE_ID += 1;
 					tri.op_space_id = asm_data.op_space_id;
 					tri.dspace_id = asm_data.dspace_id;
 					tri.dspace_shape_group = asm_data.dspace_shape_group;
@@ -14652,8 +14652,8 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		}
 
 		sp_3D : *SpacePoint3D = array_add(*op_3D.all_op_space_points_3D);
-		sp_3D.id = ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID;
-		ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID += 1;
+		sp_3D.id = context.ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID;
+		context.ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID += 1;
 		sp_3D.group_id = asm_data.group_id;
 		sp_3D.rel_pos = MakeV3FFrom64(asm_data.rel_pos);
 		if asm_data.fun_region.count > 0 {
@@ -14715,8 +14715,8 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		}
 
 		//TODO These could be set per op space now since we have them uniquely by dspace_id and op_space_id
-		asm_data.dspace_id = ALL_NEXT_IDS.DSPACE_ID;
-		ALL_NEXT_IDS.DSPACE_ID += 1;
+		asm_data.dspace_id = context.ALL_NEXT_IDS.DSPACE_ID;
+		context.ALL_NEXT_IDS.DSPACE_ID += 1;
 
 		custom_g : *CustomGeometry = array_add(*op_spec_data.ass.all_custom_geometries);
 		custom_g.dspace_id = asm_data.dspace_id;
@@ -14746,8 +14746,8 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 			return CPUErr(sprint("op_space_id % data not found.\n", asm_data.op_space_id));
 		}
 
-		asm_data.ret_shape_id = ALL_NEXT_IDS.NEXT_SHAPE_ID;
-		ALL_NEXT_IDS.NEXT_SHAPE_ID += 1;
+		asm_data.ret_shape_id = context.ALL_NEXT_IDS.NEXT_SHAPE_ID;
+		context.ALL_NEXT_IDS.NEXT_SHAPE_ID += 1;
 
 		if asm_data.type == AsmShapeType.RECTANGLE {
 			rect : *SpaceRect = array_add(*op_spec_data.ass.all_space_rects);

@@ -4676,8 +4676,8 @@ CreateChordSpace2 :: inline (
 	//TODO Could use this later for efficiency and then add to SpacePoint as well for efficient op_space rendering.
 	// chord_s2.op_space_id = op_space_id;
 	//TODO We can grab these ids from op_spec data if that is needed although maybe having unique ids for now is better
-	chord_s2.dspace_id = ALL_NEXT_IDS.DSPACE_ID;
-	defer ALL_NEXT_IDS.DSPACE_ID += 1;
+	chord_s2.dspace_id = context.ALL_NEXT_IDS.DSPACE_ID;
+	defer context.ALL_NEXT_IDS.DSPACE_ID += 1;
 	chord_s2.dspace_world_center = create_cs2.world_pos;
 	chord_s2.dspace_point_dim = create_cs2.point_dim;
 	// chord_s2.invariant_ids = int.[0,1];
@@ -4769,8 +4769,8 @@ GetOrCreateCS2Points :: inline (
 	if found_csp return cs2_points;
 
 	csp : *ChordS2Points2D = array_add(all_cs2_points_2D);
-	csp.id = ALL_NEXT_IDS.NEXT_CS2_POINTS_ID;
-	ALL_NEXT_IDS.NEXT_CS2_POINTS_ID += 1;
+	csp.id = context.ALL_NEXT_IDS.NEXT_CS2_POINTS_ID;
+	context.ALL_NEXT_IDS.NEXT_CS2_POINTS_ID += 1;
 	csp.lp_count = lp_count;
 
 	for x1 : -lp_count..lp_count for x2 : -lp_count..lp_count {
@@ -5010,8 +5010,8 @@ MakeCircleSpace :: (
 	roots_of_unity := RootsOfUnity(num_of_points, orient.clockwise, orient.rotate_rad, Vector2F,, temp);
 
 	space : Space2D;
-	space.dspace_id = ALL_NEXT_IDS.DSPACE_ID;
-	defer ALL_NEXT_IDS.DSPACE_ID += 1;
+	space.dspace_id = context.ALL_NEXT_IDS.DSPACE_ID;
+	defer context.ALL_NEXT_IDS.DSPACE_ID += 1;
 	space.dspace_point_dim = point_dim;
 	space.dspace_dim = MakeV2F(0, radius); //put radius in dspace_dim.y for now since #place y = radius
 	space.dspace_dim_int = MakeV2I(num_of_points, 0);
@@ -5019,8 +5019,8 @@ MakeCircleSpace :: (
 	space.dspace_world_center = base_circle_pos;
 	for circle_pos, circle_index : roots_of_unity {
 		point : SpacePoint;
-		point.id = ALL_NEXT_IDS.POINT_ID;
-		defer ALL_NEXT_IDS.POINT_ID += 1;
+		point.id = context.ALL_NEXT_IDS.POINT_ID;
+		defer context.ALL_NEXT_IDS.POINT_ID += 1;
 		point.dspace_id = space.dspace_id;
 		point.rel_pos = space.dspace_dim.radius * circle_pos;
 		point.world_pos = space.dspace_world_pos + point.rel_pos;
@@ -5053,8 +5053,8 @@ MakeCircularPitchClassSpaceAndPoints :: (
 	roots_of_unity := RootsOfUnity(num_of_points, orient.clockwise, orient.rotate_rad, Vector2F,, temp);
 
 	space : Space2D;
-	space.dspace_id = ALL_NEXT_IDS.DSPACE_ID;
-	defer ALL_NEXT_IDS.DSPACE_ID += 1;
+	space.dspace_id = context.ALL_NEXT_IDS.DSPACE_ID;
+	defer context.ALL_NEXT_IDS.DSPACE_ID += 1;
 	space.dspace_point_dim = point_dim;
 	space.dspace_dim = MakeV2F(0, radius); //put radius in dspace_dim.y for now since #place y = radius
 	space.dspace_dim_int = MakeV2I(num_of_points, 0);
@@ -5062,8 +5062,8 @@ MakeCircularPitchClassSpaceAndPoints :: (
 	space.dspace_world_center = base_circle_pos;
 	for circle_pos, circle_index : roots_of_unity {
 		point : SpacePoint;
-		point.id = ALL_NEXT_IDS.POINT_ID;
-		defer ALL_NEXT_IDS.POINT_ID += 1;
+		point.id = context.ALL_NEXT_IDS.POINT_ID;
+		defer context.ALL_NEXT_IDS.POINT_ID += 1;
 		point.dspace_id = space.dspace_id;
 		point.rel_pos = space.dspace_dim.radius * circle_pos;
 		point.world_pos = space.dspace_world_pos + point.rel_pos;
@@ -5089,8 +5089,8 @@ MakeRowLinearPitchSpace :: inline (
 -> LinearPitchSpace
 {
 	linear : LinearPitchSpace;
-	linear.dspace_id = ALL_NEXT_IDS.DSPACE_ID;
-	defer ALL_NEXT_IDS.DSPACE_ID += 1;
+	linear.dspace_id = context.ALL_NEXT_IDS.DSPACE_ID;
+	defer context.ALL_NEXT_IDS.DSPACE_ID += 1;
 
 	linear.base_world_pos = world_base_pos;
 
@@ -5124,8 +5124,8 @@ MakeLinearPitchSpace :: inline (
 
 	//TODO rotate based on Matrix2F transform instead of y_up
 	linear : LinearPitchSpace;
-	linear.dspace_id = ALL_NEXT_IDS.DSPACE_ID;
-	defer ALL_NEXT_IDS.DSPACE_ID += 1;
+	linear.dspace_id = context.ALL_NEXT_IDS.DSPACE_ID;
+	defer context.ALL_NEXT_IDS.DSPACE_ID += 1;
 	linear.dspace_world_center = world_pos;
 
 	linear.dspace_world_pos = world_pos;
@@ -5306,8 +5306,8 @@ MakeRatioProportionalPoints :: inline (
 	for tuning_pitch, point_index : array_tuning_pitches 
 	{
 		point : SpacePoint;
-		point.id = ALL_NEXT_IDS.POINT_ID;
-		ALL_NEXT_IDS.POINT_ID += 1;
+		point.id = context.ALL_NEXT_IDS.POINT_ID;
+		context.ALL_NEXT_IDS.POINT_ID += 1;
 		point.dspace_id = linear.dspace_id;
 		point.color = white_color;
 		//TODO what to do for other tuning systems and music_pt counts?
@@ -5349,8 +5349,8 @@ MakeEqualLinearPoints :: inline (
 	points_in_space : [..] SpacePoint;
 	for point_index : 0..tuning_system.music_pt_count-1 {
 		point : SpacePoint;
-		point.id = ALL_NEXT_IDS.POINT_ID;
-		ALL_NEXT_IDS.POINT_ID += 1;
+		point.id = context.ALL_NEXT_IDS.POINT_ID;
+		context.ALL_NEXT_IDS.POINT_ID += 1;
 		point.dspace_id = linear.dspace_id;
 		point.color = white_color;
 		//TODO what to do for other tuning systems and music_pt counts?
@@ -5462,8 +5462,8 @@ MakeContinuousLinearSpace :: (
 {
 	//TODO rotate based on Matrix2F transform instead of y_up
 	linear : LinearPitchSpace;
-	linear.dspace_id = ALL_NEXT_IDS.DSPACE_ID;
-	defer ALL_NEXT_IDS.DSPACE_ID += 1;
+	linear.dspace_id = context.ALL_NEXT_IDS.DSPACE_ID;
+	defer context.ALL_NEXT_IDS.DSPACE_ID += 1;
 	linear.dspace_world_center = world_pos;
 	linear.dspace_world_pos = world_pos;
 	linear.dspace_dim = dspace_dim;
@@ -5699,8 +5699,8 @@ CreateSpiralInSpace :: inline (
 }
 
 InitSpiralSpace :: inline (sp : *SpiralSpace) {
-	sp.dspace_id = ALL_NEXT_IDS.DSPACE_ID;
-	ALL_NEXT_IDS.DSPACE_ID += 1;
+	sp.dspace_id = context.ALL_NEXT_IDS.DSPACE_ID;
+	context.ALL_NEXT_IDS.DSPACE_ID += 1;
 	if sp.spiral_type == SpiralType.PROPER sp.radius_size *= 1.75 / 2;
 	if sp.is_in_out {
 		sp.in_out_factor = 1.0;
@@ -5749,7 +5749,7 @@ SetSpiralBase :: inline (
 	//base_space_point_id and base_index to whatever we want.
 	//NOTE : We then just need to grab the space_point that has this dspace_id and int_pos.x == base_index
 	// sp.has_base_points = true;
-	// sp.base_space_point_id = ALL_NEXT_IDS.POINT_ID;
+	// sp.base_space_point_id = context.ALL_NEXT_IDS.POINT_ID;
 	sp.base_index = base_index;
 
 	sorted_base_chord := array_copy(base_chord,,temp);
@@ -5775,8 +5775,8 @@ SetSpiralBase :: inline (
 		it_mod : int = it % sp.chord_count;
 		if it_mod == base_index {
 			// point : *SpacePoint = array_add(all_space_points);
-			// point.id = ALL_NEXT_IDS.POINT_ID;
-			// ALL_NEXT_IDS.POINT_ID += 1;
+			// point.id = context.ALL_NEXT_IDS.POINT_ID;
+			// context.ALL_NEXT_IDS.POINT_ID += 1;
 			// point.dspace_id = sp.dspace_id;
 			// point.world_pos = IndexToSpiralPos(it, sp, roots_of_unity);
 			// point.rect_mesh = RectCenterDim(point.world_pos, sp.point_dim);
@@ -5792,8 +5792,8 @@ SetSpiralBase :: inline (
 
 			//ADDING SPACE RECTS DIRECTLY and then we can remove SpacePoint above once this is working.
 			rect : *SpaceRect = array_add(*op_spec_data.ass.all_space_rects);
-			rect.shape_id = ALL_NEXT_IDS.NEXT_SHAPE_ID;
-			ALL_NEXT_IDS.NEXT_SHAPE_ID += 1;
+			rect.shape_id = context.ALL_NEXT_IDS.NEXT_SHAPE_ID;
+			context.ALL_NEXT_IDS.NEXT_SHAPE_ID += 1;
 			rect.op_space_id = op_spec_data.op_space_id;
 			rect.dspace_id = sp.dspace_id;
 			rect.dspace_shape_group = sp.base_shape_group;
@@ -5878,8 +5878,8 @@ CreateSpiralPoint :: inline (
 -> *SpacePoint
 {
 	point : *SpacePoint = array_add(all_space_points);
-	point.id = ALL_NEXT_IDS.POINT_ID;
-	ALL_NEXT_IDS.POINT_ID += 1;
+	point.id = context.ALL_NEXT_IDS.POINT_ID;
+	context.ALL_NEXT_IDS.POINT_ID += 1;
 	point.dspace_id = sp.dspace_id;
 	//TODO Could use IndexToSpiralPos but with float and euler's formula instead if we allow that... hmmmm
 	//TODO Can grab base_chord from all_spiral_base_values if we need to compute offset values.
@@ -6941,8 +6941,8 @@ GetOrCreateChordSpacePoints3D :: inline (
 	// }
 
 	chord_space_points : *ChordSpacePoints3D = array_add(all_chord_space_points);
-	chord_space_points.id = ALL_NEXT_IDS.NEXT_CHORD_SPACE_POINT_ID;
-	ALL_NEXT_IDS.NEXT_CHORD_SPACE_POINT_ID += 1;
+	chord_space_points.id = context.ALL_NEXT_IDS.NEXT_CHORD_SPACE_POINT_ID;
+	context.ALL_NEXT_IDS.NEXT_CHORD_SPACE_POINT_ID += 1;
 	chord_space_points.tuning_system_count = tuning_system_count;
 	chord_space_points.chord_dim = chord_dim;
 
@@ -7026,8 +7026,8 @@ ChordSpacePoints3DWithFilter :: inline (
 				sp3 : *SpacePoint3D = array_add(csp);
 				//TODO Do we need to set an id here anymore? Remove this if we don't use it.
 				//We could set a separate id for each
-				sp3.id = ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID;
-				defer ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID += 1;
+				sp3.id = context.ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID;
+				defer context.ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID += 1;
 				UpdateSpacePoint3D(sp3, tuning_system_count, new_fun_pos);
 			}
 		}
@@ -7050,8 +7050,8 @@ MakeGrid3D :: (
 -> ChordSpace3 
 {
 	grid_3D : ChordSpace3;
-	grid_3D.dspace_id = ALL_NEXT_IDS.NEXT_CHORD_S3_ID;
-	defer ALL_NEXT_IDS.NEXT_CHORD_S3_ID += 1;
+	grid_3D.dspace_id = context.ALL_NEXT_IDS.NEXT_CHORD_S3_ID;
+	defer context.ALL_NEXT_IDS.NEXT_CHORD_S3_ID += 1;
 	grid_3D.viewport = MakeViewportFullDim(chord_s3_dim, depth);
 	//Note : without depth precision
 	// grid_3D.p_frustum = MakeFrustumProjectionWithG(grid_3D.viewport.g, grid_3D.viewport.s, n, f);
@@ -7071,8 +7071,8 @@ MakeGrid3D :: (
 
 	for pos, pos_index : cube_poses {
 		space_point_3D : SpacePoint3D;
-		space_point_3D.id = ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID;
-		defer ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID += 1;
+		space_point_3D.id = context.ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID;
+		defer context.ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID += 1;
 		// space_point_3D.dspace_id = grid_3D.dspace_id;
 		space_point_3D.rel_pos = pos;
 		// space_point_3D.data.mesh = CUBE_TRI_FACE;
@@ -7100,8 +7100,8 @@ MakePitchSpace3 :: inline (
 -> ChordSpace3 
 {
 	pitch_s3 : ChordSpace3;
-	pitch_s3.dspace_id = ALL_NEXT_IDS.NEXT_CHORD_S3_ID;
-	defer ALL_NEXT_IDS.NEXT_CHORD_S3_ID += 1;
+	pitch_s3.dspace_id = context.ALL_NEXT_IDS.NEXT_CHORD_S3_ID;
+	defer context.ALL_NEXT_IDS.NEXT_CHORD_S3_ID += 1;
 	pitch_s3.viewport = MakeViewportFullDim(chord_s3_dim, depth);
 	//Note : without depth precision
 	// pitch_s3.p_frustum = MakeFrustumProjectionWithG(pitch_s3.viewport.g, pitch_s3.viewport.s, n, f);
@@ -7126,8 +7126,8 @@ MakePitchSpace3 :: inline (
 	//TODO We could add a filter here too like with ChordSpace3
 	for x : 0..bp_count-1 for y : 0..bp_count-1 for z : 0..bp_count-1 {
 		point_3D : *SpacePoint3D = array_add(visible_space_points_3D);
-		point_3D.id = ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID;
-		defer ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID += 1;
+		point_3D.id = context.ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID;
+		defer context.ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID += 1;
 		// point_3D.dspace_id = pitch_s3.dspace_id;
 		// point_3D.fun_region_size = 3;
 		point_3D.fun_region = NewArray(3, float64);
@@ -7290,8 +7290,8 @@ CreateSpace3D :: inline (
 	assert(create_cs3.higher_dim >= 3);
 
 	// chord_s3 : ChordSpace3;
-	op_3D.op_space_3D.dspace_id = ALL_NEXT_IDS.DSPACE_ID;
-	defer ALL_NEXT_IDS.DSPACE_ID += 1;
+	op_3D.op_space_3D.dspace_id = context.ALL_NEXT_IDS.DSPACE_ID;
+	defer context.ALL_NEXT_IDS.DSPACE_ID += 1;
 	op_3D.op_space_3D.op_space_id = create_cs3.op_space_id;
 
 	op_3D.op_space_3D.higher_dim = create_cs3.higher_dim;
@@ -7551,8 +7551,8 @@ UpdateSpacePoint3D :: inline (
 {
 	//TODO We could store these ids in the op spec data for 3d now and just pass them in from there.
 	//Maybe not if we also do it from chord space points then... I'll leave it for now and see if we actually use this id
-	sp_3d.id = ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID;
-	ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID += 1;
+	sp_3d.id = context.ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID;
+	context.ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID += 1;
 	//TODO We don't need to store the fun region, only the rel_pos and pitch_set
 	//We can always get fun_region back from pitch set BUT the generalized space point 3d
 	//should only have rel_pos and pitch_set since that's all we need for rendering and audio
@@ -7978,8 +7978,8 @@ CreateCircleSpace :: inline (
 	//TODO Likely use a different id eventually if we don't use SpacePoint anymore especially.
 	//For now we use this so it does not conflict with other dspaces for SpacePoint in case we continue to use it
 	//for consistency and also so we can draw vls between different spaces more easily and clearly.
-	circle.dspace_id = ALL_NEXT_IDS.DSPACE_ID;
-	ALL_NEXT_IDS.DSPACE_ID += 1;
+	circle.dspace_id = context.ALL_NEXT_IDS.DSPACE_ID;
+	context.ALL_NEXT_IDS.DSPACE_ID += 1;
 	circle.base_shape_group = -1;
 	circle.base_render_order = 7;
 	circle.tuning_system_id = c_data.tuning_system_id;
@@ -8124,8 +8124,8 @@ MakeCircleSpaceShapes :: inline (
 	// while total_circle_linear < 1.0 && !FloatEqual(total_circle_linear, 1.0) {
 		//TODO Can also add a filter here if we only want specific points for a specific scale for example.
 		// point : *SpacePoint = array_add(all_space_points);
-		// point.id = ALL_NEXT_IDS.POINT_ID;
-		// defer ALL_NEXT_IDS.POINT_ID += 1;
+		// point.id = context.ALL_NEXT_IDS.POINT_ID;
+		// defer context.ALL_NEXT_IDS.POINT_ID += 1;
 		// point.dspace_id = c_space.point_dspace_id;
 		// point.int_pos.x = tp_index + tuning_octave * tuning_system.music_pt_count;
 		// //We need to store the linear value here so we can compute interpolated values easily.
@@ -8136,8 +8136,8 @@ MakeCircleSpaceShapes :: inline (
 
 		//ADDING SPACE RECTS DIRECTLY and then we can remove SpacePoint above once this is working.
 		rect : *SpaceRect = array_add(*op_spec_data.ass.all_space_rects);
-		rect.shape_id = ALL_NEXT_IDS.NEXT_SHAPE_ID;
-		ALL_NEXT_IDS.NEXT_SHAPE_ID += 1;
+		rect.shape_id = context.ALL_NEXT_IDS.NEXT_SHAPE_ID;
+		context.ALL_NEXT_IDS.NEXT_SHAPE_ID += 1;
 		rect.op_space_id = op_spec_data.op_space_id;
 		rect.dspace_id = c_space.dspace_id;
 		rect.dspace_shape_group = c_space.base_shape_group;
@@ -8308,8 +8308,8 @@ MakeRenderMusicPt3D :: inline (
 -> RenderMusicPt3D
 {
 	render_music_pt_3D : RenderMusicPt3D = ---;
-	render_music_pt_3D.id = ALL_NEXT_IDS.NEXT_RENDER_MUSIC_PT_3D;
-	defer ALL_NEXT_IDS.NEXT_RENDER_MUSIC_PT_3D += 1;
+	render_music_pt_3D.id = context.ALL_NEXT_IDS.NEXT_RENDER_MUSIC_PT_3D;
+	defer context.ALL_NEXT_IDS.NEXT_RENDER_MUSIC_PT_3D += 1;
 	render_music_pt_3D.dspace_id = dspace_id;
 	render_music_pt_3D.space_point_3D_id = space_point_3D_id;
 	return render_music_pt_3D;
@@ -8368,8 +8368,8 @@ MakeMusicLane :: inline (
 -> MusicLane 
 {
 	music_lane : MusicLane;
-	music_lane.id = ALL_NEXT_IDS.NEXT_MUSIC_LANE_ID;
-	defer ALL_NEXT_IDS.NEXT_MUSIC_LANE_ID += 1;
+	music_lane.id = context.ALL_NEXT_IDS.NEXT_MUSIC_LANE_ID;
+	defer context.ALL_NEXT_IDS.NEXT_MUSIC_LANE_ID += 1;
 	music_lane.music_lane_type = music_lane_type;
 	// music_lane.first_row_world_pos = start_world_pos;
 	music_lane.lane_name = copy_string(lane_name);
@@ -8424,8 +8424,8 @@ CreateOpLinearRow :: inline (create_row_data : CreateRowData, all_data : *AllDat
 	// row : MusicLaneRow = MakeMusicLaneRow(DEFAULT_MUSIC_LANE_ID, RowSystemType.internal_pitch, MusicLaneType.MEMORY, 
 	// 	next_row_world_base_pos, next_row_index, create_row_data.row_height, use_create_row_data = true, create_row_data);
 	row : *MusicLaneRow = array_add(*all_data.all_op_linear_rows);
-	row.id = ALL_NEXT_IDS.NEXT_OP_LINEAR_ROW_ID;
-	ALL_NEXT_IDS.NEXT_OP_LINEAR_ROW_ID += 1;
+	row.id = context.ALL_NEXT_IDS.NEXT_OP_LINEAR_ROW_ID;
+	context.ALL_NEXT_IDS.NEXT_OP_LINEAR_ROW_ID += 1;
 	//TODO We could make this one struct so we only have to copy once
 	//and we can then reuse it everywhere.
 	row.row_world_base_start = create_row_data.op_world_pos;
@@ -8519,9 +8519,9 @@ MakeMusicLaneRow :: inline (
 {
 	music_lane_row : MusicLaneRow;
 	//We are using negative row_ids/row_indices now for hidden rows
-	assert(ALL_NEXT_IDS.NEXT_MUSIC_LANE_ROW_ID >= 0);
-	music_lane_row.id = ALL_NEXT_IDS.NEXT_MUSIC_LANE_ROW_ID;
-	ALL_NEXT_IDS.NEXT_MUSIC_LANE_ROW_ID += 1;
+	assert(context.ALL_NEXT_IDS.NEXT_MUSIC_LANE_ROW_ID >= 0);
+	music_lane_row.id = context.ALL_NEXT_IDS.NEXT_MUSIC_LANE_ROW_ID;
+	context.ALL_NEXT_IDS.NEXT_MUSIC_LANE_ROW_ID += 1;
 	music_lane_row.music_lane_id = music_lane_id;
 	music_lane_row.row_system_type = row_system_type;
 	music_lane_row.music_lane_type = music_lane_type;
@@ -9358,8 +9358,8 @@ MakeMusicInstruction :: inline (
 	assert(operands.count <= MusicInstruction.operands.count);
 
 	mi : MusicInstruction;
-	mi.id = ALL_NEXT_IDS.NEXT_MUSIC_INSTRUCTION_ID;
-	ALL_NEXT_IDS.NEXT_MUSIC_INSTRUCTION_ID += 1;
+	mi.id = context.ALL_NEXT_IDS.NEXT_MUSIC_INSTRUCTION_ID;
+	context.ALL_NEXT_IDS.NEXT_MUSIC_INSTRUCTION_ID += 1;
 	mi.instr_type = t;
 	mi.op_code = op_code;
 	for operands {
@@ -9644,8 +9644,8 @@ CreateMInstr :: inline (op_code : OpCode, operands : [] MusicOperand, ami : *[..
 }
 CreateMInstr :: inline (mi : MusicInstruction, d : $D/interface InstrCreator) -> MusicInstruction {
 	new_mi : MusicInstruction = PROC_JMP_RETURN;
-	new_mi.id = ALL_NEXT_IDS.NEXT_MUSIC_INSTRUCTION_ID;
-	ALL_NEXT_IDS.NEXT_MUSIC_INSTRUCTION_ID += 1;
+	new_mi.id = context.ALL_NEXT_IDS.NEXT_MUSIC_INSTRUCTION_ID;
+	context.ALL_NEXT_IDS.NEXT_MUSIC_INSTRUCTION_ID += 1;
 	array_add(*d.all_music_instructions, new_mi);
 	return new_mi;
 }
@@ -11350,8 +11350,8 @@ MakeOldMusicPoint :: inline (
 -> MusicPoint 
 {
 	music_pt : MusicPoint;
-	music_pt.id = ALL_NEXT_IDS.NEXT_MUSIC_POINT_ID;
-	defer ALL_NEXT_IDS.NEXT_MUSIC_POINT_ID += 1;
+	music_pt.id = context.ALL_NEXT_IDS.NEXT_MUSIC_POINT_ID;
+	defer context.ALL_NEXT_IDS.NEXT_MUSIC_POINT_ID += 1;
 	music_pt.invariant_id = invariant_id;
 	music_pt.music_pt_pos = music_pt_pos;
 	return music_pt;
@@ -12477,8 +12477,8 @@ ProcessVoiceLeadingEventsNDim :: inline (
 
 
 	vl_point_result : VLEndPoint;
-	vl_point_result.id = ALL_NEXT_IDS.NEXT_VL_ID;
-	ALL_NEXT_IDS.NEXT_VL_ID += 1;
+	vl_point_result.id = context.ALL_NEXT_IDS.NEXT_VL_ID;
+	context.ALL_NEXT_IDS.NEXT_VL_ID += 1;
 	vl_point_result.dspace_id = chord_space_id;
 	// vl_point_result.space_point_id = start_point.id;
 	//TODO Should be able to do this directly but vl_input has to have float64 music_pts
@@ -12635,8 +12635,8 @@ ProcessVoiceLeadingEventsNDim :: inline (
 		// next_pos_fun_region := OrderedPitchSetToFundamentalRegion(total_pos_int, music_pt_count);
 
 		next_vl_line_point : VLEndPoint;
-		next_vl_line_point.id = ALL_NEXT_IDS.NEXT_VL_ID;
-		ALL_NEXT_IDS.NEXT_VL_ID += 1;
+		next_vl_line_point.id = context.ALL_NEXT_IDS.NEXT_VL_ID;
+		context.ALL_NEXT_IDS.NEXT_VL_ID += 1;
 		next_vl_line_point.dspace_id = chord_space_id;
 		// next_vl_line_point.space_point_id = next_point.id;
 		// next_vl_line_point.fun_region_pos = OrderedPitchSetToFundamentalRegion(vl_input.input_music_pt_poses, music_pt_count);
@@ -13992,8 +13992,8 @@ CollisionType :: enum {
 
 MakeCollisionData :: inline () -> CollisionData {
 	collision_data : CollisionData;
-	collision_data.id = ALL_NEXT_IDS.NEXT_COLLISION_ID;
-	defer ALL_NEXT_IDS.NEXT_COLLISION_ID += 1;
+	collision_data.id = context.ALL_NEXT_IDS.NEXT_COLLISION_ID;
+	defer context.ALL_NEXT_IDS.NEXT_COLLISION_ID += 1;
 	return collision_data;
 }
 

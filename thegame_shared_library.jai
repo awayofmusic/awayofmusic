@@ -17,6 +17,8 @@ SharedLibraryData :: struct {
 	audio_data : *AudioData;
 	global_rules : GlobalRules;
 
+	//TODO FROM HERE set all next ids throught context and then move op space spec data 2d and 3d to shared library
+
 	//Tuning system data
 	all_tuning_systems : *[..] TuningSystem;
 	all_tuning_pitches : *[..] TuningPitch;
@@ -109,8 +111,8 @@ GetOrCreateSimpleSynth :: (
 		synth = array_add(all_simple_synths);
 	}
 	//TODO We only need to set the id for a new synth but to avoid errors ill just always generate a new id there
-	synth.synth_id = ALL_NEXT_IDS.NEXT_SYNTH_ID;
-	ALL_NEXT_IDS.NEXT_SYNTH_ID += 1;
+	synth.synth_id = context.ALL_NEXT_IDS.NEXT_SYNTH_ID;
+	context.ALL_NEXT_IDS.NEXT_SYNTH_ID += 1;
 	synth.wave_type = OscWaveType.SINE;
 	synth.envelope = MakeVolumeEnvelope();
 	synth.volume = 0.1;
@@ -261,7 +263,7 @@ DeleteAllSynths :: (
 		DeleteSimpleSynth(delete, all_simple_synths, free_simple_synth_pool);
 	}
 	//We reset the synth id to 1 since the default synth should always be in the array
-	ALL_NEXT_IDS.NEXT_SYNTH_ID = 1;
+	context.ALL_NEXT_IDS.NEXT_SYNTH_ID = 1;
 }
 /*Synth Data creation end
 */
@@ -362,8 +364,8 @@ GetOrCreateMusicSpace :: (
 		mspace_data = array_add(all_mspace_data);
 	}
 	//TODO We only need to set the id for a new mspace but to avoid errors ill just always generate a new id there
-	mspace_data.mspace_id = ALL_NEXT_IDS.NEXT_MSPACE_ID;
-	ALL_NEXT_IDS.NEXT_MSPACE_ID += 1;
+	mspace_data.mspace_id = context.ALL_NEXT_IDS.NEXT_MSPACE_ID;
+	context.ALL_NEXT_IDS.NEXT_MSPACE_ID += 1;
 	#insert #run SetResizableArrays(MusicSpaceData, 
 		"mspace_data.%.allocator = context.allocator;\n");
 
@@ -1374,9 +1376,9 @@ CreateMusicRow :: inline (
 	} else {
 	row : *MusicLaneRow = array_add(*mspace_data.all_music_lane_rows);
 	//We are using negative row_ids/row_indices now for hidden rows
-	assert(ALL_NEXT_IDS.NEXT_MUSIC_LANE_ROW_ID >= 0);
-	row.id = ALL_NEXT_IDS.NEXT_MUSIC_LANE_ROW_ID;
-	ALL_NEXT_IDS.NEXT_MUSIC_LANE_ROW_ID += 1;
+	assert(context.ALL_NEXT_IDS.NEXT_MUSIC_LANE_ROW_ID >= 0);
+	row.id = context.ALL_NEXT_IDS.NEXT_MUSIC_LANE_ROW_ID;
+	context.ALL_NEXT_IDS.NEXT_MUSIC_LANE_ROW_ID += 1;
 	// row.music_lane_id = DEFAULT_MUSIC_LANE_ID;
 	row.row_world_base_start = next_row_world_base_pos;
 	row.total_row_index = next_row_index;
@@ -1489,8 +1491,8 @@ GetOrCreateLinearTuning :: inline (
 		//NOTE : It is good to keep this for now so that the SpacePoints remain consistent
 		//with differen dspace_ids
 		linear : *LinearPitchSpace = array_add(all_linear_pitch_spaces);
-		linear.dspace_id = ALL_NEXT_IDS.DSPACE_ID;
-		defer ALL_NEXT_IDS.DSPACE_ID += 1;
+		linear.dspace_id = context.ALL_NEXT_IDS.DSPACE_ID;
+		defer context.ALL_NEXT_IDS.DSPACE_ID += 1;
 		//TODO We have this here in case we want to force an unequal temperament to be equal.
 		//We can remove later if we do the forcing in the rendering directly for efficiency.
 		linear.view = linear_view;
@@ -1531,8 +1533,8 @@ MakeRatioProportionalPoints :: inline (
 	points_in_space : [] SpacePoint = NewArray(num_of_points, SpacePoint, false,, temp);
 	for p_index : 0..num_of_points-1 {
 		point : *SpacePoint = *points_in_space[p_index];
-		point.id = ALL_NEXT_IDS.POINT_ID;
-		ALL_NEXT_IDS.POINT_ID += 1;
+		point.id = context.ALL_NEXT_IDS.POINT_ID;
+		context.ALL_NEXT_IDS.POINT_ID += 1;
 		point.dspace_id = linear.dspace_id;
 		point.color = GetPointColor(p_index, tuning_system, color_data);
 		point.int_pos.x = p_index;

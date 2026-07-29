@@ -1931,8 +1931,8 @@ Test_CreatePitchS2 :: (
 
 	//TODO Pull this out into it's own MakePitchSpace2D function
 	pitch_s2 : PitchSpace2D;
-	pitch_s2.dspace_id = ALL_NEXT_IDS.DSPACE_ID;
-	ALL_NEXT_IDS.DSPACE_ID += 1;
+	pitch_s2.dspace_id = context.ALL_NEXT_IDS.DSPACE_ID;
+	context.ALL_NEXT_IDS.DSPACE_ID += 1;
 	pitch_s2.base_point_count = 12;
 	//TODO To see that moving this works.
 	pitch_s2.bottom_left_point_pos = Vector2F.{0,0};
@@ -1947,8 +1947,8 @@ Test_CreatePitchS2 :: (
 		//TODO I kind of want to make this a separate array since it seems
 		//liek it would have way less values but can leave like this for now for convenience.
 		sp : *SpacePoint = array_add(*perm.all_data.all_space_points);
-		sp.id = ALL_NEXT_IDS.POINT_ID;
-		ALL_NEXT_IDS.POINT_ID += 1;
+		sp.id = context.ALL_NEXT_IDS.POINT_ID;
+		context.ALL_NEXT_IDS.POINT_ID += 1;
 		sp.dspace_id = pitch_s2.dspace_id;
 		sp.fun_region_float[0] = cast(float64) x;
 		sp.fun_region_float[1] = cast(float64) y;

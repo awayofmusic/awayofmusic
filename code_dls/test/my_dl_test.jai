@@ -40,7 +40,7 @@ ExternalUpdate :: (shared_lib : *SharedLibraryData) {
 		shared_lib.all_linear_pitch_spaces,
 		shared_lib.all_space_points);
 
-	test : int = ALL_NEXT_IDS.NEXT_MSPACE_ID;
+	test : int = context.ALL_NEXT_IDS.NEXT_MSPACE_ID;
 	CreateManyMusicPtsInMemory(float64.[0,4,7], 0, 0, 2, *shared_lib.all_mspace_data.*[0].all_music_pts);	
 
 
