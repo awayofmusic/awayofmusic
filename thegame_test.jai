@@ -12456,7 +12456,7 @@ DONE);
 //and then check memory debugger
 //and then make sure everything is working well on mac
 #if 1 {
-#if OS == .WINDOWS {
+// #if OS == .WINDOWS {
 //TODO Technically we would have to compile this before being able to pull it in.
 LDLData :: struct {
 	fixed_test_path : string;
@@ -12540,7 +12540,7 @@ Test_LoadDL :: (
 	ContinueTest(*perm.test_data);
 
 } @ITest
-}
+// }
 }
 
 //TODO ExSample or MiniGame?
