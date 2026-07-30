@@ -1,10 +1,15 @@
 #import "Basic";
 #import "Sort";
 #import "Math";
+#import "Flat_Pool";
+
 #import "thegame_math";
 #import "thegame_audio";
 #import "thegame_array_poly";
 #import "shared_names";
+//TODO Currently this is only used for Viewport so if we move out 3d op space data, then we can remove this from here as well
+#import "thegame_renderer_out_data";
+
 
 //TODO Maybe eventually we can collapse this with AllData so we only have 1 struct both internally and externally
 /*DOC : This is a combinary of Dynamic Library and Shared Object file which sounds good in general imo.
@@ -12,12 +17,13 @@ We pass this in to the dynamic lib / shared object so that the arrays can be use
 
 WE COULD put all shared data in a common struct here and all data and then just pass a pointer with just that.
 That would likely be the best option.
+
+TODO If we want to separate this file, first thing to pull out would be all the Op Space Spec Data
+since that is self contained anyways. Maybe if this file gets too big or if the code separation makes sense in general.
 */
 SharedLibraryData :: struct {
 	audio_data : *AudioData;
 	global_rules : GlobalRules;
-
-	//TODO FROM HERE set all next ids throught context and then move op space spec data 2d and 3d to shared library
 
 	//Tuning system data
 	all_tuning_systems : *[..] TuningSystem;
@@ -35,6 +41,13 @@ SharedLibraryData :: struct {
 	//Synth data
 	all_simple_synths : *[..] SimpleSynth;
 	free_simple_synth_pool : *[..] SimpleSynth;
+
+	//Op Space Spec Data
+	all_op_space_spec_data : *[..] OpSpaceSpecData;
+	all_op_spec_data_3D : *[..] OpSpecData3D;
+
+	//TODO FROM HERE Pass in OperationSpace with finding them for now (can check create closed op space or do later when needed)
+	//and then also pass RendererData and GameInput
 
 
 	//TODO How should we pass this in? Or should we pass it in at all?
@@ -2626,3 +2639,825 @@ AllNextIds :: struct {
 	// NEXT_SHAPE_TRIANGLE_ID : int = 0;
 	// NEXT_SHAPE_TEXT_ID : int = 0;
 }
+
+/*Start op space spec data / op space shapes data
+
+TODO Should we put all this in a separate file?
+Could also pull out the chord space and filtering code specifically if needed
+*/
+
+/*DOC : All the data specific to each op space.
+These are separated out since we can reuse them if we ever
+remove an op space and since we don't always need the data
+when accessing op space info.
+Also maybe this is better for resetting, I guess let's see
+how we use it and then we can decide.
+
+TODO We could possibly separate 2d and 3d data, but it
+may not be worth it since 2d can overlap 3d anyways
+*/
+//TODO Maybe rename to OpSpecData for conciseness
+OpSpaceSpecData :: struct {
+	op_space_id : int;
+
+	//TODO WE CAN PUT IDS IN HERE JUST FOR THIS OP SPACE
+
+	//TODO We could maybe pull the arrays out from here eventually
+	//if we only have it in the op space
+	ass : AllSpaceShapes;
+	all_op_circle_spaces : [..] CircleSpace;
+	all_op_chord_s2 : [..] ChordSpace2;
+	all_op_collision_entities : [..] CollisionEntity;
+	all_op_spirals : [..] SpiralSpace;
+
+	//TODO I Think we can generally replace this with using a
+	//base shape group in ass so i guess we can gradually transfer over.
+	//For example we can do this with circles first.
+	//IF that is possible then we can eventually remove this altogether.
+	all_op_space_points : [..] SpacePoint;
+
+	spec_2D_pool : Flat_Pool;
+	spec_2D_alloc : Allocator;
+
+	//TODO Should we just store this here instead of a separate array since we can only have 1 per op_space?
+	//I will leave it in the array for now while refactoring, but afterwards, storing in here makes more sense
+	//so then we can just use the same allocator for the whole op_space_3d and then reuse it if ever we delete it
+	//Also then we could
+	// op_space_3d : ChordSpace3;
+	//TODO Can likely change this struct or remove unecessary data
+	//once it's working
+	//TODO We could separate this out from 3d if this is all we need
+	//or if the 2d arrays we allow are different than the above ones
+	// all_op_space_points_3D : [..] SpacePoint3D;
+	// all_op_text_3D : [..] SpaceText3D;
+}
+
+/*ACTUALLY this is more than convenience as it groups all objects by the op_Space their in.
+So we would only have to cycle directly through these arrays for both rendering and input
+and this would avoid any kind of filtering or moving around data we would need to do later.
+
+ALSO This makes me think that maybe its best to have the dspace be separate by op_space_id as well.
+Not entirely sure. Then we would just have an allocator for all shapes and dspaces here
+and could then reuse it if we close an op_space for example.
+
+We could also have ids specific to op_spaces eventually and that would mean dspaces
+would be identified with op_space_id + dspace_id. Would have to think about that a bit
+depending on how we are using it but I think now everything is being redone per op_space
+whenever we interact except for linear rows.
+
+PROBABLY Worth considering all of this once we have all the data setup and can use it
+with most code so then we know rendering and input and can make a best decision based on that. 
+*/
+//TODO Use this for convenience so we can add any shape in any function
+AllSpaceShapes :: struct {
+	all_space_rects : [..] SpaceRect;
+	all_space_quads : [..] SpaceQuad;
+	all_space_triangles : [..] SpaceTriangle;
+	all_space_circles : [..] SpaceCircle;
+	all_space_text : [..] SpaceText;
+
+	all_space_shape_values : [..] SpaceShapeValue;
+
+	all_custom_geometries : [..] CustomGeometry;
+
+	/*TODO Leaving this data below here as a reminder of some ideas
+	of how to organize data once we separate data between op_spaces here.
+	*/
+	//TODO Maybe this is better as op_space_id
+	//TODO Can remove this from SpaceShape if we use this method.
+	// op_space_id : int;
+	// all_next_ids : AllNextIds;
+	//TODO Would use this to store everything per op_space so this would
+	//be the same as op_space allocator. Can use the same allocator for all the
+	//shapes and also the text strings.
+	//op_alloc : Allocator;
+}
+
+/*TODO For custom shapes (and also some of ours maybe) we should allow the creation of point_values
+which can be associated to a dspace_to_tuning_system_id struct and then those values can play if
+that particular dspace is on. This way people can creates static dspaces using asm/code directly.
+Maybe even pseudo-dynamic ones with input if we allow some code to run given input for example in asm/code.
+We'll see if we allow that or just allow that in external code.
+*/
+//TODO Could make this compile-time and insert the code in here or something like that.
+SpaceShape :: struct {
+	//Maybe we don't need id since the other 3 values are an identifier.
+	//This could be used as a return value for code.
+	//TODO Still might need this if we want to associate audio for example.
+	//Could have space_shape_group and another id for each shape anyways.
+	//TODO We set this to -1 and start the next ids from 0 so we only use
+	//the id if we need it and we can set it to whatever we want as reference.
+	shape_id : int = -1; 
+	//This array can be indexed/sorted by op_space_id
+	//and then dspace_id and then dspace_shape_group
+	//TODO Remove this from here if we use the AllSpaceShapes ordering and indexing method.
+	op_space_id : int;
+	dspace_id : int;
+	//TODO Could add this if we need, maybe also useful for custom shapes
+	//that can be added to the system.
+	// op_dspace_type : OpDSpaceType;
+	//TODO This can likely be 1 64-bit int and then just grab the color from somewhere.
+	//Or just a Vector3F... I don't know if that's worth it though, what about alpha?
+	color : Vector4F;
+
+	//Probably can make each order 32-bit or 16-bit if needed for efficiency.
+	//TODO Do we need render_order for our own rendering?
+	render_order : int;
+	//This is used to group shapes together.
+	//We can then delete in bulk later using op, dspace and shape_group together.
+	//TODO should we rename to dspace_shape_ref?
+	dspace_shape_group : int;
+
+	not_selectable : bool;
+
+	//These are arrays and not just 2d because we can set more pitches or fun region poses depending on the
+	//geometry. Like with spiral the size of the chord depends on the spiral's geometric properties.
+	fun_region : [] float64;
+	pitch_set : [] float64;
+	shape_text : string;
+}
+SpaceRect :: struct {
+	using shape : SpaceShape;
+	//TODO Should we store pos and dim here instead?
+	//Let's see how we use it overall if we're getting center and dim often.
+	//Would also allow us to do SoA and then re-use the point_dim and color
+	//from the particular space for the space_points for example.
+	rect : Rectangle2;
+}
+//TODO We could instead of SpaceLine which would only need 5 floats
+//But then we would have to compute the quad at runtime anyways...
+//ALTHOUGH with this method, say we translated or rotated a dspace
+//then we would just have to translate or rotate all space shapes
+//in that dspace.
+SpaceQuad :: struct {
+	using shape : SpaceShape;
+	quad : Quad2F;
+}
+SpaceCircle :: struct {
+	using shape : SpaceShape;
+	circle : Circle2;
+	//TODO Could add a resolution which would allow us
+	//to also make polygons.
+}
+SpaceTriangle :: struct {
+	using shape : SpaceShape;
+	triangle : Triangle2F;
+}
+/*TODO Text ideas
+1) Current SpaceText which is just 1 short line of 32 chars. Can increase later if needed.u
+2) Variable text where we store the string and it can be formatted (like a paragraph for example)
+3) Text editing boxes which are formattable so people can write their own text
+   which could then be used somehow to adjust some shapes for example or something like that.
+
+We could eventually add font index to change font_size or font type. 
+*/
+SpaceText :: struct {
+	using shape : SpaceShape;
+	//REMINDER SET text.data = text_chars.data
+	text : string;
+	text_chars : [32] u8;
+	op_pos : Vector2F;
+}
+//TODO Eventually we can just allocated the string with the op space allocator
+//similarly to the space point fun region pos
+SetSpaceText :: inline (s : string, space_text : *SpaceText) {
+	count : int = min(s.count, space_text.text_chars.count);
+	space_text.text.data = space_text.text_chars.data;
+	space_text.text.count = count;
+	memcpy(space_text.text.data, s.data, count);
+}
+
+AsmShapeType :: enum {
+	RECTANGLE;
+	// QUADRILATERAL;
+	// TRIANGLE;
+	// TEXT;
+	//TODO Line can be a quad given 2 points
+	// LINE;
+	//TODO Arrow can just be quad and triangle the way we do it now between 2 points
+	// ARROW; 
+
+	// CUBE;
+	// BOX;
+} @LibraryAsmGen
+AsmShapeData :: struct {
+	ret_shape_id : int; //return value
+
+	dspace_id : int;
+	op_space_id : int;
+	dspace_shape_group : int;
+	render_order : int;
+	color : Vector4F64;
+	fun_region : AsmArray(float64); @float64
+	pitch_set : AsmArray(float64); @float64
+	shape_text : AsmString;
+	not_selectable : AsmBool;
+
+	//TODO Put other vars for other shape types later when we add them
+	type : AsmShapeType;
+	rect_pos : Vector2F64;
+	rect_dim : Vector2F64;
+} @LibraryAsmGen
+AsmText2D :: struct {
+	op_space_id : int;
+	text : AsmString;
+	op_pos : Vector2F64;
+	color : Vector4F64;
+	render_order : int;
+} @LibraryAsmGen
+DeleteShapeData :: struct {
+	op_space_id : int;
+	shape_id : int;
+	type : AsmShapeType;
+}
+//TODO Could rename just SpaceValue
+SpaceShapeValue :: struct {
+	op_space_id : int;
+	shape_id : int;
+	//TODO could add this to differentiate for what to do with
+	//each different value group
+	// shape_value_group : int;
+	using value : ShapeValueUnion;
+}
+//TODO Can use this if we use this union elsewhere to copy generally.
+ShapeValueUnion :: union {
+	float_value : float64;
+	int_value : int;
+}
+CustomGeometry :: struct {
+	dspace_id : int;
+	custom_audio_type : CustomAudioType;
+	tuning_system_id : int;
+	//TODO We can remove this if we don't use it.
+	//Using currently to help see where the dspace boundaries are.
+	collision_rect : Rectangle2;
+	show_collision : bool;
+	/*DOC : We technically need this here if want this to work / allow for
+	overlapping geometries or overlapping op spaces. So I think it's best to
+	just leave this like this
+	*/
+	synth : SimpleSynth;
+
+	//TODO We could then also put types in here and just fetch
+	//that specific data if needed and 
+	//custom_internal_type
+	//TODO If we put this in here then we could just draw the rects
+	//and if it's a sound float, then we do the special audio
+	// is_sound_float : AsmBool;
+}
+CustomAudioType :: enum {
+	TUNING_SYSTEM;
+	PITCH_SET_AS_FREQUENCY;
+} @LibraryAsmGen
+
+CircleSpace :: struct {
+	//Note : In case we have 2 sets of SpacePoints with same tuning_system_id
+	//we put tuning_system_id in here. This way we allow flexibility.
+	//TODO Rename to dspace_id I think. Maybe can leave like this...
+	//to make it clear what this actually points to.
+	dspace_id : int;
+	//TODO Could pull this out or I think it's associated to point_dspace_id
+	//and so we can just get it from there. This would let us generalize
+	//playing points for different tuning_systems.
+	tuning_system_id : int;
+	
+	//TODO Should this be float64 for accuracy?
+	//I guess we can change it if/when we change TuningPitch to float64.
+	//I think we use a ratio here instead of just linear because we can think of things
+	//like gamma scale with is non-repeating over a non-integer interval.
+	//Can likely allow either one to be passed in with an option though for convenience
+	//but they could just do the conversion themselves from linear to log ratio
+	repeating_interval_ratio : float;
+
+	world_center : Vector2F;
+	point_dim : Vector2F;
+	//transform includes 3 matrix multiplications for convenience
+	//rotation_matrix(theta) * scale_matrix(radius)
+	//clockwise *= REFLECT_0(reflection about x_axis)
+	transform : Matrix2F;
+	radius : float;
+	start_note : int;
+	//TODO Should this be float64 accuracy for more precision with points?
+	repeating_interval_linear : float;
+	// repeating_interval_linear : float64;
+	//Circle values each between 0-1, we can set them to the world pos
+	//with CirclePointToWorldPos
+	inter_points : [..] float64;
+	//TODO REmove num_of_points once we use circle_points
+	// num_of_points : int;
+	show_pitch_text : bool;
+
+	//Example of non-repeating circle is gamma scale over 2.0 compass interval
+	//which was 34 points that are evenly spaced over a fifth(3/2) but do not repeat evenly.
+	is_repeating : bool;
+
+	// sort_music_pts : bool;
+
+	base_shape_group : int = -1;
+	base_render_order : int = 7;
+
+	/*Not sure if we need this but just in case we want to allow
+	other circles with the same tuning_system but maybe different colored points?
+	If we don't allow that though, we can remove this.
+	*/
+	is_default : bool;
+
+	is_sound_float : bool;
+	inner_circle_mute : float;
+
+	//TODO Can make this an array if needed
+	osc_wave : OscWave;
+	synth : SimpleSynth;
+}
+
+
+ChordSpace2 :: struct {
+	#as using chord_space2 : Space2D;
+
+	//TODO Should this really be here or somewhere else?
+	//Will we need this when we create spaces with code?
+	op_space_id : int;
+
+	next_group_order : int;
+
+	space_pt_render_order : int;
+	music_pt_render_order : int;
+	vl_pt_render_order : int;
+
+	vl_order_text : bool;
+	vl_order_color : bool;
+
+	cs_filters : [..] CSFilter;
+	cs_filter_aggregate : ChordSpaceFilterAggregate;
+
+	//TODO maybe separate these out since invariant_ids will be related to dspaces
+	invariant_ids : [2] int;
+	random_color_0 : Vector4F;
+	random_color_1 : Vector4F;
+	scale_world_unit : float;
+	//TODO this could be a cached *SpacePoint eventually
+	//TODO could cache hover world_rect here as well
+	//TODO I think we can remove this altogether since we only use
+	//it in the OLDChordSpace2 and not in the new one.
+	hover_space_point_id : int;
+
+	chosen_point : bool;
+	boundary_start_space_point_id : int;
+	boundary_start_world_pos : Vector2F;
+	start_space_point_id : int;
+
+	accumulated_vl_size : Vector2I;
+
+	//MusicPt : if true then use swapped matrix, otherwise false
+	swapped_matrix_flag : bool;
+	/*TODO
+		i am leaving this here for now for mathematical clarity
+		ultimately we only need 2 of these and can swap the
+		second column vector coordinates x = y, y = x to have
+		the same effect but only while storing 2 matrices
+
+		we explicitly leave 4 matrices for now to show that
+		we can change in basis relative to the original transformation
+		or to the swapped transformation whenever we cross a boundary
+	*/
+	invariant_to_world_matrix : Matrix2F;
+	world_to_invariant_matrix : Matrix2F;
+	swapped_invariant_to_world : Matrix2F;
+	swapped_world_to_voice : Matrix2F;
+	//TODO could store reflected matrix here since we use regularly
+
+	/*TODO
+		placing the input and output spaces here seems more in line
+		with the written logic at this point.
+		they would be separate from the other spaces and could
+		be more easily considered when dealing with chord_s2.
+		we are leaving it out for now so we can be more flexible
+		with our input/output spaces in case something changes
+		logically or conceptually at some point.
+
+		Eventually these may not even be normal linear spaces
+		and just be completely different visually so then it
+		would make even more sense since the code would also
+		be separate.
+
+		The music_pt voices in the input and output space are also
+		not supposed to be played so we will separate those with
+		a boolean for now but can also put them in a separate array 
+		later if we full implement this version of the solution.
+	*/
+	//TODO should we store the input and output space directly here?
+	//TODO or should we just leave it as a connection?
+	// input_dspace_id : int;
+	// output_dspace_id : int;
+
+	/*MusicPt : position of chord with voice values (0,0)
+	  Technically there are 2 of these but we take the 0-sum one as
+	  a 2D reference point for converting from fundamental region to world position
+	*/
+	zero_pos : Vector2F;
+
+	music_pt_count : int;
+	tuning_system_id : int;
+
+	//REMINDER : This is does not work with op space zooming.
+	//I will leave it so we can play around with it but I don't think
+	//I'll update that for now.
+	is_sound_float : bool;
+
+	//We only need 1 of these since presumably we will only listen to 1 point at a time with the mouse.
+	/*TECHNICALLY This should not be part of the geometry but it is convenient for now.
+	This should likely be fetched from a separate synth or maybe even op_space
+	where we set a specific sound per op_space to listen to the things in that op_space as
+	or per dspace to explore and listen each op_space/dspace.
+	*/
+	//TODO Can likely replace this later with a synthesizer per dspace or per op_space
+	osc_waves : [2] OscWave;
+	//TODO Could have an enum with simple synth and subtractive synth
+	//AND also custom synth for external function pointer calls.
+	//Then can make a dspace_simple_synths and dspace_sub_synths array
+	//for separate processing from the neume synth arrays.
+	synth : SimpleSynth;
+
+
+	//MusicPt : temporary data for space edges
+	crossed_edge : bool;
+	edge_mouse : Vector2F;
+	rotate180_edge_mouse : Vector2F;
+
+	reflect_edge : bool;
+	reflect_mouse : Vector2F;
+}
+
+//UPDATE if changed in Library
+//TODO Remove all unused types from here once we cleanup 
+//chord space filters for 2d and 3d spaces
+ChordSpaceFilterType :: enum {
+	//Default for chord_s3 is all points
+	//Default for chord_s4 is 3D cross-sections by equal sum
+	DEFAULT;
+	ALL;
+	DIMENSIONAL;
+	SUM;
+
+	//TODO Collapse these into 1 type
+	EQUAL_AND_ONE_VL;
+	VL_DISTANCE;
+	LOCAL_VL_DISTANCE_TO_CHORD;
+	INTER_CHORD_DELTA;
+
+	SAME_VALUE_COUNT;
+
+	NO_DUPLICATE_PITCHES;
+	IN_VALUE_SET;
+	//Currently only valid for chord_s3
+	DIATONIC;
+	CHROMATIC;
+
+	//TODO Use multiple filters instead of this
+	CHROMATIC_SUM; //For 3D
+	EQUALS_AND_ONE_VL_SUM; //For 4D
+} @LibraryAsmGen
+
+ChordSpaceFilterAggregate :: enum {
+	INTERSECTION;
+	UNION;
+	//TODO Implement if we want later
+	// DIFFERENCE;
+} @LibraryAsmGen
+
+/*TODO I think we should just use 3 64-bit values here anyways so we can reuse
+the same struct for asm. Just check when we do 3d spaces as well if it works
+and then we can switch it to just having ChordSpaceFilter.
+*/
+//TODO We could add a negation to the filter so we can do everything that is not that filter
+//and then we just have to swap the point_in_filter in FilterChordSpacePoints for each filter point
+CSFilter :: struct {
+	filter_index : int;
+	filter_value : float64;	
+	value_set : [] float64;
+	filter_type : ChordSpaceFilterType;
+}
+
+//TODO I think id like to remove these types eventually.
+//Maybe could have an extra array with extra spirals... but iunno
+//I find proper ones the most intuitive and flexible and clearest to code for.
+SpiralType :: enum {
+	PROPER;
+	CONCENTRIC_CIRCLE;
+	BOOK;
+} @LibraryAsmGen
+SpiralSpace :: struct {
+	dspace_id : int;
+	op_space_id : int;
+	//TODO I kind of want to remove these types and just have a PROPER spiral.
+	//Concentric circle feels weird and has inconsistent float instrument
+	//and the book one is downright confusing.
+	spiral_type : SpiralType;
+
+	world_center_pos : Vector2F;
+
+	rotate : float = PI/2.0;
+	is_clockwise : bool = true;
+
+	start_radius : float; //Not-settable, computed in InitSpiralSpace
+	//These sets the spiral_delta so how much we move out per radius index value
+	radius_size : float = 3;
+	//start_radius_factor to adjust the inner radius size start size
+	sr_factor : float = 2;
+
+	total_radius : float;
+
+	pitch_zero_freq : float64;
+	tuning_system_id : int;
+	//TODO Rename these to point_count and loop_count maybe? Should be generalized just for Spiral
+	//instead of for music since we want the spiral geometry to be independent of music.
+	//Maybe tuning_count is ok though... circle_delineation_count? not sure...
+	tuning_count : int;
+	//TODO This could be a float64 so we could have not whole spirals
+	//I don't know if that matters since we can just add + 1 here if needed more for example.
+	//Why would we need a precise offset from whole is the question in this case?
+	//TODO Could be turn_count...
+	chord_count : int;
+
+	//TODO We could have an additional value to increase the size of the points on the spiral which we could
+	//store here and then also store total point count. This would allow for more instrument exploration for example.
+
+	spiral_delta : float;
+	//TODO The factor here can replace bool branch
+	//in_out = 1.0 and out_in = -1.0
+	in_out_factor : float = 1.0;
+	is_in_out : bool = true;
+
+	is_loop : bool = true;
+	show_values : bool = true;
+
+	sound_float : bool;
+
+	point_dim : Vector2F = .{0.5,0.5};
+	point_color : Vector4F = LIGHT_BROWN;
+
+	base_shape_group : int;
+	base_render_order : int = 7;
+
+	/*After some consideration, for now, we will leave the spiral as having 1 base.
+	And then we can add other points around the spiral separately if needed.
+	Can make some convenience functions to add some in order like with base.
+	These values also tell us what the float spiral instrument should be based on.
+	*/
+	// has_base_points : bool;
+	// base_space_point_id : int;
+	base_index : int;
+	base_chord : [] float64;
+
+	//TODO This will likely just be calling a synthesizer eventually
+	//So it does not matter where we put the data for now.
+	osc_waves : [] OscWave;
+	synth : SimpleSynth;
+}
+
+//TODO FROM HERE Add an allocator here so we can set the fun_region_pos
+//and also strings and then clear them when we do a clear_op instruction
+//don't mind tests we will just have some lost data with tests with the allocator
+OpSpecData3D :: struct {
+	op_space_id : int;
+	op_space_3D : ChordSpace3;
+	all_op_space_points_3D : [..] SpacePoint3D;
+	all_op_text_3D : [..] SpaceText3D;
+
+	all_custom_geom_3D : [..] CustomGeom3D;
+
+	//TODO We could have separate allocators for text and shapes if needed
+	//if we add arbitrary text sizes so then we could reset the text allocator
+	//DOC : These allocator are for text and fun regions for vls NOT For the arrays.
+	//the arrays are stored on the default allocator since we can reuse this whole data
+	//if we delete and create a new 3d space.
+	//So they don't affect the regular points which are copied from chord space points
+	spec_3D_pool : Flat_Pool;
+	spec_3D_alloc : Allocator;
+}
+/*DOC : This groups some data for custom 3d geometries. Right now
+we just use it for sound, but we could include some rendering things in here
+although that would complicate rendering. If we add things for rendering
+maybe only apply them to a different array a 3d shapes where we fetch
+this data separately per group of 3d shapes.
+*/
+CustomGeom3D :: struct {
+	group_id : int;
+	//Tuning system is used by default here
+	tuning_system_id : int;
+	custom_audio_type : CustomAudioType;
+	osc_wave_type : OscWaveType;
+}
+
+//TODO MAybe we should rename this just OpSpace3DData
+DEFAULT_CENTER_OF_ROTATION :: Vector3F.{0,0,25}; 
+DEFAULT_CAM_TRANS : Matrix4x3F : #run MakeMatrix4x3F(Matrix3F_Identity, Vector3F.{0,0,0});
+MOUSE_DEFAULT :: Vector2F.{FLOAT32_MIN+7, FLOAT32_MIN+92};
+//TODO between 25-30 might be better for larger op spaces / screens
+DEFAULT_3D_DEPTH : float : 24.0;
+// DEFAULT_3D_DEPTH : float : 25.0;
+DEFAULT_3D_N : float : 1.0;
+DEFAULT_3D_F : float : 240.0;
+//TODO update the variable names in here, especially grid ones
+//TODO Leaving 3D here for now since this models the mapping
+//into 3D specifically
+/*TODO If we reuse this as a general 3D space, then we could rename it
+*/
+//TODO Rename this to Space3D once we clear the old 3d code out
+//and then remove all the unused data like osc waves and also these positions
+//and also technically dspace and op space id since those are op space specific now
+//TODO RENAME TO Space3D once we update everything
+ChordSpace3 :: struct {
+	// grid_world_center : Vector2F;
+	//TODO should we rename to dspace_world_center?
+	//TODO I think we can REMOVE THIS now since we just use the op_space.world_offset
+	chord_s3_world_pos : Vector2F;
+	//TODO Can we remove this or the viewport?
+	chord_s3_dim : Vector2F; //TODO should this be an int vector?
+
+	dspace_id : int;
+	//TODO Could move this out and use DSpaceToOpSpace to fetch it like with 2D.
+	//Then we could reuse this chord_s3 in other op_spaces... OR maybe not in which case we could just leave it...
+	//We could just move the camera to this op_space and keep the text fixed if we want to be able to see it for example
+	op_space_id : int;
+
+	//We could pull these out as constants instead if needed
+	base_group_id : int = 0;
+	vl_group_id : int = 1;
+
+	//NOTE : We can get lp_count from music_pt_count in tuning_system
+	//but we keep here both for caching but also because it is the linear point count of the space.
+	//So we need to update both of them whenever we set the tuning_system.
+	/*DOC : These are the defaults for this 3d space. We can set different ones if we want
+	with a separate custom geometry now.
+	*/
+	lp_count : int;
+	//TODO we can rename default tuning system
+	tuning_system_id : int; 
+
+	/*Note : We have just a boolean for chord_s4 because everything
+	is the same in terms of rendering and most input except for
+	moving through the 4th dimension and possibly some filtering
+	of vertices later on.
+	*/
+	//TODO Could make this an enum so we could even map
+	//5,6 and higher dim spaces which can then be explored
+	//in 3D space and programatically at the same time.
+	higher_dim : int;
+	//TODO could put filters in a separate table
+	cs_filter_aggregate : ChordSpaceFilterAggregate;
+	new_cs_filters : [..] CSFilter;
+
+	//TODO This will likely just be calling a synthesizer eventually
+	//So it does not matter where we put the data for now.
+	//TODO Can remove this now
+	osc_waves : [] OscWave;
+	synth : SimpleSynth;
+	default_wave_type : OscWaveType;
+
+	//TODO Need to make a point creating system like we did
+	//with filter system.
+	octave_count : int;
+
+	lerp_vl_colors : bool;
+	render_vl_order_as_int : bool;
+	//TODO can put 6 more bools here since we have an enum u8 in ChordSpaceFilter 
+
+	//TODO implement invariant ids with arrows and arrow changes
+	// invariant_ids : [3] int;
+
+	//TODO move this out into separate array for points
+	// points_dyn : [] SpacePoint3D;
+
+	//TODO move this out into separate array for edges
+	// edges : [..] GridEdge3D;
+
+	/*TODO Should we put all this in the op_space for space_3ds eventually?
+	Then we can also have generalized shapes like we do for 2D and have
+	cubes, icosahedrons, pyramids and anything else with low number of triangles.
+	Then we can treat the 3d spaces the same way as the 2d spaces and probably
+	also optimize in very similar ways.
+	*/
+	depth : float = DEFAULT_3D_DEPTH;
+	n : float = DEFAULT_3D_N;
+	f : float = DEFAULT_3D_F;
+
+	viewport : Viewport;
+	p_frustum : Matrix4F;
+
+	/*TODO should we keep using Matrix4x3F here? or split up into
+	Matrix3F for transformation and Vector3F for position.
+	this depends on efficiency and how they are accessed otherwise
+	*/
+	//TODO could remove temp if we did mouse delta and normalized rotation matrix (or used quaternions) every frame
+	cam_trans : Matrix4x3F = DEFAULT_CAM_TRANS;
+	//TODO can we pull this out and simply recompute every frame?
+	temp_cam_rotate : Matrix3F = Matrix3F_Identity;
+	is_mouse_rotating : bool;
+	mouse_cam_is_moving : bool;
+
+	//TODO can we pull this out and simply recompute every frame?
+	mouse_rotate : Matrix3F = Matrix3F_Identity;
+	temp_mouse_rotate : Matrix3F = Matrix3F_Identity;
+
+	mouse_start : Vector2F = MOUSE_DEFAULT;
+
+	center_of_rotation : Vector3F;
+
+	//TODO WHY NOTE REPLACE THIS WITH The SpacePoint3D
+	//instead of point_index OR at least the space_point_id for now
+	//and then fetch it instead of doing points_in_grid...
+	//TODO maybe this can also be removed and only be placed per frame
+	chosen_cube : TriangleInGrid3F;
+	click_cube : TriangleInGrid3F;
+}
+//TODO Pretty sure this was old 3d code that is no longer used. Maybe it was for connecting 3d points with mouse.
+//So I will leave it here just in case we want to re-implement that later.
+TriangleInGrid3F_DEFAULT :: TriangleInGrid3F.{Triangle3F.{}, -1, S64_MIN + 100, GridTriangleType.NONE};
+TriangleInGrid3F :: struct {
+	#as using triangle : Triangle3F;
+	point_index : int = -1; //Note : start as not indexable in array
+	order : int; //TODO do we need this since we have depth buffer?
+	//TODO do we need this or can we optimize by just storing Cube struct or something else?
+	type : GridTriangleType;
+}
+GridTriangleType :: enum {
+	NONE;
+	VERTEX;
+	EDGE;
+}
+MakeTriangleInGrid3F :: inline (triangle : Triangle3F, point_index : int, order : int, type : GridTriangleType) -> TriangleInGrid3F {
+	triangle_mesh : TriangleInGrid3F = ---;
+	triangle_mesh.triangle = triangle;
+	triangle_mesh.point_index = point_index;
+	triangle_mesh.order = order;
+	triangle_mesh.type = type;
+	return triangle_mesh;
+}
+
+
+/*DOC : Reminder we don't need to split up lines since we an do it programatically
+and just change the y value in 3d so it works like multiple lines.
+
+TODO We could increase this to 64 bytes if 32 is not enough but this is supposed to be a label
+so we don't want it to be too big
+*/
+SpaceText3D :: struct {
+	//TODO Can just use the op space 3d allocator once we implement that
+	text : string;
+	text_chars : [32] u8;
+	op_pos : Vector3F;
+	//We can use this later to add or remove things altogether from a 3d space
+	group_id : int;
+	//TODO We could add a color here as well if needed
+}
+//TODO Eventually we can just allocated the string with the op space allocator
+//similarly to the space point fun region pos
+SetSpaceText3D :: inline (s : string, space_text : *SpaceText3D) {
+	count : int = min(s.count, space_text.text_chars.count);
+	space_text.text.data = space_text.text_chars.data;
+	space_text.text.count = count;
+	memcpy(space_text.text.data, s.data, count);
+}
+
+//DOC In the renderer we check if .x >= 0 otherwise we set multicolor
+DEFAULT_CUBE_MULTI_COLOR :: Vector4F.{-1,-1,-1,-1};
+/*TODO so maybe these can remane SpacePoints like the others
+but then we have different mesh_ids (3D for cube and rectangle for 2D)
+although keeping them separate for now makes sense since we are not sure
+exactly or even if they truly have things in common
+
+TODO most of the stuff is no longer used in the new 3d model so we can likely remove it like
+dspace id and int pos and all the stack arrays and cube
+*/
+SpacePoint3D :: struct {
+	//TODO Do we really need this id since the points are always used a dspace, maybe for selection?
+	//This might be useful for dynamic libraries later
+	id : int;
+	//DOC : Convenience to group things together and add/delete together later.
+	group_id : int;
+
+	rel_pos : Vector3F;
+	pitch_set : [] float64;
+	fun_region : [] float64;
+	//DOC : This is good for setting any text. Someone could set traditional music values
+	//or alternative values. By default we set the pitch set but allowing any text
+	//allows the point to represent anything and we could add extra info for different geometries
+	//within the same 3d space.
+	shape_text : string;
+
+	draw_wire_mesh : bool;
+	is_selectable : bool = true;
+	//TODO Should we name this remove with filter instead? All custom points won't be added
+	do_not_remove_with_filter : bool;
+	color := DEFAULT_CUBE_MULTI_COLOR;
+	//TODO Can have a transformed cube or just have 3x3 for all cubes...
+	//TODO Can have this for all 3d shapes and a separate one with 3x3 for arbitrary transforms
+	scale_value : float = 1.0;
+
+	render_solid_cube : bool = true;
+	// dspace_id : int;
+}
+
+/*End op space spec data / op space shapes data
+*/

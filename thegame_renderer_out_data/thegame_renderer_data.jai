@@ -303,6 +303,8 @@ RendererData :: struct {
 	//if needed for things like dynamic recompilation.
 	//TODO I THINK WE CAN MOVE THIS OUT OF HERE and then it would not depend on Simp so we can pass the renderer data
 	//to the shared library
+	//TODO I think we can just move this to Persist and then pass it in to the one place
+	//we update it which is in settings throught the 2 specific functions
 	all_my_fonts : [..] *Dynamic_Font;
 }
 

@@ -3356,71 +3356,7 @@ LineSpecificStartEndChar :: inline (
 	return start_line_char, end_line_char;
 }
 
-/*DOC : All the data specific to each op space.
-These are separated out since we can reuse them if we ever
-remove an op space and since we don't always need the data
-when accessing op space info.
-Also maybe this is better for resetting, I guess let's see
-how we use it and then we can decide.
 
-TODO We could possibly separate 2d and 3d data, but it
-may not be worth it since 2d can overlap 3d anyways
-*/
-//TODO Maybe rename to OpSpecData for conciseness
-OpSpaceSpecData :: struct {
-	op_space_id : int;
-
-	//TODO WE CAN PUT IDS IN HERE JUST FOR THIS OP SPACE
-
-	//TODO We could maybe pull the arrays out from here eventually
-	//if we only have it in the op space
-	ass : AllSpaceShapes;
-	all_op_circle_spaces : [..] CircleSpace;
-	all_op_chord_s2 : [..] ChordSpace2;
-	all_op_collision_entities : [..] CollisionEntity;
-	all_op_spirals : [..] SpiralSpace;
-
-	//TODO I Think we can generally replace this with using a
-	//base shape group in ass so i guess we can gradually transfer over.
-	//For example we can do this with circles first.
-	//IF that is possible then we can eventually remove this altogether.
-	all_op_space_points : [..] SpacePoint;
-
-	spec_2D_pool : Flat_Pool;
-	spec_2D_alloc : Allocator;
-
-	//TODO Should we just store this here instead of a separate array since we can only have 1 per op_space?
-	//I will leave it in the array for now while refactoring, but afterwards, storing in here makes more sense
-	//so then we can just use the same allocator for the whole op_space_3d and then reuse it if ever we delete it
-	//Also then we could
-	// op_space_3d : ChordSpace3;
-	//TODO Can likely change this struct or remove unecessary data
-	//once it's working
-	//TODO We could separate this out from 3d if this is all we need
-	//or if the 2d arrays we allow are different than the above ones
-	all_op_space_points_3D : [..] SpacePoint3D;
-	all_op_text_3D : [..] SpaceText3D;
-}
-//TODO FROM HERE Add an allocator here so we can set the fun_region_pos
-//and also strings and then clear them when we do a clear_op instruction
-//don't mind tests we will just have some lost data with tests with the allocator
-OpSpecData3D :: struct {
-	op_space_id : int;
-	op_space_3D : ChordSpace3;
-	all_op_space_points_3D : [..] SpacePoint3D;
-	all_op_text_3D : [..] SpaceText3D;
-
-	all_custom_geom_3D : [..] CustomGeom3D;
-
-	//TODO We could have separate allocators for text and shapes if needed
-	//if we add arbitrary text sizes so then we could reset the text allocator
-	//DOC : These allocator are for text and fun regions for vls NOT For the arrays.
-	//the arrays are stored on the default allocator since we can reuse this whole data
-	//if we delete and create a new 3d space.
-	//So they don't affect the regular points which are copied from chord space points
-	spec_3D_pool : Flat_Pool;
-	spec_3D_alloc : Allocator;
-}
 //TODO Could make this into a compile-time list if needed.
 AsmOpSpaceData :: struct {
 	//return data

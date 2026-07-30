@@ -5644,6 +5644,9 @@ for abs_path_name : perm.all_data.all_run_external_update_events
 	shared_lib.all_simple_synths = *perm.all_data.all_simple_synths;
 	shared_lib.free_simple_synth_pool = *perm.all_data.free_simple_synth_pool;
 
+	shared_lib.all_op_space_spec_data = *perm.all_data.all_op_space_spec_data;
+	shared_lib.all_op_spec_data_3D = *perm.all_data.all_op_spec_data_3D;
+
 
 	//TODO How should be actually pass this in? Should we just put it in shared library?
 	//It can't be global anymore...
