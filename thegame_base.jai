@@ -361,7 +361,10 @@ if IsInputMapPress(.TERMINAL_TOGGLE, .DOWN_THIS_FRAME, game_input) {
 			//Then allow resizing from the terminal sides
 			//DONT FORGET TO CHECK dynamic library and either update it to be simpler or allow system file functions to run
 			create_terminal.op_space_name = copy_string(terminal_name);
-			closed_op_space = CreateClosedOpSpace(perm.all_data, create_terminal);
+			closed_op_space = CreateClosedOpSpace(create_terminal, 
+				*perm.all_data.all_closed_op_spaces, 
+				*perm.all_data.all_op_space_spec_data, 
+				*perm.all_data.all_op_spec_data_3D);
 			//TODO Set is_fixed_to_camera here once we add the settings for placement
 
 			term_op : *TerminalOpSpaceData = array_add(*perm.all_data.all_terminal_op_space_data);
@@ -5644,6 +5647,8 @@ for abs_path_name : perm.all_data.all_run_external_update_events
 	shared_lib.all_simple_synths = *perm.all_data.all_simple_synths;
 	shared_lib.free_simple_synth_pool = *perm.all_data.free_simple_synth_pool;
 
+	shared_lib.all_open_op_spaces = *perm.all_data.all_open_op_spaces;
+	shared_lib.all_closed_op_spaces = *perm.all_data.all_closed_op_spaces;
 	shared_lib.all_op_space_spec_data = *perm.all_data.all_op_space_spec_data;
 	shared_lib.all_op_spec_data_3D = *perm.all_data.all_op_spec_data_3D;
 

@@ -59,13 +59,13 @@ MakeRendererData :: inline (
 	font_height := cast(int) (scale_factor * (fixed_screen_height / 49));
 	// font_height := cast(int) (scale_factor * (window_height / 49));
 	// font_height := cast(int) (scale_factor * (1782 / 49));
-	font_0 : *Dynamic_Font = Simp.get_font_at_size(RESOURCES_DIR_NAME, "OpenSans-BoldItalic.ttf", font_height);
+	font_0 : *Simp.Dynamic_Font = Simp.get_font_at_size(RESOURCES_DIR_NAME, "OpenSans-BoldItalic.ttf", font_height);
 	//TODO Store these fonts in the renderer as we don't need them anywhere else.
 	array_add(*renderer_data.all_my_fonts, font_0);
 	//Note : Seems like character_height == window_height but we still grab from here just in case
 	array_add(*renderer_data.all_my_fonts_data, MakeFontData(font_0.character_height));
 
-	font_1 : *Dynamic_Font = Simp.get_font_at_size(RESOURCES_DIR_NAME, "JetBrainsMono-Light.ttf", font_height);
+	font_1 : *Simp.Dynamic_Font = Simp.get_font_at_size(RESOURCES_DIR_NAME, "JetBrainsMono-Light.ttf", font_height);
 	array_add(*renderer_data.all_my_fonts, font_1);
 	one_char_width : s64 = Simp.prepare_text(font_1, "1");
 	array_add(*renderer_data.all_my_fonts_data, MakeFontData(font_1.character_height, one_char_width));
@@ -91,7 +91,7 @@ MakeRendererData :: inline (
 //REMINDER Call UpdateFontSize instead of this to actually update the font size in game
 UpdateRendererFontSize :: inline (font_size : float, rd : *RendererData) {
 	font_height := cast(int) (2*font_size);
-	font_1 : *Dynamic_Font = Simp.get_font_at_size(RESOURCES_DIR_NAME, "JetBrainsMono-Light.ttf", font_height);
+	font_1 : *Simp.Dynamic_Font = Simp.get_font_at_size(RESOURCES_DIR_NAME, "JetBrainsMono-Light.ttf", font_height);
 	rd.all_my_fonts[1] = font_1;
 	one_char_width : s64 = Simp.prepare_text(font_1, "1");
 	rd.all_my_fonts_data[1] = MakeFontData(font_1.character_height, one_char_width);
@@ -117,11 +117,11 @@ ResizeRendererData :: inline (new_window_pixel_width : s32, new_window_pixel_hei
 	//TODO Use this to change the font when we zoom in and out. Although maybe we don't allow zooming
 	//in the text op space... just changing the window size and can just allow font size changing instead.
 	font_height : int = new_window_pixel_height / 49;
-	font_0 : *Dynamic_Font = Simp.get_font_at_size(RESOURCES_DIR_NAME, "OpenSans-BoldItalic.ttf", font_height);
+	font_0 : *Simp.Dynamic_Font = Simp.get_font_at_size(RESOURCES_DIR_NAME, "OpenSans-BoldItalic.ttf", font_height);
 	renderer_data.all_my_fonts[0] = font_0;
 	renderer_data.all_my_fonts_data[0] = MakeFontData(font_0.character_height);
 
-	font_1 : *Dynamic_Font = Simp.get_font_at_size(RESOURCES_DIR_NAME, "JetBrainsMono-Light.ttf", font_height);
+	font_1 : *Simp.Dynamic_Font = Simp.get_font_at_size(RESOURCES_DIR_NAME, "JetBrainsMono-Light.ttf", font_height);
 	renderer_data.all_my_fonts[1] = font_1;
 	one_char_width : s64 = Simp.prepare_text(font_1, "1");
 	renderer_data.all_my_fonts_data[1] = MakeFontData(font_1.character_height, one_char_width);

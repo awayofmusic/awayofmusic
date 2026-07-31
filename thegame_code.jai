@@ -13918,7 +13918,10 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 			//music space can be setup in 1 shot. This would also be possible through dynamic libraries
 			// cosd.world_offset = ;
 			cosd.world_size = ad.runtime_settings.default_op_space_size;
-			op_space = CreateClosedOpSpace(ad, cosd);
+			op_space = CreateClosedOpSpace(cosd, 
+				*ad.all_closed_op_spaces, 
+				*ad.all_op_space_spec_data, 
+				*ad.all_op_spec_data_3D);
 		}
 
 		//Set the op space id here as a return value
@@ -14998,7 +15001,10 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 	 			// memcpy(cosd.op_space_name.data, name_string.data, name_string.count);
 				// cosd.world_offset = ;
 				// cosd.world_size = ;
-				op_space = CreateClosedOpSpace(ad, cosd);
+				op_space = CreateClosedOpSpace(cosd, 
+					*ad.all_closed_op_spaces, 
+					*ad.all_op_space_spec_data, 
+					*ad.all_op_spec_data_3D);
 			}
 
 			//Set the op space id here as a return value

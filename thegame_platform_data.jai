@@ -19,20 +19,8 @@ Stub_DrawLine :: (x0 : int, y0 : int, x1 : int, y1 : int, color : u32) {
     log("We are running Stube_DrawLine\n");    
 }
 
-Kilobyte :: (bytes : s64) -> s64 #expand {
-    return 1024 * bytes;
-}
-
-Megabyte :: (bytes : s64) -> s64 #expand {
-    return 1024 * Kilobyte(bytes);
-}
-
-Gigabyte :: (bytes : s64) -> s64 #expand {
-    return 1024 * Megabyte(bytes);
-}
-
-#import "Simp";
-#import "Math";
+// #import "Simp";
+// #import "Math";
 
 WriteFileType :: #type (*void);
 ReadFileType :: #type (Filename : string) -> DebugReadFileResult;
@@ -58,7 +46,7 @@ GameMemory :: struct {
 
 	//TODO put this in RendererState/RendererData
 	//TODO leaving name for now since Dynamic_Font and Font_Effects are SIMP specific
-	SIMPPrepareText : (font: *Dynamic_Font, text: string, effect_flags: Font_Effects = 0) -> (width: s64);
+	// SIMPPrepareText : (font: *Dynamic_Font, text: string, effect_flags: Font_Effects = 0) -> (width: s64);
 	// Font : *Dynamic_Font;
 }
 

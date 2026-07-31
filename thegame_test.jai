@@ -926,7 +926,10 @@ Test_HigherDim :: (
 	cosd : CreateOpSpaceData;
 	cosd.op_space_external_type = OpSpaceExternalType.space_3d;
 	cosd.op_space_name = "space";
-	op_space : OperationSpace = CreateClosedOpSpace(perm.all_data, cosd);
+	op_space : OperationSpace = CreateClosedOpSpace(cosd,
+		*perm.all_data.all_closed_op_spaces, 
+		*perm.all_data.all_op_space_spec_data, 
+		*perm.all_data.all_op_spec_data_3D);
 
 
 	create_cs3 : CreateChordS3Data = DEFAULT_CS4_DATA;
@@ -1025,7 +1028,10 @@ Test_AsmChordS3 :: (
 	create_op : CreateOpSpaceData;
 	create_op.op_space_external_type = OpSpaceExternalType.space_3d;
 	create_op.op_space_name = "space";
-	op_space : OperationSpace = CreateClosedOpSpace(perm.all_data, create_op);
+	op_space : OperationSpace = CreateClosedOpSpace(create_op,
+		*perm.all_data.all_closed_op_spaces, 
+		*perm.all_data.all_op_space_spec_data, 
+		*perm.all_data.all_op_spec_data_3D);
 
 	perm.all_data.ram_memory.stack_p = DEFAULT_RAM_DATA;
 	//Reset stack so we can put on new data for new calls
@@ -1137,7 +1143,10 @@ Test_CustomS3 :: (
 	create_op : CreateOpSpaceData;
 	create_op.op_space_external_type = OpSpaceExternalType.space_3d;
 	create_op.op_space_name = "space";
-	op_space : OperationSpace = CreateClosedOpSpace(perm.all_data, create_op);
+	op_space : OperationSpace = CreateClosedOpSpace(create_op,
+		*perm.all_data.all_closed_op_spaces, 
+		*perm.all_data.all_op_space_spec_data, 
+		*perm.all_data.all_op_spec_data_3D);
 
 	//Reset stack so we can put on new data for new calls
 	perm.all_data.ram_memory.stack_p = DEFAULT_RAM_DATA;
@@ -1289,7 +1298,10 @@ Test_ClearOp :: (
 	create_op : CreateOpSpaceData;
 	create_op.op_space_external_type = OpSpaceExternalType.space_3d;
 	create_op.op_space_name = "space";
-	op_space : OperationSpace = CreateClosedOpSpace(perm.all_data, create_op);
+	op_space : OperationSpace = CreateClosedOpSpace(create_op,
+		*perm.all_data.all_closed_op_spaces, 
+		*perm.all_data.all_op_space_spec_data, 
+		*perm.all_data.all_op_spec_data_3D);
 
 	//Reset stack so we can put on new data for new calls
 	perm.all_data.ram_memory.stack_p = DEFAULT_RAM_DATA;
@@ -1374,7 +1386,10 @@ Test_AsmChordS4 :: (
 	create_op : CreateOpSpaceData;
 	create_op.op_space_external_type = OpSpaceExternalType.space_3d;
 	create_op.op_space_name = "space";
-	op_space : OperationSpace = CreateClosedOpSpace(perm.all_data, create_op);
+	op_space : OperationSpace = CreateClosedOpSpace(create_op,
+		*perm.all_data.all_closed_op_spaces, 
+		*perm.all_data.all_op_space_spec_data, 
+		*perm.all_data.all_op_spec_data_3D);
 
 	perm.all_data.ram_memory.stack_p = DEFAULT_RAM_DATA;
 	//Reset stack so we can put on new data for new calls
@@ -1476,7 +1491,10 @@ Test_AsmChordS5 :: (
 	create_op : CreateOpSpaceData;
 	create_op.op_space_external_type = OpSpaceExternalType.space_3d;
 	create_op.op_space_name = "space";
-	op_space : OperationSpace = CreateClosedOpSpace(perm.all_data, create_op);
+	op_space : OperationSpace = CreateClosedOpSpace(create_op,
+		*perm.all_data.all_closed_op_spaces, 
+		*perm.all_data.all_op_space_spec_data, 
+		*perm.all_data.all_op_spec_data_3D);
 
 	perm.all_data.ram_memory.stack_p = DEFAULT_RAM_DATA;
 	//Reset stack so we can put on new data for new calls
@@ -1576,7 +1594,10 @@ Test_CreateChordS2 :: (
 	cosd : CreateOpSpaceData;
 	cosd.op_space_external_type = OpSpaceExternalType.space_2d;
 	cosd.op_space_name = "test";
-	s2_op_space : OperationSpace = CreateClosedOpSpace(perm.all_data, cosd);
+	s2_op_space : OperationSpace = CreateClosedOpSpace(cosd,
+		*perm.all_data.all_closed_op_spaces, 
+		*perm.all_data.all_op_space_spec_data, 
+		*perm.all_data.all_op_spec_data_3D);
 
 	count_equal := AssertEquals(1, perm.all_data.all_op_space_spec_data.count);
 	op_spec_data : *OpSpaceSpecData;
@@ -1723,7 +1744,10 @@ Test_AsmChordS2 :: (
 	cosd : CreateOpSpaceData;
 	cosd.op_space_external_type = OpSpaceExternalType.space_2d;
 	cosd.op_space_name = "test";
-	op_space : OperationSpace = CreateClosedOpSpace(perm.all_data, cosd);
+	op_space : OperationSpace = CreateClosedOpSpace(cosd,
+		*perm.all_data.all_closed_op_spaces, 
+		*perm.all_data.all_op_space_spec_data, 
+		*perm.all_data.all_op_spec_data_3D);
 
 	// ts_name := "gamma";
 	ts_name := "et12";
@@ -1926,7 +1950,10 @@ Test_CreatePitchS2 :: (
 	cosd : CreateOpSpaceData;
 	cosd.op_space_external_type = OpSpaceExternalType.space_2d;
 	cosd.op_space_name = "test";
-	op_space : OperationSpace = CreateClosedOpSpace(perm.all_data, cosd);
+	op_space : OperationSpace = CreateClosedOpSpace(cosd,
+		*perm.all_data.all_closed_op_spaces, 
+		*perm.all_data.all_op_space_spec_data, 
+		*perm.all_data.all_op_spec_data_3D);
 
 
 	//TODO Pull this out into it's own MakePitchSpace2D function
@@ -2010,7 +2037,10 @@ Test_CreatePitchS3 :: (
 	cosd : CreateOpSpaceData;
 	cosd.op_space_external_type = OpSpaceExternalType.chord_s3;
 	cosd.op_space_name = "test";
-	op_space : OperationSpace = CreateClosedOpSpace(perm.all_data, cosd);
+	op_space : OperationSpace = CreateClosedOpSpace(cosd,
+		*perm.all_data.all_closed_op_spaces, 
+		*perm.all_data.all_op_space_spec_data, 
+		*perm.all_data.all_op_spec_data_3D);
 
 	//This is separated out so we can reuse but may note be necessary
 	//with new methods of coding now.
@@ -2055,7 +2085,10 @@ Test_CreateSpiral :: (
 	cosd : CreateOpSpaceData;
 	cosd.op_space_external_type = OpSpaceExternalType.space_2d;
 	cosd.op_space_name = "test";
-	op_space : OperationSpace = CreateClosedOpSpace(perm.all_data, cosd);
+	op_space : OperationSpace = CreateClosedOpSpace(cosd,
+		*perm.all_data.all_closed_op_spaces, 
+		*perm.all_data.all_op_space_spec_data, 
+		*perm.all_data.all_op_spec_data_3D);
 
 	count_equal := AssertEquals(1, perm.all_data.all_op_space_spec_data.count);
 	op_spec_data : *OpSpaceSpecData;
@@ -2241,7 +2274,10 @@ Test_AsmSpiral :: (
 	cosd : CreateOpSpaceData;
 	cosd.op_space_external_type = OpSpaceExternalType.space_2d;
 	cosd.op_space_name = "test";
-	op_space : OperationSpace = CreateClosedOpSpace(perm.all_data, cosd);
+	op_space : OperationSpace = CreateClosedOpSpace(cosd,
+		*perm.all_data.all_closed_op_spaces, 
+		*perm.all_data.all_op_space_spec_data, 
+		*perm.all_data.all_op_spec_data_3D);
 
 	count_equal := AssertEquals(1, perm.all_data.all_op_space_spec_data.count);
 	op_spec_data : *OpSpaceSpecData;
@@ -2402,7 +2438,10 @@ Test_CreateNewCircle :: (
 	cosd : CreateOpSpaceData;
 	cosd.op_space_external_type = OpSpaceExternalType.space_2d;
 	cosd.op_space_name = "test";
-	op_space : OperationSpace = CreateClosedOpSpace(perm.all_data, cosd);
+	op_space : OperationSpace = CreateClosedOpSpace(cosd,
+		*perm.all_data.all_closed_op_spaces, 
+		*perm.all_data.all_op_space_spec_data, 
+		*perm.all_data.all_op_spec_data_3D);
 
 	count_equal := AssertEquals(1, perm.all_data.all_op_space_spec_data.count);
 	op_spec_data : *OpSpaceSpecData;
@@ -2466,7 +2505,10 @@ Test_AsmCircle :: (
 	cosd : CreateOpSpaceData;
 	cosd.op_space_external_type = OpSpaceExternalType.space_2d;
 	cosd.op_space_name = "test";
-	op_space : OperationSpace = CreateClosedOpSpace(perm.all_data, cosd);
+	op_space : OperationSpace = CreateClosedOpSpace(cosd,
+		*perm.all_data.all_closed_op_spaces, 
+		*perm.all_data.all_op_space_spec_data, 
+		*perm.all_data.all_op_spec_data_3D);
 
 	perm.all_data.ram_memory.stack_p = DEFAULT_RAM_DATA;
 
@@ -2590,7 +2632,10 @@ Test_AsmCircleShape :: (
 	cosd : CreateOpSpaceData;
 	cosd.op_space_external_type = OpSpaceExternalType.space_2d;
 	cosd.op_space_name = "test";
-	op_space : OperationSpace = CreateClosedOpSpace(perm.all_data, cosd);
+	op_space : OperationSpace = CreateClosedOpSpace(cosd,
+		*perm.all_data.all_closed_op_spaces, 
+		*perm.all_data.all_op_space_spec_data, 
+		*perm.all_data.all_op_spec_data_3D);
 
 	perm.all_data.ram_memory.stack_p = DEFAULT_RAM_DATA;
 
@@ -2738,7 +2783,10 @@ Test_AsmGeom2D :: (
 	cosd : CreateOpSpaceData;
 	cosd.op_space_external_type = OpSpaceExternalType.space_2d;
 	cosd.op_space_name = "test";
-	op_space : OperationSpace = CreateClosedOpSpace(perm.all_data, cosd);
+	op_space : OperationSpace = CreateClosedOpSpace(cosd,
+		*perm.all_data.all_closed_op_spaces, 
+		*perm.all_data.all_op_space_spec_data, 
+		*perm.all_data.all_op_spec_data_3D);
 
 	perm.all_data.ram_memory.stack_p = DEFAULT_RAM_DATA;
 
@@ -3481,7 +3529,10 @@ Test_OpLinearRow :: (
 	cosd : CreateOpSpaceData;
 	cosd.op_space_external_type = OpSpaceExternalType.space_2d;
 	cosd.op_space_name = "test";
-	op_space : OperationSpace = CreateClosedOpSpace(perm.all_data, cosd);
+	op_space : OperationSpace = CreateClosedOpSpace(cosd,
+		*perm.all_data.all_closed_op_spaces, 
+		*perm.all_data.all_op_space_spec_data, 
+		*perm.all_data.all_op_spec_data_3D);
 
 	rows : [1] CreateRowData;
 	rows[0].octave_height = 12;
@@ -13452,7 +13503,10 @@ DONE);
 		cosd : CreateOpSpaceData;
 		cosd.op_space_external_type = OpSpaceExternalType.space_2d;
 		cosd.op_space_name = "test";
-		op_space : OperationSpace = CreateClosedOpSpace(perm.all_data, cosd);
+		op_space : OperationSpace = CreateClosedOpSpace(cosd,
+			*perm.all_data.all_closed_op_spaces, 
+			*perm.all_data.all_op_space_spec_data, 
+			*perm.all_data.all_op_spec_data_3D);
 		count_equal := AssertEquals(1, perm.all_data.all_op_space_spec_data.count);
 		op_spec_data : *OpSpaceSpecData;
 		if count_equal {
@@ -14579,7 +14633,10 @@ Test_CodeCircle :: (
 		cosd : CreateOpSpaceData;
 		cosd.op_space_external_type = OpSpaceExternalType.space_2d;
 		cosd.op_space_name = "test";
-		op_space : OperationSpace = CreateClosedOpSpace(perm.all_data, cosd);
+		op_space : OperationSpace = CreateClosedOpSpace(cosd,
+			*perm.all_data.all_closed_op_spaces, 
+			*perm.all_data.all_op_space_spec_data, 
+			*perm.all_data.all_op_spec_data_3D);
 
 		WriteFileString(text_file, sprint(
 #string DONE
@@ -14772,7 +14829,10 @@ Test_CodeCS2 :: (
 		cosd : CreateOpSpaceData;
 		cosd.op_space_external_type = OpSpaceExternalType.space_2d;
 		cosd.op_space_name = "test";
-		op_space : OperationSpace = CreateClosedOpSpace(perm.all_data, cosd);
+		op_space : OperationSpace = CreateClosedOpSpace(cosd,
+			*perm.all_data.all_closed_op_spaces, 
+			*perm.all_data.all_op_space_spec_data, 
+			*perm.all_data.all_op_spec_data_3D);
 
 //TODO We can pull this out into a file and use this string as a test and an example for 3d chord spaces
 		WriteFileString(text_file,sprint(
@@ -14945,7 +15005,10 @@ Test_CodeSpiral :: (
 		cosd : CreateOpSpaceData;
 		cosd.op_space_external_type = OpSpaceExternalType.space_2d;
 		cosd.op_space_name = "test";
-		op_space : OperationSpace = CreateClosedOpSpace(perm.all_data, cosd);
+		op_space : OperationSpace = CreateClosedOpSpace(cosd,
+			*perm.all_data.all_closed_op_spaces, 
+			*perm.all_data.all_op_space_spec_data, 
+			*perm.all_data.all_op_spec_data_3D);
 
 //TODO We can pull this out into a file and use this string as a test and an example for 3d chord spaces
 		WriteFileString(text_file,sprint(
@@ -15117,7 +15180,10 @@ Test_Code3D :: (
 		cosd : CreateOpSpaceData;
 		cosd.op_space_external_type = OpSpaceExternalType.space_3d;
 		cosd.op_space_name = "test";
-		op_space : OperationSpace = CreateClosedOpSpace(perm.all_data, cosd);
+		op_space : OperationSpace = CreateClosedOpSpace(cosd,
+			*perm.all_data.all_closed_op_spaces, 
+			*perm.all_data.all_op_space_spec_data, 
+			*perm.all_data.all_op_spec_data_3D);
 
 //TODO We can pull this out into a file and use this string as a test and an example for 3d chord spaces
 		WriteFileString(text_file,sprint(

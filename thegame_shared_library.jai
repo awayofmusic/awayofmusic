@@ -42,7 +42,9 @@ SharedLibraryData :: struct {
 	all_simple_synths : *[..] SimpleSynth;
 	free_simple_synth_pool : *[..] SimpleSynth;
 
-	//Op Space Spec Data
+	//Op Space Data
+	all_open_op_spaces : *[..] OperationSpace;
+	all_closed_op_spaces : *[..] OperationSpace;
 	all_op_space_spec_data : *[..] OpSpaceSpecData;
 	all_op_spec_data_3D : *[..] OpSpecData3D;
 
@@ -87,6 +89,15 @@ GlobalRules :: struct {
 	memory_unit_width : float;
 
 	//TODO should we have a global scale as well?
+}
+Kilobyte :: (bytes : s64) -> s64 #expand {
+    return 1024 * bytes;
+}
+Megabyte :: (bytes : s64) -> s64 #expand {
+    return 1024 * Kilobyte(bytes);
+}
+Gigabyte :: (bytes : s64) -> s64 #expand {
+    return 1024 * Megabyte(bytes);
 }
 
 /*Synth Data creation start 
@@ -2640,11 +2651,170 @@ AllNextIds :: struct {
 	// NEXT_SHAPE_TEXT_ID : int = 0;
 }
 
-/*Start op space spec data / op space shapes data
+/*Start op space data / op space shapes data
 
 TODO Should we put all this in a separate file?
 Could also pull out the chord space and filtering code specifically if needed
 */
+
+/*TODO
+	should this be changed to the general concept of a window?
+	in other words just change the name and keep all other data separate
+	with maybe a type to know which one if needed?
+
+	will keep all info in here for now and then separate accordingly
+
+	TODO should we store the *RenderGroup directly in here
+	or should we store it separately? could also just store the id
+	here by index and then fetch it by id/index
+
+	can have a rhythm op space as well
+
+	*** should we store dspace type in op_space, 
+	ie linear, chord_s2, chord_s3...***
+
+	***it seems to make sense that every op space should have
+	input and output spaces or sets of spaces***
+*/
+//can we rename to OpSpace or OperationSpace?
+//TODO check MIN_SIZE on resizing op_space
+OP_SPACE_MIN_SIZE :: Vector2F.{8,5};
+//This size is arbitrary and is only checked for settings now. We can increase or decreate if needed.
+//We could remove it once we do settings through dynamic libraries.
+OP_SPACE_MAX_SIZE :: Vector2F.{500,500};
+// OP_SPACE_MIN_SIZE :: Vector2F.{5,5};
+//TODO NEED TO PUT THESE IN TextOpSpaceData and compute them
+//on creation and also on update if we change the window size
+//or change proportions for example.
+OP_SPACE_LINE_HEIGHT : float : 1.5;
+OP_SPACE_VIEWABLE_LINE_COUNT : int : 
+	#run round_to_int(OP_SPACE_DEFAULT_SIZE.y / OP_SPACE_LINE_HEIGHT) - 1;
+OperationSpace :: struct {
+	id : int;
+	op_space_external_type : OpSpaceExternalType;
+	op_space_name : string;
+
+	//TODO should this just be a Rectangle2?
+	//What is the best option for moving and resizing op_space as well?
+	world_offset : Vector2F;
+	world_size : Vector2F = OP_SPACE_DEFAULT_SIZE;
+
+
+	is_moving_op_space : bool;
+	//TODO could remove this if we remove the close window button
+	op_close_selected : bool;
+	//TODO Could make this 1 struct if that helps with using it
+	//since we only use these 2 for some functions
+	fixed_op_type : OpSpaceFixedType;
+	fixed_mspace_id : int;
+
+	// fixed_camera_offset : Vector2F;
+	// per_frame_world_cam : Camera2D;
+	// op_cam_pos : Vector2F;
+	//TODO should we just store the camera in here?
+	/*TODO due to 3D cameras being completely different, should we pull this out?
+		If we do pull it out, then make sure that we do note
+		create a camera for 3D space or that we have a separate
+		array for 3D cameras or just keep it in ChordSpace3 for now
+	*/
+	//TODO CAN LIKELY REMOVE THIS AND active_cam_id as well
+	//and camera array now that we store the camera directly
+	// cam_2D_id : int;
+	op_2D_cam : Camera2D;
+
+	//TODO We could remove this from here and grab it from the 
+	//open_op_space_render_groups array each time if needed.
+	//This is more efficient for fetching though since we use it
+	//all the time whenever rendering.
+	render_groups : OpSpaceRenderGroups;
+
+	//TODO Could have functions here for allowing external
+	//to open or close OR 
+	//could have an event system where we have event types
+	//with ids and then the external dll can react to that
+	//event with that id
+	// on_close : OnCloseType;
+	// on_open : OnOpenType;
+}
+//NOTE : This needs to be 64-bit if we want to use it as asm data.
+OpSpaceExternalType :: enum {
+	/*New general spaces, can likely remove other spaces later
+	  in favor of just general spaces with more robust creation
+	  functions. For example to add linear or circular spaces in a line.
+	*/
+	space_2d;
+	space_3d;
+	terminal;
+	//TODO Maybe rename this to text instead
+	txt;
+
+	//TODO Remove these when we go over the 2d and 3d spaces
+	chord_s3;
+	circle;
+}
+OpSpaceFixedType :: enum {
+	FIXED_TO_CAMERA;
+	FIXED_TO_MSPACE;
+}
+
+CreateOpSpaceData :: struct {
+	op_space_name : string;
+	op_space_external_type : OpSpaceExternalType;
+	world_offset : Vector2F;
+	world_size : Vector2F = OP_SPACE_DEFAULT_SIZE;
+}
+CreateClosedOpSpace :: inline (
+	cosd : CreateOpSpaceData,
+	all_closed_op_spaces : *[..] OperationSpace,
+	all_op_space_spec_data : *[..] OpSpaceSpecData,
+	all_op_spec_data_3D : *[..] OpSpecData3D)
+-> *OperationSpace 
+{
+	//TODO Should we store this in the OperationSpace instead of cosd.world_offset and cosd.world_size? 
+	//We would need to just store it in 1 place. I guess it depends how we move or resize the op_space.
+	op_space_rect : Rectangle2 = RectCenterDim(cosd.world_offset, cosd.world_size);
+	op_ui_min : Vector2F = MakeV2F(op_space_rect.min.x, op_space_rect.max.y);
+	// op_ui_size : Vector2F = MakeV2F(OP_SPACE_MIN_SIZE.x, 1.6);
+	// op_ui_size : Vector2F = MakeV2F(OP_SPACE_MIN_SIZE.x, 1.4);
+	op_ui_size : Vector2F = MakeV2F(cosd.world_size.x, 1.4);
+	op_ui_rect : Rectangle2 = RectMinDim(op_ui_min, op_ui_size);
+
+	op_space : *OperationSpace = array_add(all_closed_op_spaces);
+	op_space.id = context.ALL_NEXT_IDS.NEXT_OP_SPACE_ID;
+	context.ALL_NEXT_IDS.NEXT_OP_SPACE_ID += 1;
+	op_space.world_offset = cosd.world_offset;
+	op_space.world_size = cosd.world_size;
+	// op_space.cam_2D_id = op_2D_cam.id;
+	//TODO I think we should copy the name in here and then later if we store it with some op_space data storage we can update it all at once
+	op_space.op_space_name = cosd.op_space_name;
+	op_space.op_space_external_type = cosd.op_space_external_type;
+	// SetDefaultOpSpaceFixedTypeState(op_space, all_data.runtime_settings);
+
+	//TODO Should we just put this in op space directly or have it be separate?
+	//Separate means we can reuse it if we delete an op space.
+	//We could also just create this for everything if we want to allow people to draw shapes in the text editor and terminal...
+	//TODO remove the space_3d from here once the new code is working
+	if AllOrEquals(cosd.op_space_external_type, .[.space_2d, .chord_s3]) {
+		//TODO Eventually we can allow reusing these if we allow the deletion of a 2d op space.
+		op_space_data : *OpSpaceSpecData = array_add(all_op_space_spec_data);
+		op_space_data.op_space_id = op_space.id;
+		init(*op_space_data.spec_2D_pool, Megabyte(10));
+		op_space_data.spec_2D_alloc = Allocator.{flat_pool_allocator_proc, *op_space_data.spec_2D_pool};
+	}
+	//Make this an else and remove above once new code is working
+	if cosd.op_space_external_type == .space_3d {
+		//TODO Eventually we can allow reusing these if we allow the deletion of a 3d op space.
+		op_3D : *OpSpecData3D = array_add(all_op_spec_data_3D);
+		op_3D.op_space_id = op_space.id;	
+		init(*op_3D.spec_3D_pool, Megabyte(10));
+		op_3D.spec_3D_alloc = Allocator.{flat_pool_allocator_proc, *op_3D.spec_3D_pool};
+		//If we reuse this then we don't need this since we can just use the same array data
+		// #insert #run SetResizableArrays(OpSpecData3D, "op_3D.%.allocator = op_3D.spec_3D_alloc;\n");
+	}
+
+	//TODO Likely can just return the pointer depending on how we use it
+	return op_space;
+}
 
 /*DOC : All the data specific to each op space.
 These are separated out since we can reuse them if we ever

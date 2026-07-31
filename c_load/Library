@@ -32,14 +32,14 @@ AsmOpSpaceType :: enum {
 	space_2d;
 	space_3d;
 }
+AsmClearMSpaceData :: struct {
+	mspace_id : int;
+}
 AsmDeleteMSpaceData :: struct {
 	mspace_id : int;
 }
 AsmDeleteSimpleSynthData :: struct {
 	synth_id : int;
-}
-AsmClearMSpaceData :: struct {
-	mspace_id : int;
 }
 AsmRowMidiData :: struct {
 	midi_channel : int;
@@ -103,9 +103,13 @@ SpiralType :: enum {
 	CONCENTRIC_CIRCLE;
 	BOOK;
 }
-LinearPitchSpaceView :: enum {
-	RATIO_PROPORTIONAL;
-	FORCE_EQUAL;
+RowSystemType :: enum {
+	none;
+	internal_message;
+	internal_pitch;
+	midi_control_change;
+	midi_velocity;
+	midi_pitch;
 }
 SimpleSynthMessageType :: enum {
 	VOLUME;
@@ -120,13 +124,9 @@ GetOrCreateMSpaceType :: enum {
 	GET_BY_ID;
 	GET_BY_INDEX;
 }
-RowSystemType :: enum {
-	none;
-	internal_message;
-	internal_pitch;
-	midi_control_change;
-	midi_velocity;
-	midi_pitch;
+LinearPitchSpaceView :: enum {
+	RATIO_PROPORTIONAL;
+	FORCE_EQUAL;
 }
 OscWaveType :: enum {
 	SINE;
@@ -259,6 +259,16 @@ AsmCreateRowData :: struct {
 	row_sections : [] RowSectionData;
 	row_midi_data : AsmRowMidiData;
 }
+AsmGeom2D :: struct {
+	dspace_id : int;
+	op_space_id : int;
+	custom_audio_type : CustomAudioType;
+	tuning_system_id : int;
+	osc_wave_type : OscWaveType;
+	collision_pos : Vector2;
+	collision_dim : Vector2;
+	show_collision : bool;
+}
 AsmShapeData :: struct {
 	ret_shape_id : int;
 	dspace_id : int;
@@ -280,16 +290,6 @@ AsmText2D :: struct {
 	op_pos : Vector2;
 	color : Vector4;
 	render_order : int;
-}
-AsmGeom2D :: struct {
-	dspace_id : int;
-	op_space_id : int;
-	custom_audio_type : CustomAudioType;
-	tuning_system_id : int;
-	osc_wave_type : OscWaveType;
-	collision_pos : Vector2;
-	collision_dim : Vector2;
-	show_collision : bool;
 }
 AsmCircleData :: struct {
 	ret_dspace_id : int;

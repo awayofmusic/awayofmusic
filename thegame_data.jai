@@ -718,6 +718,7 @@ CharCountWithTabInString :: inline (
 
 //Note : This is fairly expensive function because of Simp.prepare_text, which is already called when rendering text.
 //TODO Move this functio to the renderer since it is based on text data
+#if 0 {
 ComputePixelWidthOfString :: inline (
 	input_string : string,
 	my_font : *Dynamic_Font, 
@@ -728,6 +729,7 @@ ComputePixelWidthOfString :: inline (
     //Note : This seems to align the string by keeping it consistent regardless of odd or even.
     if width_of_string % 2 == 1 width_of_string -= 1;
 	return width_of_string;	
+}
 }
 //Add this here to connect empty lines. I think this also makes everything that is highlighted clearer
 //THIS ALSO removes the need for a second fixed select cursor
