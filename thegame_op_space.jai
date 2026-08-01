@@ -2830,7 +2830,8 @@ UpdateAllTextOpTabsWithTextFile :: inline (
 				assert(!already_found_tab);
 				already_found_tab = true;
 
-				op_space, found_op_space := FindOpSpaceOpenOrClosed(check_text.op_space_id, all_data);
+				op_space, found_op_space := FindOpSpaceOpenOrClosed(check_text.op_space_id, 
+					all_data.all_open_op_spaces, all_data.all_closed_op_spaces);
 				assert(op_space.op_space_external_type == OpSpaceExternalType.txt);
 				assert(found_op_space);
 
@@ -3409,7 +3410,8 @@ ClearOpSpace :: inline (
 	clear_data : ClearOpSpaceData,
 	ad : *AllData) 
 {
-	op_space, found_op_space := FindOpSpaceOpenOrClosed(clear_data.op_space_id, ad);
+	op_space, found_op_space := FindOpSpaceOpenOrClosed(clear_data.op_space_id, 
+		ad.all_open_op_spaces, ad.all_closed_op_spaces);
 	if !found_op_space return;
 	//TODO Should we return error if not found or just do nothing?
 	// if !found_op_space return NO_CPU_ERROR;
@@ -3721,7 +3723,8 @@ OpenOpSpace :: inline (
 AutoSaveChosenTextOpTab :: inline (all_data : *AllData) {
 	if all_data.runtime_settings.save_file_on_focus_lost {
 		for all_data.all_chosen_entities if it.entity_type == EntityType.OP_SPACE {
-			previous_op_space, found_previous_op_space := FindOpSpaceOpenOrClosed(it.id, all_data);
+			previous_op_space, found_previous_op_space := FindOpSpaceOpenOrClosed(it.id, 
+				all_data.all_open_op_spaces, all_data.all_closed_op_spaces);
 			if found_previous_op_space && previous_op_space.op_space_external_type == OpSpaceExternalType.txt {
 				text_op, found_text_op := ArrayFindFirstByNameId(all_data.all_text_op_space_data, 
 					previous_op_space.id, "op_space_id");
@@ -3880,26 +3883,4 @@ FindOpSpaceRenderGroupsByIndex :: inline (
 		return true, it_index;
 	}
 	return false, -1;
-}
-FindOpSpaceOpenOrClosed :: inline (op_space_id : int, all_data : *AllData)
--> OperationSpace, found_op_space : bool
-{
-	op_space, found_op_space := ArrayFindFirstConstByNameId(all_data.all_open_op_spaces,
-		op_space_id, "id");
-	if !found_op_space {
-		op_space, found_op_space = ArrayFindFirstConstByNameId(all_data.all_closed_op_spaces, 
-			op_space_id, "id");
-	}
-	return op_space, found_op_space;
-}
-FindOpSpacePointerOpenOrClosed :: inline (op_space_name : string, all_data : *AllData)
--> *OperationSpace, found_op_space : bool
-{
-	op_space, found_op_space := ArrayFindFirstByNameId(all_data.all_open_op_spaces,
-		op_space_name, "op_space_name");
-	if !found_op_space {
-		op_space, found_op_space = ArrayFindFirstByNameId(all_data.all_closed_op_spaces, 
-			op_space_name, "op_space_name");
-	}
-	return op_space, found_op_space;
 }

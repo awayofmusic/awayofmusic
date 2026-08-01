@@ -245,12 +245,14 @@ UpdateRuntimeSettings :: inline (
 		perm.all_data.runtime_settings.default_font_size = Clamp(9., new_rs.default_font_size, 31.);
 		UpdateFontSize(perm.all_data.runtime_settings.default_font_size, *perm.text_editor_data, rd);
 		for * text_op : perm.all_data.all_text_op_space_data {
-			op_space, found_op_space := FindOpSpaceOpenOrClosed(text_op.op_space_id, perm.all_data);
+			op_space, found_op_space := FindOpSpaceOpenOrClosed(text_op.op_space_id, 
+				perm.all_data.all_open_op_spaces, perm.all_data.all_closed_op_spaces);
 			assert(found_op_space);
 			ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square, perm.text_editor_data);
 		}
 		for * term_op : perm.all_data.all_terminal_op_space_data {
-			op_space, found_op_space := FindOpSpaceOpenOrClosed(term_op.op_space_id, perm.all_data);
+			op_space, found_op_space := FindOpSpaceOpenOrClosed(term_op.op_space_id, 
+				perm.all_data.all_open_op_spaces, perm.all_data.all_closed_op_spaces);
 			assert(found_op_space);
 			ResizeTerminalOpSpace(term_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
 				perm.text_editor_data, perm.terminal_data);

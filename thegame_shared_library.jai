@@ -43,7 +43,9 @@ SharedLibraryData :: struct {
 	free_simple_synth_pool : *[..] SimpleSynth;
 
 	//Op Space Data
-	all_open_op_spaces : *[..] OperationSpace;
+	//This is not a pointer since we can't open op spaces from shared library yet.
+	//Maybe we just leave this opening in the terminal for now since opening requires renderer data and text data
+	all_open_op_spaces : [] OperationSpace;
 	all_closed_op_spaces : *[..] OperationSpace;
 	all_op_space_spec_data : *[..] OpSpaceSpecData;
 	all_op_spec_data_3D : *[..] OpSpecData3D;
@@ -2814,6 +2816,35 @@ CreateClosedOpSpace :: inline (
 
 	//TODO Likely can just return the pointer depending on how we use it
 	return op_space;
+}
+//TODO I'm not sure I want to leave these find functions in shared library but I guess it's convenient for now
+FindOpSpaceOpenOrClosed :: inline (
+	op_space_id : int, 
+	all_open_op_spaces : [] OperationSpace,
+	all_closed_op_spaces : [] OperationSpace)
+-> OperationSpace, found_op_space : bool
+{
+	op_space, found_op_space := ArrayFindFirstConstByNameId(all_open_op_spaces,
+		op_space_id, "id");
+	if !found_op_space {
+		op_space, found_op_space = ArrayFindFirstConstByNameId(all_closed_op_spaces, 
+			op_space_id, "id");
+	}
+	return op_space, found_op_space;
+}
+FindOpSpacePointerOpenOrClosed :: inline (
+	op_space_name : string, 
+	all_open_op_spaces : [] OperationSpace,
+	all_closed_op_spaces : [] OperationSpace)
+-> *OperationSpace, found_op_space : bool
+{
+	op_space, found_op_space := ArrayFindFirstByNameId(all_open_op_spaces,
+		op_space_name, "op_space_name");
+	if !found_op_space {
+		op_space, found_op_space = ArrayFindFirstByNameId(all_closed_op_spaces, 
+			op_space_name, "op_space_name");
+	}
+	return op_space, found_op_space;
 }
 
 /*DOC : All the data specific to each op space.

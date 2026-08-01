@@ -13909,7 +13909,8 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 			name_string.data = name_ptr;
 		}
 
-		op_space, found_op_space := FindOpSpacePointerOpenOrClosed(name_string, ad);
+		op_space, found_op_space := FindOpSpacePointerOpenOrClosed(name_string, 
+			ad.all_open_op_spaces, ad.all_closed_op_spaces);
 		if !found_op_space {
 			cosd : CreateOpSpaceData;
 			cosd.op_space_name = copy_string(name_string);
@@ -14501,7 +14502,8 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 			create_cs3.f = cast(float) asm_cs3.f;
 		}
 
-		op_space, found_op_space := FindOpSpaceOpenOrClosed(create_cs3.op_space_id, ad);
+		op_space, found_op_space := FindOpSpaceOpenOrClosed(create_cs3.op_space_id, 
+			ad.all_open_op_spaces, ad.all_closed_op_spaces);
 		if !found_op_space {
 			return CPUErr(sprint("op_space_id % not found.\n", asm_cs3.op_space_id,,context.allocator));
 		}
@@ -14992,7 +14994,8 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 			if name_err.is_error return name_err;
 			name_string.data = name_ptr;
 
-			op_space, found_op_space := FindOpSpacePointerOpenOrClosed(name_string, ad);
+			op_space, found_op_space := FindOpSpacePointerOpenOrClosed(name_string, 
+				ad.all_open_op_spaces, ad.all_closed_op_spaces);
 			if !found_op_space {
 				cosd : CreateOpSpaceData;
 				cosd.op_space_name = copy_string(name_string);

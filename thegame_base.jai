@@ -345,9 +345,11 @@ if IsInputMapPress(.TERMINAL_TOGGLE, .DOWN_THIS_FRAME, game_input) {
 			TERMINAL_NAME_CHECK :: "term%";
 			terminal_name_number : int = 0;
 			terminal_name : string = tprint(TERMINAL_NAME_CHECK, terminal_name_number);
-			osp, found_op_space_with_same_name := FindOpSpacePointerOpenOrClosed(terminal_name, perm.all_data);
+			osp, found_op_space_with_same_name := FindOpSpacePointerOpenOrClosed(terminal_name, 
+				perm.all_data.all_open_op_spaces, perm.all_data.all_closed_op_spaces);
 			while found_op_space_with_same_name {
-				osp, found_op_space_with_same_name = FindOpSpacePointerOpenOrClosed(terminal_name, perm.all_data);
+				osp, found_op_space_with_same_name = FindOpSpacePointerOpenOrClosed(terminal_name, 
+					perm.all_data.all_open_op_spaces, perm.all_data.all_closed_op_spaces);
 				terminal_name_number += 1;
 				terminal_name = tprint(TERMINAL_NAME_CHECK, terminal_name_number);
 			}
@@ -4586,7 +4588,8 @@ DONE;
 				if IsTerminalCmdHelp(cmd_switches) {
 					print_to_builder(*sb, move_op_help_msg);
 				} else if command_tokens.count == 4 {
-					op_space, found_op_space := FindOpSpacePointerOpenOrClosed(command_tokens[1].token, perm.all_data);
+					op_space, found_op_space := FindOpSpacePointerOpenOrClosed(command_tokens[1].token, 
+						perm.all_data.all_open_op_spaces, perm.all_data.all_closed_op_spaces);
 					if found_op_space {
 						x_float, x_success := string_to_float(command_tokens[2].token);
 						if !x_success print_to_builder(*sb, "% invalid x\n", command_tokens[2].token);
@@ -5647,7 +5650,7 @@ for abs_path_name : perm.all_data.all_run_external_update_events
 	shared_lib.all_simple_synths = *perm.all_data.all_simple_synths;
 	shared_lib.free_simple_synth_pool = *perm.all_data.free_simple_synth_pool;
 
-	shared_lib.all_open_op_spaces = *perm.all_data.all_open_op_spaces;
+	shared_lib.all_open_op_spaces = perm.all_data.all_open_op_spaces;
 	shared_lib.all_closed_op_spaces = *perm.all_data.all_closed_op_spaces;
 	shared_lib.all_op_space_spec_data = *perm.all_data.all_op_space_spec_data;
 	shared_lib.all_op_spec_data_3D = *perm.all_data.all_op_spec_data_3D;
