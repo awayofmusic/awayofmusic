@@ -8361,7 +8361,11 @@ terminal_command_type_names : [] string : #run enum_names(TerminalCommandType);
 terminal_command_type_enums : [] TerminalCommandType : #run enum_values_as_enum(TerminalCommandType);
 TerminalCommandType :: enum {
 	//New commands
-	ldl; //load dynamic library
+	load_dl; //load dynamic library that runs with run_dl
+	run_dl;
+	list_dls;
+	load_dl_pframe; //load dynamic library that runs every frame
+	list_dls_pframe; 
 
 	create_file;
 	save_file;

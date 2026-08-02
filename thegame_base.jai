@@ -4610,13 +4610,20 @@ DONE;
 			}
 			//TODO FROM HERE Add ldl_pframe that loads dynamic libraries every frame
 			//THEN TEST WITH THE test_input_dl every frame
+			//CAN ALSO have terminal events be callable from dynamic library
+			//and then that can also run automatically
+			//so then people can run a dl as a startup script kind of thing
 			//and also add list_dls and list_dls_pframe to list all dl names here
-			//Should we change this to load_dl then?
-			case TerminalCommandType.ldl; { //load dynamic library
+			//TODO Can add startup_dl.jai which run automatically on startup
+			//so lets you run a bunch of commands to setup automatically
+			//TODO MULTI-KEY shortcut / MIDI shortcut is better done with a dl itself and user can set it to whatever they want
+			//and run whichever dynamic library they want by name and run the dl command or just
+			//let the set run external update events directly
+			case TerminalCommandType.load_dl; { //load dynamic library
 				if command_tokens.count == 2 && command_tokens[1].token == "-help" {
 					print_to_builder(*sb, 
 #string DONE
-ldl file_name
+load_dl file_name
 Load a system dynamic library.
 Reload if we've already loaded it.
 DONE);
@@ -4625,6 +4632,38 @@ DONE);
 					file_name_with_type : string = command_tokens[1].token;
 					success, msg := FetchDynamicLibrary(file_name_with_type);
 					print_to_builder(*sb, msg);
+				}
+			}
+			case TerminalCommandType.run_dl; {
+				if command_tokens.count == 2 && command_tokens[1].token == "-help" {
+					print_to_builder(*sb, 
+#string DONE
+run_dl file_name
+Run a loaded dynamic library.
+DONE);
+				} else {
+					dlib_name : string = command_tokens[1].token;
+					for global_dynamic_libraries if it.input_path_name == dlib_name {
+						//TODO Should we run the dl here. Maybe it's fine, then we have to split the code up to run the dl
+						//from below OR we just run it here anyways.
+						array_add(*perm.all_data.all_run_external_update_events, it.abs_path_name);
+						print_to_builder(*sb, "Found and running dl : %.\n", dlib_name);
+						break;
+					}
+				}
+			}
+			case TerminalCommandType.list_dls; {
+				//TODO This if/else can be cleaned up if we pulled out the Terminal run
+				if command_tokens.count == 2 && command_tokens[1].token == "-help" {
+					print_to_builder(*sb, 
+#string DONE
+list_dls
+List all loaded dynamic libraries.
+DONE);
+				} else {
+					for global_dynamic_libraries {
+						print_to_builder(*sb, "%\n", it.input_path_name);
+					}
 				}
 			}
 			case TerminalCommandType.create_file; {
@@ -5659,7 +5698,6 @@ for abs_path_name : perm.all_data.all_run_external_update_events
 	shared_lib.all_closed_op_spaces = *perm.all_data.all_closed_op_spaces;
 	shared_lib.all_op_space_spec_data = *perm.all_data.all_op_space_spec_data;
 	shared_lib.all_op_spec_data_3D = *perm.all_data.all_op_spec_data_3D;
-
 
 	//TODO How should be actually pass this in? Should we just put it in shared library?
 	//It can't be global anymore...

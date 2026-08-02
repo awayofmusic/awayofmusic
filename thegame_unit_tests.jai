@@ -17162,6 +17162,7 @@ Test_CreateDebugCallFrame :: () {
 //TODO This is the kind of test we can likely put with the external update and dynamic library functions.
 //Maybe if we pull those functions out of the platform layer then I can put this test together with them.
 TEST_DL_PATH_NAME :: #run sprint("%/test/test_dl", CODE_DLS_DIR_NAME);
+TEST_DL_2_PATH_NAME :: #run sprint("%/test/test_dl_2", CODE_DLS_DIR_NAME);
 Test_LoadDL :: () {
 	ad : *AllData = InitAllData(,,unit_test_alloc);
 	// SetupMusicAndRows(ad, TWO_ROWS);

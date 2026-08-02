@@ -70,10 +70,6 @@ AsmGetOrCreateSimpleSynthData :: struct {
 	ret_synth_id : int;
 	synth_name : string;
 }
-CustomAudioType :: enum {
-	TUNING_SYSTEM;
-	PITCH_SET_AS_FREQUENCY;
-}
 ChordSpaceFilterType :: enum {
 	DEFAULT;
 	ALL;
@@ -103,6 +99,10 @@ SpiralType :: enum {
 AsmShapeType :: enum {
 	RECTANGLE;
 }
+CustomAudioType :: enum {
+	TUNING_SYSTEM;
+	PITCH_SET_AS_FREQUENCY;
+}
 RowSystemType :: enum {
 	none;
 	internal_message;
@@ -111,6 +111,15 @@ RowSystemType :: enum {
 	midi_velocity;
 	midi_pitch;
 }
+LinearPitchSpaceView :: enum {
+	RATIO_PROPORTIONAL;
+	FORCE_EQUAL;
+}
+GetOrCreateMSpaceType :: enum {
+	GET_BY_NAME;
+	GET_BY_ID;
+	GET_BY_INDEX;
+}
 SimpleSynthMessageType :: enum {
 	VOLUME;
 	WAVE_TYPE;
@@ -118,15 +127,6 @@ SimpleSynthMessageType :: enum {
 	RELEASE_SECONDS;
 	ATTACK_CURVE;
 	RELEASE_CURVE;
-}
-GetOrCreateMSpaceType :: enum {
-	GET_BY_NAME;
-	GET_BY_ID;
-	GET_BY_INDEX;
-}
-LinearPitchSpaceView :: enum {
-	RATIO_PROPORTIONAL;
-	FORCE_EQUAL;
 }
 OscWaveType :: enum {
 	SINE;
@@ -259,13 +259,6 @@ AsmCreateRowData :: struct {
 	row_sections : [] RowSectionData;
 	row_midi_data : AsmRowMidiData;
 }
-AsmText2D :: struct {
-	op_space_id : int;
-	text : string;
-	op_pos : Vector2;
-	color : Vector4;
-	render_order : int;
-}
 AsmGeom2D :: struct {
 	dspace_id : int;
 	op_space_id : int;
@@ -290,6 +283,13 @@ AsmShapeData :: struct {
 	type : AsmShapeType;
 	rect_pos : Vector2;
 	rect_dim : Vector2;
+}
+AsmText2D :: struct {
+	op_space_id : int;
+	text : string;
+	op_pos : Vector2;
+	color : Vector4;
+	render_order : int;
 }
 AsmCircleData :: struct {
 	ret_dspace_id : int;

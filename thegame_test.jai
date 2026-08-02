@@ -12511,6 +12511,7 @@ DONE);
 //TODO Technically we would have to compile this before being able to pull it in.
 LDLData :: struct {
 	fixed_test_path : string;
+	test_path_2 : string;
 }
 Test_LoadDL :: (
 	test_name : string,
@@ -12530,7 +12531,10 @@ Test_LoadDL :: (
 		fixed_test_path := sprint("%.%", TEST_DL_PATH_NAME, dl_suffix,, test_alloc);
 		test_file_exists := file_exists(fixed_test_path);
 		AssertEquals(true, test_file_exists);
-		if test_file_exists {
+		test_path_2 := sprint("%.%", TEST_DL_2_PATH_NAME, dl_suffix,, test_alloc);
+		test_2_exists := file_exists(test_path_2);
+		AssertEquals(true, test_2_exists);
+		if test_file_exists && test_2_exists {
 			command_strings := string.[jai_cmd, BUILD_DL_NAME, "-import_dir", "./", "-", TEST_DL_PATH_NAME];
 			cmd_success := run_command(.. command_strings, capture_and_return_output=true);
 			//NOTE : this is stored in test_alloc so should get reset after anyways
@@ -12538,9 +12542,13 @@ Test_LoadDL :: (
 			ldl_data := cast(*LDLData) perm.test_data.spec_data;
 			ldl_data.fixed_test_path = fixed_test_path;
 
-			array_resize(*perm.test_data.all_sub_tests, 3);
+			cmd_string_2 := string.[jai_cmd, BUILD_DL_NAME, "-import_dir", "./", "-", TEST_DL_2_PATH_NAME];
+			cmd_success_2 := run_command(.. cmd_string_2, capture_and_return_output=true);
+			ldl_data.test_path_2 = test_path_2;
+
+			array_resize(*perm.test_data.all_sub_tests, 5);
 		} else {
-			print("Need to compile % to run this test.\n", fixed_test_path);
+			print("Need to compile % and % to run this test.\n", fixed_test_path, test_path_2);
 			print("Can run unit test Test_LoadDL which will compile it if it's there.\n");
 		}
 	} 
@@ -12551,12 +12559,15 @@ Test_LoadDL :: (
 	ldl_data := cast(*LDLData) perm.test_data.spec_data;
 	if perm.test_data.sub_test_index == {
 	case 0; {
-		open_test := MakeTerminalEvent(.ldl, ldl_data.fixed_test_path);
+		open_test := MakeTerminalEvent(.load_dl, ldl_data.fixed_test_path);
 		array_add(*perm.all_data.all_terminal_events, open_test);
+
+		test_2 := MakeTerminalEvent(.load_dl, ldl_data.test_path_2);
+		array_add(*perm.all_data.all_terminal_events, test_2);
 	}
 	case 1; {
 		abs_path := get_absolute_path(ldl_data.fixed_test_path);
-		count_equal := AssertEquals(1, global_dynamic_libraries.count);
+		count_equal := AssertEquals(2, global_dynamic_libraries.count);
 		dl : DynamicLibrary;
 		if count_equal {
 			dl = global_dynamic_libraries[0];
@@ -12570,21 +12581,54 @@ Test_LoadDL :: (
 			print("If this happens often, we can likely remove this test since we have it in unit tests anyways.\n");
 		}
 
+		abs_path_2 := get_absolute_path(ldl_data.test_path_2);
+		if count_equal {
+			dl_2 : DynamicLibrary = global_dynamic_libraries[1];
+			path_with_suffix := tprint(ldl_data.test_path_2, dl_suffix);
+			AssertEquals(ldl_data.test_path_2, dl_2.input_path_name);
+			AssertEquals(abs_path_2, dl_2.abs_path_name);
+			AssertEquals(true, dl_2.module_handle != null);
+			AssertEquals(true, dl_2.ExternalUpdate_proc_address != null);
+		} else {
+			print("Sometimes this test fails due to dynamic library loading so try rerunning it before assuming it failed.\n");
+			print("If this happens often, we can likely remove this test since we have it in unit tests anyways.\n");
+		}
+
 		AssertEquals(0, perm.all_data.all_mspace_data[0].all_music_pts.count);
 
-		DownUpInputMap(.RUN_EXTERNAL_UPDATE, game_input);
+		run_test := MakeTerminalEvent(.run_dl, ldl_data.fixed_test_path);
+		array_add(*perm.all_data.all_terminal_events, run_test);
 	}
 	case 2; {
 		//TODO We could check this with a hot key on the previous frame but since we have not decided yet
 		//I will just run the function and then check next frame
-		count_equal := AssertEquals(1, global_dynamic_libraries.count);
+		count_equal := AssertEquals(2, global_dynamic_libraries.count);
 		if count_equal {
 			AssertEquals(2, perm.all_data.all_simple_synths.count);
 			AssertEquals(1, perm.all_data.all_mspace_data[0].all_music_lane_rows.count);
 			AssertEquals(3, perm.all_data.all_mspace_data[0].all_music_pts.count);
+		}
+
+		run_test := MakeTerminalEvent(.run_dl, ldl_data.test_path_2);
+		array_add(*perm.all_data.all_terminal_events, run_test);
+	}
+	case 3; {
+		//TODO We could check this with a hot key on the previous frame but since we have not decided yet
+		//I will just run the function and then check next frame
+		count_equal := AssertEquals(2, global_dynamic_libraries.count);
+		if count_equal {
+			AssertEquals(2, perm.all_data.all_simple_synths.count);
+			AssertEquals(1, perm.all_data.all_mspace_data[0].all_music_lane_rows.count);
+			AssertEquals(6, perm.all_data.all_mspace_data[0].all_music_pts.count);
+		}
+	}
+	case 4; {
+		count_equal := AssertEquals(2, global_dynamic_libraries.count);
+		if count_equal {
+			RemoveDynamicLibrary(*global_dynamic_libraries[1]);
 			RemoveDynamicLibrary(*global_dynamic_libraries[0]);
 			AssertEquals(0, global_dynamic_libraries.count);
-		}
+		}		
 	}
 	}
 
