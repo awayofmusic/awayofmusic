@@ -70,24 +70,6 @@ AsmGetOrCreateSimpleSynthData :: struct {
 	ret_synth_id : int;
 	synth_name : string;
 }
-OscWaveType :: enum {
-	SINE;
-	SQUARE;
-	SAW;
-	TRIANGLE;
-	FOURIER_SINE;
-	FOURIER_SQUARE;
-	FOURIER_SAW;
-	FOURIER_TRIANGLE;
-	FOURIER_SUMOFCOS;
-	PIANO;
-	PIANO_2;
-	PIANO_3;
-	NONE;
-}
-AsmShapeType :: enum {
-	RECTANGLE;
-}
 CustomAudioType :: enum {
 	TUNING_SYSTEM;
 	PITCH_SET_AS_FREQUENCY;
@@ -118,6 +100,9 @@ SpiralType :: enum {
 	CONCENTRIC_CIRCLE;
 	BOOK;
 }
+AsmShapeType :: enum {
+	RECTANGLE;
+}
 RowSystemType :: enum {
 	none;
 	internal_message;
@@ -142,6 +127,21 @@ GetOrCreateMSpaceType :: enum {
 LinearPitchSpaceView :: enum {
 	RATIO_PROPORTIONAL;
 	FORCE_EQUAL;
+}
+OscWaveType :: enum {
+	SINE;
+	SQUARE;
+	SAW;
+	TRIANGLE;
+	FOURIER_SINE;
+	FOURIER_SQUARE;
+	FOURIER_SAW;
+	FOURIER_TRIANGLE;
+	FOURIER_SUMOFCOS;
+	PIANO;
+	PIANO_2;
+	PIANO_3;
+	NONE;
 }
 S3CamStartType :: enum {
 	MIN_ZY;
@@ -204,18 +204,18 @@ AsmCreateTuningData :: struct {
 	point_count : int;
 	values : [] float64;
 }
-AsmCSFilter :: struct {
-	filter_index : int;
-	filter_value : float64;
-	value_set : [] float64;
-	filter_type : ChordSpaceFilterType;
-}
 AsmMapCircle :: struct {
 	dspace_id : int;
 	op_space_id : int;
 	dspace_shape_group : int;
 	pitches : [] float64;
 	draw_vl_type : DrawVLType;
+}
+AsmCSFilter :: struct {
+	filter_index : int;
+	filter_value : float64;
+	value_set : [] float64;
+	filter_type : ChordSpaceFilterType;
 }
 MapChordS3Data :: struct {
 	op_space_id : int;
@@ -259,6 +259,13 @@ AsmCreateRowData :: struct {
 	row_sections : [] RowSectionData;
 	row_midi_data : AsmRowMidiData;
 }
+AsmText2D :: struct {
+	op_space_id : int;
+	text : string;
+	op_pos : Vector2;
+	color : Vector4;
+	render_order : int;
+}
 AsmGeom2D :: struct {
 	dspace_id : int;
 	op_space_id : int;
@@ -268,13 +275,6 @@ AsmGeom2D :: struct {
 	collision_pos : Vector2;
 	collision_dim : Vector2;
 	show_collision : bool;
-}
-AsmText2D :: struct {
-	op_space_id : int;
-	text : string;
-	op_pos : Vector2;
-	color : Vector4;
-	render_order : int;
 }
 AsmShapeData :: struct {
 	ret_shape_id : int;

@@ -4608,6 +4608,10 @@ DONE;
 					print_to_builder(*sb, INVALID_CMD_MSG, move_op_help_msg);
 				}
 			}
+			//TODO FROM HERE Add ldl_pframe that loads dynamic libraries every frame
+			//THEN TEST WITH THE test_input_dl every frame
+			//and also add list_dls and list_dls_pframe to list all dl names here
+			//Should we change this to load_dl then?
 			case TerminalCommandType.ldl; { //load dynamic library
 				if command_tokens.count == 2 && command_tokens[1].token == "-help" {
 					print_to_builder(*sb, 
@@ -5637,6 +5641,7 @@ for abs_path_name : perm.all_data.all_run_external_update_events
 	shared_lib : SharedLibraryData;
 	shared_lib.global_rules = perm.all_data.global_rules;
 	shared_lib.audio_data = audio_data;
+	shared_lib.game_input = game_input;
 	shared_lib.all_tuning_systems = *perm.all_data.all_tuning_systems;
 	shared_lib.all_tuning_pitches = *perm.all_data.all_tuning_pitches;
 

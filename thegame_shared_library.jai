@@ -3,6 +3,7 @@
 #import "Math";
 #import "Flat_Pool";
 
+#import "thegame_input";
 #import "thegame_math";
 #import "thegame_audio";
 #import "thegame_array_poly";
@@ -22,7 +23,9 @@ TODO If we want to separate this file, first thing to pull out would be all the 
 since that is self contained anyways. Maybe if this file gets too big or if the code separation makes sense in general.
 */
 SharedLibraryData :: struct {
+	//TODO add renderer data
 	audio_data : *AudioData;
+	game_input : *GameInput;
 	global_rules : GlobalRules;
 
 	//Tuning system data

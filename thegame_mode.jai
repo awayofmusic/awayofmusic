@@ -20,6 +20,7 @@
 #import "thegame_renderer_out_data";
 #import "thegame_common_data";
 #import "thegame_array_poly";
+#import "thegame_input";
 
 #import "shared_names";
 
