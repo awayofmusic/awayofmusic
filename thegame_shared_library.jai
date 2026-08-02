@@ -1102,6 +1102,497 @@ ValueInMusicPt :: inline (value : $T, mp : MusicPoint, EPSILON : float64 = DEFAU
 	}
 }
 
+/*Basic tano code
+TODO Could add operator overloads for tano and music pts OR just have that be customizable
+*/
+
+/*DOC : Tano can be thought of as a k-cell (hyperbox/hyperrectangle/orthotope) made up of rows of tuning systems.
+It is defined by pairs of values (int or reals) which represent the start and end of each of the edges of the k-cell 
+so therefore, the number of elements in a tano is always even.
+Due to the current use of computers where rectangles are the natural way (ie memory is linear, screens are rectangular...), 
+we use a k-cell here BUT if there are currently unknown advances in human mind experiential systems,
+a tano can also be generalized to a parallelohedron/polyhedron/parallelotope/zonotope/polytope
+if rectangles are not the only natural way in these new systems.
+
+Operations defined on a tano are well defined for "~=", "+", "-", "/", "*", "<<", "<<<" and we can do more later like 
+"~+" and "~-" and "||" and "&", and "~&" etc... Which should all be mathematically sound defaults which I think
+are best determined later from experience and communication in awareness.
+
+Each edge range can be ordered low->high or high->low which determines the order in which they are traversed
+when the mov operation is performed. So eg [x_start, x_end] where x_start <= x_end || x_start >= x_end
+which differs from a k-cell definition where x_start < x_end is part of the definition.
+So doing tano(0) ~= tano(3..2); would copy row 3 to row 0 and row 2 to row 1.
+(The reason is to make reverse/retrograde a normal movement.)
+
+The trivial default case of tano(0,0) is a piano. (default is 12-eq) (check math words for trivial/degenerate/simple)
+
+A tano could also be represented as
+struct {
+	pairs : [] int;
+	pairs : [] float64;
+}
+but it is interesting since then we dont know in what order they are in (int vs floats) or what they are related to.
+The current case is 3-cell where we introduce 2-cell first with row and x and then the 3-cell case with mspace.
+We can add more dimensions later if needed and possibly have an n-dimensional tano if this has some relationship in experience.
+Since our current experience is 3-dimensional we can also leave it open ended so that if/when our experience becomes
+4(or more)-dimensional then we can increase the tano dimension one at a time with a new pair of values
+and decide if that pair is integer or reals later.
+
+TODO Formal definition of k-cell is https://en.wikipedia.org/wiki/Hyperrectangle.
+So we can make a formal definition of a tano once it is more functional and stable.
+*/
+//TODO Maybe we should put this in thegame_math since it is a math construct
+//TODO We could use it as tano as well and then do #as using in TanoLoop for clarity
+//TODO Is there a better name than whole CENTER_TANO? CENTER_TANO?
+//NOTE : This should be from row_start=0 and x_start=0 because its relative to the center
+CENTER_TANO :: tano.{0,0,0,0,0};
+tano :: struct {
+	row_start : int;
+	row_end : int;
+
+	x_start : float64;
+	x_end : float64;
+
+	//TODO Should we rename to mspace_index if we don't use mspace_end here?
+	mspace_start : int = 0;
+
+	//TODO I will leave this value here for now since intuitively it makes sense,
+	//but will only implement it when we actually implement mspaces since it may not make sense in practice
+	//and then we can just copy multiple mspaces with a for loop in the code.
+	//Maybe internally is more efficient but we will see later and just leave this here for future convenience and reminder.
+	//The main benefit is that having this would allow us to do
+	//tano(0,0,1) ~= tano(0,0,0..3) + 1;
+	//OR
+	//tano(,,1) ~= tano(,,0..3) + 1;
+	//OR
+	//for 0..3 tano(,,1+it) ~= tano(,,it) + 1;
+	//Mathematical intuition is saying to keep this and use it later.
+	//BUT for tano(,,0..3) + 1 then we would have to store each musical space on the stack
+	//so maybe this is overkill and we just allow mspace moving without the end
+	//and then we can add functions for the end ones or can code it themselves.
+	//DEFINITELY thinking of removing this now since it overcomplicates things and we can make functions
+	//that do this anyways if needed or even operator overloads for ~+ or something like that,
+	//instead of adding a lot of complexity at the assembly/runtime level for moving between neume arrays.
+	//NOTE : This has been removed for now because we would need to copy each mspace and therefore
+	//have a stack for each mspace which is possible but for now we won't do it and can add it later if
+	//it is more practical than just making some functions or operator overloads for it.
+	// mspace_end : int = 0;
+}
+MakeTano :: inline (rs : int, re : int, xs : float64, xe : float64) -> tano {
+	t := tano.{rs,re,xs,xe,0};
+	return t;
+}
+MakeTano :: inline (r : int, x : float64) -> tano {
+	t : tano = tano.{r,r,x,x+1,0};
+	return t;
+}
+TanoXLength :: inline (t : tano) -> float64 {
+	x_length : float64 = abs(t.x_end - t.x_start);
+	return x_length;
+}
+/*Definition : A normalized tano is when 
+row_start <= row_end && x_start <= x_end
+*/
+NormalizeTano :: inline (t : tano) -> tano {
+	t_norm := t;
+	NormalizeTano(*t_norm);
+	return t_norm;
+}
+NormalizeTano :: inline (t : *tano) {
+	if t.row_start > t.row_end {
+		swap(*t.row_start, *t.row_end);
+	}
+	if t.x_start > t.x_end {
+		swap(*t.x_start, *t.x_end);
+	}
+}
+
+/*TODO We could include this function in code so that people can use it and create their own 
+operations and math structures to be used with tano and music points.
+
+TODO Need to pass in musical spaces to move that or we just do that externally unless we store mspace_index
+in MusicPoint which depends if we have separate neume arrays for each mspace.
+*/
+TMovMusicPt :: inline (mp : MusicPoint, from_tano : tano, to_tano : tano) -> MusicPoint {
+	//Default : from_tano.row_start <= from_tano.row_end
+	row_diff : int = mp.row_index - from_tano.row_start;
+	if from_tano.row_start > from_tano.row_end {
+		row_diff = from_tano.row_start - mp.row_index;
+	}
+	//Default : to_tano.row_start <= to_tano.row_end
+	to_row : int = to_tano.row_start + row_diff;
+	if to_tano.row_start > to_tano.row_end {
+		to_row = to_tano.row_start - row_diff;
+	}
+	//Default : from_tano.x_start >= mp.x_start (This way removes Float64Equal)
+	x_diff : float64 = mp.x_start_float - from_tano.x_start;
+	if from_tano.x_start > from_tano.x_end {
+		x_diff = from_tano.x_start - mp.x_end_float;
+	}
+	//Default : to_tano.x_start <= to_tano.x_end (This way removes Float64Equal)
+	to_x_start : float64 = to_tano.x_start + x_diff;
+	to_x_end : float64 = to_x_start + Length(mp);
+	if to_tano.x_start > to_tano.x_end {
+		to_x_end = to_tano.x_start - x_diff;
+		to_x_start = to_x_end - Length(mp);
+	}
+
+	//TODO Could set this at the top so it's clearer what we are setting and more efficient
+	//TODO DO PUT ON TOP LATER once we remove ints from MusicPoint and stabilize tmov usage.
+	//Keeping here for now because we have to call SetMemoryMusicPoint in MakeMusicPoint
+	//to set the integer values but can remove it once we remove integer values from MusicPoint.
+	//Also doing it this way allows us to have a generalized movement from tano although
+	//the MusicPoint is already generalized once it is just (pos,row,x_start,x_end)
+	new_mp : MusicPoint = MakeMusicPoint(mp.music_pt_float, to_row, to_x_start, to_x_end);
+	return new_mp;
+}
+
+GetAllMusicPtFloat :: inline (row_index : int, x_pos : $T, all_music_pts : [] MusicPoint) -> [] float64 {
+	return GetAllMusicPtPosByPosition(row_index, x_pos, all_music_pts, float64);
+}
+
+/*TODO Likely change the name of this to just GetAllMusicPts or something like that.
+ALSO int is currently the default type because of old code but eventually we could make it
+float64 or MusicPoint depending on whichever return type is used most.
+
+TOOD Should pass in MemoryUnit here so we can change to float64 later
+TODO We can make a for_expansion version of this so we don't need to accumulate memory here.
+*/
+GetAllMusicPtPosByPosition :: inline (
+	row_index : int,
+	x_pos : $T,
+	all_music_pts : [] MusicPoint,
+	//TODO Maybe this should only return float64 and MusicPoint if we only use that
+	$type : Type = int)
+-> [] type
+{
+#assert(AllOrEquals(type, .[int,float64,MusicPoint,*MusicPoint]));
+
+	music_pt_poses : [..] type;
+	music_pt_poses.allocator = context.allocator;
+	//TODO If x_pos and row_index are > row_size then we should print out and error or pause on the debugger eventually.
+	//For now we do nothing but we could print it out.
+	for music_pt : all_music_pts {
+		if ValueInMusicPt(x_pos, row_index, music_pt) {
+   		#if type == int array_add(*music_pt_poses, music_pt.music_pt_pos);
+	   	else #if type == float64 array_add(*music_pt_poses, music_pt.music_pt_float);
+	   	else #if type == MusicPoint array_add(*music_pt_poses, music_pt);
+	   	else #if type == *MusicPoint array_add(*music_pt_poses, *all_music_pts[it_index]);
+	   }
+	}
+
+	return music_pt_poses;
+}
+
+MusicPtStartInRange :: inline (x_start : $T, mp : MusicPoint, x_end : T, EPSILON : float64 = DEFAULT_MP_EPSILON) -> bool {
+#assert(T == float64 || T == int);
+	//x_start = 1 and x_end = 2 then we want a point starting on 1 to be valid but a point starting on 2 not to be within epsilon
+	// in_range : bool = (mp.x_start_float >= x_start - EPSILON && mp.x_start_float <= x_end - EPSILON);
+	// return in_range;
+	return InEpsilonRangeLeft(mp.x_start_float, cast(float64) x_start, cast(float64) x_end, EPSILON);
+}
+//MusicPoint either starts or ends in the given range.
+MusicPtInRange :: inline (x_start : $T, mp : MusicPoint, x_end : T, EPSILON : float64 = DEFAULT_MP_EPSILON) -> bool {
+#assert(T == float64 || T == int);
+	//TODO Update to ones below once we can test everywhere
+	// in_range : bool = (mp.x_start >= x_start && mp.x_start < x_end) ||
+	//    (mp.x_end > x_start && mp.x_end <= x_end);	
+	// in_range : bool = (mp.x_start_float >= x_start - EPSILON && mp.x_start_float < cast(float64) x_end) ||
+	//    (mp.x_end_float > cast(float64) x_start && mp.x_end_float <= x_end + EPSILON);	
+
+	//TODO I think I can use this now but I want to run the tests first before checking.
+	//Using Left and then Right epsilon seems to work since we want to include the RHS end range.
+	//IS this actually what we want? I think so but worth thinking about as well.
+	//This feels more intuitive and is the way we had it for ints above.
+	//x_start [0-2.0[ and x_end ]0-2.0]
+	in_range : bool = InEpsilonRangeLeft(mp.x_start_float, cast(float64) x_start, cast(float64) x_end, EPSILON) ||
+	   InEpsilonRangeRight(mp.x_end_float, cast(float64) x_start, cast(float64) x_end, EPSILON);
+	//x_start [0-2.0] and x_end ]0-2.0]
+	// in_range : bool = InEpsilonRangeOpen(mp.x_start_float, cast(float64) x_start, cast(float64) x_end, EPSILON) ||
+	//    InEpsilonRangeRight(mp.x_end_float, cast(float64) x_start, cast(float64) x_end, EPSILON);
+	//x_start [0-2.0[ and x_end [0-2.0[
+	// in_range : bool = InEpsilonRangeLeft(mp.x_start_float, cast(float64) x_start, cast(float64) x_end, EPSILON) ||
+	//    InEpsilonRangeLeft(mp.x_end_float, cast(float64) x_start, cast(float64) x_end, EPSILON);
+
+	return in_range;
+}
+MusicPtInRowRange :: inline (start_row : int, mp : MusicPoint, end_row : int) -> bool {
+	in_row : bool = mp.row_index >= start_row && mp.row_index <= end_row;
+	return in_row;
+}
+
+//TODO Where should we put this?
+//TODO Should call this TanoLoop for clarity or just keep it as is to replicate the language?
+//Maybe call it TanoMusicPts
+TanoLoop :: struct {
+	t : tano;
+	all_music_pts : [] MusicPoint;
+	//TODO should we grab this in the for_expansion or grab the music point array beforehand?
+	// mspace_index : int;
+	//TODO Do a version where we only check row
+}
+for_expansion :: (tl: TanoLoop, body: Code, flags: For_Flags) #expand {
+	t_norm : tano = NormalizeTano(tl.t);
+	found_index : int = 0;
+	//TODO If we wanted reverse and the music_pts are sorted, then we could just reverse here.
+	//TODO If we have a all_row setting, then we can just check row 
+	for * mp : tl.all_music_pts {
+		in_tano : bool = InTanoAssumeNorm(mp, t_norm);
+		if in_tano {
+			`it := mp;
+			#if flags & .POINTER {
+			`it_index := mp;
+			} else {
+			`it_index := mp.*;
+			}
+
+			#insert body;
+
+			found_index += 1;
+	   }
+	}
+}
+
+//NOTE : This assumes that the tano is normalized for efficiency
+//TODO could make another function that adjusts the tano every time.
+InTanoAssumeNorm :: inline (mp : MusicPoint, t : tano) -> bool {
+	in_row_range : bool = MusicPtInRowRange(t.row_start, mp, t.row_end);
+	in_x_range : bool = MusicPtInRange(t.x_start, mp, t.x_end);
+	in_tano : bool =  in_row_range && in_x_range;
+	return in_tano;
+}
+InTanoNorm :: inline (mp : MusicPoint, t : tano) -> bool {
+	t_adj : tano = NormalizeTano(t);
+	return InTanoAssumeNorm(mp, t_adj);
+}
+
+//TODO We could to replace MusicPoint with this eventually, for now we could rename it NeumeData.
+//They could be the same struct or keep it separate depending on how we decide to name them.
+Neume :: struct {
+	//TODO Should we call this something else or is svara ok? suram?
+	svara : float64;
+	row : int;
+	x_start : float64;
+	x_end : float64;
+}
+//TODO Could add a flag to sort values in here by x or row or in reverse
+TanoSortType :: enum {
+	DEFAULT; //x and row forward
+	X_REVERSE;
+	ROW_REVERSE;
+	// X_ROW_REVERSE;
+}
+GetTanoMusicPts :: inline (
+	t : tano,
+	all_music_pts : [] MusicPoint,
+	sort_type : TanoSortType = .DEFAULT,
+	$type : Type = MusicPoint)
+-> [] type
+{
+#assert(AllOrEquals(type,.[int,float64,MusicPoint,*MusicPoint,Neume]));
+
+	music_pts : [..] type;
+	music_pts.allocator = context.allocator;
+
+	t_norm : tano = NormalizeTano(t);
+	for mp : all_music_pts {
+		in_tano : bool = InTanoAssumeNorm(mp, t_norm);
+		if in_tano {
+			#if type == *MusicPoint array_add(*music_pts, *all_music_pts[it_index]);
+			else #if type == int array_add(*music_pts, round_to_int(mp.music_pt_float));
+			else #if type == float64 array_add(*music_pts, mp.music_pt_float);
+	    	else #if type == MusicPoint array_add(*music_pts, mp);
+	    	//TODO We can remove this case eventually once MusicPoint and Neume are the same struct
+			else #if type == Neume array_add(*music_pts, Neume.{mp.music_pt_float, mp.row_index, mp.x_start_float, mp.x_end_float});
+	   }
+	}
+
+	#if type == MusicPoint || type == *MusicPoint {
+	if sort_type == {
+	case .X_REVERSE;
+		quick_sort(music_pts, (m1,m2) => m2.x_start_float - m1.x_start_float);
+	case .ROW_REVERSE;
+		quick_sort(music_pts, (m1,m2) => m2.row_index - m1.row_index);
+	}
+	}
+
+	return music_pts;
+}
+GetTanoNumOfPoints :: inline (t : tano, all_music_pts : [] MusicPoint) -> int {
+	dim : int = 0;
+	t_norm : tano = NormalizeTano(t);
+	for mp : all_music_pts {
+		in_tano : bool = InTanoAssumeNorm(mp, t_norm);
+		if in_tano dim += 1;
+	}
+	return dim;
+}
+
+//TODO Update this function and use it in mov for music, then test
+//and also check rendering and audio
+//Copy all notes in range and then have them all start
+//relative to the min_x_start in the set.
+//TODO We can make a for_expansion version of this so we don't need to accumulate memory here.
+GetAllMemoryMusicPtsInRange :: inline (
+	x_start : $T, x_end : T,
+	row_index : int,
+	all_music_pts : [] MusicPoint,
+	$type : Type = MusicPoint)
+-> [] type
+{
+#assert(AllOrEquals(type,.[MusicPoint,*MusicPoint]));
+
+	music_pts : [..] type;
+	music_pts.allocator = context.allocator;
+
+	for mp : all_music_pts {
+		in_range : bool = MusicPtInRange(x_start, mp, x_end);
+		if in_range && row_index == mp.row_index {
+			#if type == *MusicPoint array_add(*music_pts, *all_music_pts[it_index]);
+	    	else array_add(*music_pts, mp);
+	   }
+	}
+
+	return music_pts;
+}
+
+//TODO REMOVE ALL THE INT CODE FROM HERE ONCE float64 x works since that should be the only way.
+//We can just cast(float64) if we are passing in an int then.
+UpdateMusicPtsFromMinStart :: inline (
+	music_pts : [] MusicPoint, 
+	to_start_x : $T, to_row : int,
+	row_size : int) 
+{
+//TODO Remove this and just use float64 only once we 
+#assert(AllOrEquals(T, .[int, float64]));
+	//TODO This should be float eventually since the x values should be float.
+	#if T == int {
+	min_x : int = ArrayFindMinByNameId(music_pts, "x_start", S64_MAX);
+	} else {
+	min_x : float64 = ArrayFindMinByNameId(music_pts, "x_start_float", FLOAT64_MAX);		
+	}
+	for * music_pts {
+		it.row_index = to_row;
+		#if T == int {
+		from_min_x : int = it.x_start - min_x;
+		x_length : int = it.x_end - it.x_start;
+		it.x_start = to_start_x + from_min_x;
+		it.x_start_float = cast(float64) it.x_start;
+		it.x_end = ClampMax(it.x_start + x_length, row_size);
+		it.x_end_float = cast(float64) it.x_end;
+		} else {
+		from_min_x : float64 = it.x_start_float - min_x;
+		x_length : float64 = it.x_end_float - it.x_start_float;
+		it.x_start_float = to_start_x + from_min_x;
+		it.x_start = round_to_int(it.x_start);
+		it.x_end_float = ClampMax(it.x_start_float + x_length, cast(float64) row_size);
+		it.x_end = round_to_int(it.x_end);
+		}
+		//We remove right now, we could increase row_size. We could also not have a row_size
+		//and just render based on max note or a user defined value.
+		//Leaving it off for now until we decide if we want row_size at all.
+		// if it.x_start > perm.all_data.global_rules.row_size {
+		// 	remove it;
+		// 	continue;
+		// }
+		//TODO Need to just use these floats eventually
+		//Left this commented so the tests keep failing so we can update everything
+		//when I update the asm to allow x float everywhere.
+		// it.x_start_float = cast(float64) it.x_start;
+		// it.x_end_float = cast(float64) it.x_end;
+	}
+}
+
+//TODO eventually may want to have this be an octave range
+//or a different total visible range of music_pts
+//ie min_music_pt_pos to max_music_pt_pos
+FilterMusicPtsInOctave :: inline (
+	input_music_pts : [] MusicPoint,
+	current_octave : int,
+	system_size : int,
+	allocator : Allocator = temp)
+-> [] MusicPoint
+{
+	filtered_music_pts : [..] MusicPoint;
+	filtered_music_pts.allocator = allocator;
+
+	for music_pt : input_music_pts
+	{
+		music_pt_octave : int = music_pt.music_pt_pos / system_size;
+		if music_pt_octave == current_octave {
+			array_add(*filtered_music_pts, music_pt);
+		}
+	}
+
+	return filtered_music_pts;
+}
+
+FilterMusicPtsInView :: inline (
+	input_music_pts : [] MusicPoint,
+	base_note : int,
+	system_size : int,
+	allocator : Allocator = temp)
+-> [] MusicPoint
+{
+	filtered_music_pts : [..] MusicPoint;
+	filtered_music_pts.allocator = allocator;
+
+	top_note : int = base_note + system_size;
+	for music_pt : input_music_pts
+	{
+		if music_pt.music_pt_float >= cast(float64) base_note &&
+		   music_pt.music_pt_float <  cast(float64) top_note
+		{
+			array_add(*filtered_music_pts, music_pt);
+		}
+	}
+
+	return filtered_music_pts;
+}
+
+MusicPtsByPitch :: struct {
+	music_pts : [..] MusicPoint;
+	music_pts.allocator = temp;
+}
+
+/*MusicPt
+	by default we return the first MusicPoint of each pitch found
+*/
+RemoveMusicPtsDuplicatePitch :: inline (
+	input_music_pts : [] MusicPoint,
+	allocator : Allocator = temp)
+-> [] MusicPoint
+{
+	all_music_pts_by_pitch : [..] MusicPtsByPitch;
+	all_music_pts_by_pitch.allocator = temp;
+	for music_pt : input_music_pts
+	{
+		music_pts_by_pitch, found_pitch :=
+			ArrayFindFirstByNameId(all_music_pts_by_pitch, music_pt.music_pt_pos, "music_pts[0].music_pt_pos");
+
+		if found_pitch {
+			array_add(*music_pts_by_pitch.music_pts, music_pt);
+		}
+		else {
+			new_music_pts_by_pitch : MusicPtsByPitch;
+			array_add(*new_music_pts_by_pitch.music_pts, music_pt);
+			array_add(*all_music_pts_by_pitch, new_music_pts_by_pitch);
+		}
+	}
+
+	no_duplicates : [..] MusicPoint;
+	no_duplicates.allocator = allocator;
+	for music_pts_by_pitch : all_music_pts_by_pitch
+	{
+		array_add(*no_duplicates, music_pts_by_pitch.music_pts[0]);
+	}
+
+	return no_duplicates;
+}
+
+/*End of tano code
+*/
+
 ArrayData :: struct {
 	count : int;
 	data_address : int;

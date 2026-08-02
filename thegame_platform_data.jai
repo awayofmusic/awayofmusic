@@ -240,6 +240,7 @@ UpdateInputStatesFromEvents :: inline (game_input : *GameInput) {
 		   /*DOC: Mouse double-click code
 		   We can remove this if we don't end up using it since maybe it's not that useful.
 		   I have to say that im not a fan of the feel of the double click in general.
+		   TODO If input module adds double click from the actual platform api then remove this altogether.
 			*/
 		   if event.key_code == .MOUSE_BUTTON_LEFT ||
 		   	event.key_code == .MOUSE_BUTTON_RIGHT ||

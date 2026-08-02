@@ -32,14 +32,14 @@ AsmOpSpaceType :: enum {
 	space_2d;
 	space_3d;
 }
+AsmDeleteSimpleSynthData :: struct {
+	synth_id : int;
+}
 AsmClearMSpaceData :: struct {
 	mspace_id : int;
 }
 AsmDeleteMSpaceData :: struct {
 	mspace_id : int;
-}
-AsmDeleteSimpleSynthData :: struct {
-	synth_id : int;
 }
 AsmRowMidiData :: struct {
 	midi_channel : int;
@@ -69,6 +69,24 @@ AsmUpdateMSpaceData :: struct {
 AsmGetOrCreateSimpleSynthData :: struct {
 	ret_synth_id : int;
 	synth_name : string;
+}
+OscWaveType :: enum {
+	SINE;
+	SQUARE;
+	SAW;
+	TRIANGLE;
+	FOURIER_SINE;
+	FOURIER_SQUARE;
+	FOURIER_SAW;
+	FOURIER_TRIANGLE;
+	FOURIER_SUMOFCOS;
+	PIANO;
+	PIANO_2;
+	PIANO_3;
+	NONE;
+}
+AsmShapeType :: enum {
+	RECTANGLE;
 }
 CustomAudioType :: enum {
 	TUNING_SYSTEM;
@@ -100,9 +118,6 @@ SpiralType :: enum {
 	CONCENTRIC_CIRCLE;
 	BOOK;
 }
-AsmShapeType :: enum {
-	RECTANGLE;
-}
 RowSystemType :: enum {
 	none;
 	internal_message;
@@ -110,10 +125,6 @@ RowSystemType :: enum {
 	midi_control_change;
 	midi_velocity;
 	midi_pitch;
-}
-LinearPitchSpaceView :: enum {
-	RATIO_PROPORTIONAL;
-	FORCE_EQUAL;
 }
 SimpleSynthMessageType :: enum {
 	VOLUME;
@@ -128,20 +139,9 @@ GetOrCreateMSpaceType :: enum {
 	GET_BY_ID;
 	GET_BY_INDEX;
 }
-OscWaveType :: enum {
-	SINE;
-	SQUARE;
-	SAW;
-	TRIANGLE;
-	FOURIER_SINE;
-	FOURIER_SQUARE;
-	FOURIER_SAW;
-	FOURIER_TRIANGLE;
-	FOURIER_SUMOFCOS;
-	PIANO;
-	PIANO_2;
-	PIANO_3;
-	NONE;
+LinearPitchSpaceView :: enum {
+	RATIO_PROPORTIONAL;
+	FORCE_EQUAL;
 }
 S3CamStartType :: enum {
 	MIN_ZY;
@@ -204,18 +204,18 @@ AsmCreateTuningData :: struct {
 	point_count : int;
 	values : [] float64;
 }
+AsmCSFilter :: struct {
+	filter_index : int;
+	filter_value : float64;
+	value_set : [] float64;
+	filter_type : ChordSpaceFilterType;
+}
 AsmMapCircle :: struct {
 	dspace_id : int;
 	op_space_id : int;
 	dspace_shape_group : int;
 	pitches : [] float64;
 	draw_vl_type : DrawVLType;
-}
-AsmCSFilter :: struct {
-	filter_index : int;
-	filter_value : float64;
-	value_set : [] float64;
-	filter_type : ChordSpaceFilterType;
 }
 MapChordS3Data :: struct {
 	op_space_id : int;
