@@ -4662,7 +4662,16 @@ List all loaded dynamic libraries.
 DONE);
 				} else {
 					for global_dynamic_libraries {
-						print_to_builder(*sb, "%\n", it.input_path_name);
+						if it.ExternalUpdate_proc_address != null {
+							print_to_builder(*sb, "%\n", it.input_path_name);
+						}
+					}
+
+					append(*sb, "\n\nRunning Per Frame:\n");
+					for global_dynamic_libraries {
+						if it.ExternalUpdatePerFrame_proc_address != null {
+							print_to_builder(*sb, "%\n", it.input_path_name);
+						}
 					}
 				}
 			}
@@ -5659,6 +5668,8 @@ if IsInputMapPress(.RUN_EXTERNAL_UPDATE, .DOWN_THIS_FRAME, game_input) {
 		array_add(*perm.all_data.all_run_external_update_events, global_dynamic_libraries[0].abs_path_name);
 	}
 }
+//TODO FROM HERE WE COULD JUST CALL THIS FROM run_dl command NOW 
+//since hotkey running can be more easily done through per frame dl now
 for abs_path_name : perm.all_data.all_run_external_update_events
 {
 	dl, found_euf := ArrayFindFirstByNameId(global_dynamic_libraries, abs_path_name, "abs_path_name");
@@ -5674,43 +5685,32 @@ for abs_path_name : perm.all_data.all_run_external_update_events
 
 	// We could reload as a terminal command but we do in here for now so it is clearer.
 	// Although we compile the file as a terminal command for now but we could also do it here.
-	
-	//TODO We can make this a function AllDataToSharedLibraryData if needed
-	//We can also set values in here and then check them on return to do some in game updates for example
-	shared_lib : SharedLibraryData;
-	shared_lib.global_rules = perm.all_data.global_rules;
-	shared_lib.audio_data = audio_data;
-	shared_lib.game_input = game_input;
-	shared_lib.all_tuning_systems = *perm.all_data.all_tuning_systems;
-	shared_lib.all_tuning_pitches = *perm.all_data.all_tuning_pitches;
-
-	shared_lib.all_mspace_data = *perm.all_data.all_mspace_data;
-	shared_lib.free_mspace_data_pool = *perm.all_data.free_mspace_data_pool;
-
-	shared_lib.all_linear_to_tuning_system = *perm.all_data.all_linear_to_tuning_system;
-	shared_lib.all_linear_pitch_spaces = *perm.all_data.all_linear_pitch_spaces;
-	shared_lib.all_space_points = *perm.all_data.all_space_points;
-
-	shared_lib.all_simple_synths = *perm.all_data.all_simple_synths;
-	shared_lib.free_simple_synth_pool = *perm.all_data.free_simple_synth_pool;
-
-	shared_lib.all_open_op_spaces = perm.all_data.all_open_op_spaces;
-	shared_lib.all_closed_op_spaces = *perm.all_data.all_closed_op_spaces;
-	shared_lib.all_op_space_spec_data = *perm.all_data.all_op_space_spec_data;
-	shared_lib.all_op_spec_data_3D = *perm.all_data.all_op_spec_data_3D;
-
-	//TODO How should be actually pass this in? Should we just put it in shared library?
-	//It can't be global anymore...
-	// shared_lib.all_next_ids = *ALL_NEXT_IDS;
+	shared_lib : SharedLibraryData = AllDataToSharedLibraryData(dl, audio_data, game_input, perm.all_data);
 
 	//TODO We could cast this beforehand to reuse but I will leave it like this for now so we only
 	//keep 1 pointer and dont have to reset it all the time.
 	ExternalUpdate := cast(Type_ExternalUpdate) dl.ExternalUpdate_proc_address;
 	ExternalUpdate(*shared_lib);
 
+	perm.all_data.my_shared_data = shared_lib.my_shared_data;
+	dl.my_per_dl_data = shared_lib.my_per_dl_data;
+
+	//NOTE : ids are now passed in through the context
+	// shared_lib.all_next_ids = *ALL_NEXT_IDS;
+
 	// print("test foo = %\n", shared_lib.test_foo(1));
 }
 array_reset_keeping_memory(*perm.all_data.all_run_external_update_events);
+
+for * dl : global_dynamic_libraries if dl.ExternalUpdatePerFrame_proc_address != null {
+	//TODO We could have these arrays be in 1 struct in AllData so we can just copy it over directly
+	shared_lib : SharedLibraryData = AllDataToSharedLibraryData(dl, audio_data, game_input, perm.all_data);
+	ExternalUpdatePerFrame := cast(Type_ExternalUpdate) dl.ExternalUpdatePerFrame_proc_address;
+	ExternalUpdatePerFrame(*shared_lib);
+
+	perm.all_data.my_shared_data = shared_lib.my_shared_data;
+	dl.my_per_dl_data = shared_lib.my_per_dl_data;
+}
 
 
 /* AUDIO STARTS HERE

@@ -299,6 +299,11 @@ InitAllData :: () -> *AllData {
    // all_data.global_rules.memory_unit_width = 2.0;
    all_data.global_rules.memory_unit_width = 1.75;
 
+   //TODO Could increase this by default or just let people who use it increase it how they want.
+	// init(*all_data.extern_pool, Megabytes(1));
+	// all_data.extern_alloc.proc = flat_pool_allocator_proc;
+	// all_data.extern_alloc.data = *all_data.extern_pool;
+
 
 	//TODO Can adjust this later if we need more. Could just allow the 256 default
 	//And we could reuse the pool/alloc for all compilations since we can make compilations sequential.
@@ -2859,6 +2864,13 @@ AllData :: struct #type_info_no_size_complaint {
 	runtime_settings_file_path : string = RUNTIME_SETTINGS_REL_PATH;
 	runtime_settings : RuntimeSettingsData;
 
+	//TODO Seems like we don't need these but I can leave them here
+	//in case we need them later.
+	// extern_pool : Flat_Pool;
+	// extern_alloc : Allocator;
+	//DOC : This is used to share data across all dls being used externally
+	my_shared_data : *void;
+
 	/*TODO This should be associated to internal synths
 	so we can adjust the parameters. For now, we just 
 	have them here to generate for ease. Also in general
@@ -3211,6 +3223,43 @@ AllData :: struct #type_info_no_size_complaint {
 	free_simple_synth_pool : [..] SimpleSynth;
 	// all_subtractive_synths : [..] SubtractiveSynth;
 	// all_hover_simple_synths : [..] SimpleSynth;
+}
+
+//TODO If we set all this in AllData as 1 struct then we can just have 1 move
+AllDataToSharedLibraryData :: inline (
+	dl : *DynamicLibrary,
+	audio_data : *AudioData, 
+	game_input : *GameInput, 
+	all_data : *AllData) 
+-> SharedLibraryData {
+	sl : SharedLibraryData;
+	//TODO Could set one of these per dynamic library for convenience
+	sl.my_shared_data = all_data.my_shared_data;
+	sl.my_per_dl_data = dl.my_per_dl_data;
+	// sl.extern_alloc = all_data.extern_alloc;
+
+	sl.global_rules = all_data.global_rules;
+	sl.audio_data = audio_data;
+	sl.game_input = game_input;
+	sl.all_tuning_systems = *all_data.all_tuning_systems;
+	sl.all_tuning_pitches = *all_data.all_tuning_pitches;
+
+	sl.all_mspace_data = *all_data.all_mspace_data;
+	sl.free_mspace_data_pool = *all_data.free_mspace_data_pool;
+
+	sl.all_linear_to_tuning_system = *all_data.all_linear_to_tuning_system;
+	sl.all_linear_pitch_spaces = *all_data.all_linear_pitch_spaces;
+	sl.all_space_points = *all_data.all_space_points;
+
+	sl.all_simple_synths = *all_data.all_simple_synths;
+	sl.free_simple_synth_pool = *all_data.free_simple_synth_pool;
+
+	sl.all_open_op_spaces = all_data.all_open_op_spaces;
+	sl.all_closed_op_spaces = *all_data.all_closed_op_spaces;
+	sl.all_op_space_spec_data = *all_data.all_op_space_spec_data;
+	sl.all_op_spec_data_3D = *all_data.all_op_spec_data_3D;
+
+	return sl;
 }
 
 //DOC : This return the string directly from memory so we need to copy it with or without an allocator

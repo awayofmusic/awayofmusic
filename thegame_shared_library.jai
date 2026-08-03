@@ -56,7 +56,6 @@ SharedLibraryData :: struct {
 	//TODO FROM HERE Pass in OperationSpace with finding them for now (can check create closed op space or do later when needed)
 	//and then also pass RendererData and GameInput
 
-
 	//TODO How should we pass this in? Or should we pass it in at all?
 	//I guess we need to pass it for each function that creates things as we add them.
 	//Is there a better way of generating ids?
@@ -64,7 +63,10 @@ SharedLibraryData :: struct {
 	// all_next_ids : *AllNextIds;
 
 	//TODO We could add a pointer for my_shared_data here if global data does not work.
-	// my_shared_data : *void;
+	//Probably need to pass in an allocator for this to work properly
+	my_shared_data : *void;
+	my_per_dl_data : *void;
+	// extern_alloc : Allocator;
 
 	//This works! so we can use this method for custom synths for example and set function pointers back to call
 	//We could have to check them. The other method is using more dll functions but that seems like something

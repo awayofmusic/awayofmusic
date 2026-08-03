@@ -12546,7 +12546,7 @@ Test_LoadDL :: (
 			cmd_success_2 := run_command(.. cmd_string_2, capture_and_return_output=true);
 			ldl_data.test_path_2 = test_path_2;
 
-			array_resize(*perm.test_data.all_sub_tests, 5);
+			array_resize(*perm.test_data.all_sub_tests, 7);
 		} else {
 			print("Need to compile % and % to run this test.\n", fixed_test_path, test_path_2);
 			print("Can run unit test Test_LoadDL which will compile it if it's there.\n");
@@ -12576,6 +12576,7 @@ Test_LoadDL :: (
 			AssertEquals(abs_path, dl.abs_path_name);
 			AssertEquals(true, dl.module_handle != null);
 			AssertEquals(true, dl.ExternalUpdate_proc_address != null);
+			AssertEquals(true, dl.ExternalUpdatePerFrame_proc_address != null);
 		} else {
 			print("Sometimes this test fails due to dynamic library loading so try rerunning it before assuming it failed.\n");
 			print("If this happens often, we can likely remove this test since we have it in unit tests anyways.\n");
@@ -12613,16 +12614,33 @@ Test_LoadDL :: (
 		array_add(*perm.all_data.all_terminal_events, run_test);
 	}
 	case 3; {
-		//TODO We could check this with a hot key on the previous frame but since we have not decided yet
-		//I will just run the function and then check next frame
-		count_equal := AssertEquals(2, global_dynamic_libraries.count);
-		if count_equal {
-			AssertEquals(2, perm.all_data.all_simple_synths.count);
-			AssertEquals(1, perm.all_data.all_mspace_data[0].all_music_lane_rows.count);
-			AssertEquals(6, perm.all_data.all_mspace_data[0].all_music_pts.count);
-		}
+		AssertEquals(2, perm.all_data.all_simple_synths.count);
+		AssertEquals(1, perm.all_data.all_mspace_data[0].all_music_lane_rows.count);
+		AssertEquals(6, perm.all_data.all_mspace_data[0].all_music_pts.count);
+
+		//Test running per frame
+		DownUpThisFrame(#char "Q", .{ctrl_pressed=true}, game_input);
 	}
 	case 4; {
+		count_equal := AssertEquals(7, perm.all_data.all_mspace_data[0].all_music_pts.count);
+		if count_equal {
+			AssertEquals(5, perm.all_data.all_mspace_data[0].all_music_pts[6].x_start);
+			AssertEquals(6, perm.all_data.all_mspace_data[0].all_music_pts[6].x_end);
+			AssertFloat64Equals(0, perm.all_data.all_mspace_data[0].all_music_pts[6].music_pt_float);
+		}
+
+		//Test running per frame data updated
+		DownUpThisFrame(#char "Q", .{ctrl_pressed=true}, game_input);
+	}
+	case 5; {
+		count_equal := AssertEquals(8, perm.all_data.all_mspace_data[0].all_music_pts.count);
+		if count_equal {
+			AssertEquals(6, perm.all_data.all_mspace_data[0].all_music_pts[7].x_start);
+			AssertEquals(7, perm.all_data.all_mspace_data[0].all_music_pts[7].x_end);
+			AssertFloat64Equals(1, perm.all_data.all_mspace_data[0].all_music_pts[7].music_pt_float);
+		}
+	}
+	case 6; {
 		count_equal := AssertEquals(2, global_dynamic_libraries.count);
 		if count_equal {
 			RemoveDynamicLibrary(*global_dynamic_libraries[1]);

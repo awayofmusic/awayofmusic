@@ -1,6 +1,7 @@
 #import "Basic";
 #import "thegame_shared_library";
 #import "thegame_audio";
+#import "thegame_input";
 
 found_new_points : bool = false;
 
@@ -59,7 +60,7 @@ ExternalUpdate :: (shared_lib : *SharedLibraryData) {
 		shared_lib.all_linear_pitch_spaces,
 		shared_lib.all_space_points);
 	
-	test : int = context.ALL_NEXT_IDS.NEXT_MSPACE_ID;
+	// test : int = context.ALL_NEXT_IDS.NEXT_MSPACE_ID;
 	CreateManyMusicPtsInMemory(float64.[0,4,7], 0, 0, 2, *shared_lib.all_mspace_data.*[0].all_music_pts);	
 
 	// for ts : shared_lib.all_tuning_systems.* {
@@ -72,4 +73,28 @@ ExternalUpdate :: (shared_lib : *SharedLibraryData) {
 	// SetupMusicAndRows(all_data, TWO_ROWS);
 	// CreateMusicPtInMemory(0, 0, 0, 1, *all_data.all_mspace_data[0].all_music_pts);
 	// CreateManyMusicPtsInMemory(int.[0,3,7,10], 0, 2, 4, *shared_lib.all_mspace_data[0].all_music_pts);
+}
+
+/*NOTE : Global variables work but if you want the data to remain the same after a reload, then 
+the data needs to be stored in either my_shared_data or my_per_dl_data.
+
+TODO We can also pass in an allocator if that helps in some way.
+*/
+mp_value : int = 0;
+MyExternData :: struct {
+	my_mp : int = 0;
+}
+
+//TODO FROM HERE Do a similar test but with midi input
+//Also add guides for dl and then maybe an example with generalized audio/synth and also generalized rendering
+#program_export
+ExternalUpdatePerFrame :: (sld : *SharedLibraryData) {
+	if sld.my_per_dl_data == null {
+		sld.my_per_dl_data = New(MyExternData);
+	}
+	my_data := cast(*MyExternData) sld.my_per_dl_data;
+ 	if IsKeyboardPress(#char "Q", .{ctrl_pressed=true}, .DOWN_THIS_FRAME, sld.game_input) {
+		CreateMusicPtInMemory(my_data.my_mp, 0, my_data.my_mp+5, my_data.my_mp+6, *sld.all_mspace_data.*[0].all_music_pts);
+		my_data.my_mp += 1;
+ 	}
 }
