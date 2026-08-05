@@ -70,21 +70,6 @@ AsmGetOrCreateSimpleSynthData :: struct {
 	ret_synth_id : int;
 	synth_name : string;
 }
-OscWaveType :: enum {
-	SINE;
-	SQUARE;
-	SAW;
-	TRIANGLE;
-	FOURIER_SINE;
-	FOURIER_SQUARE;
-	FOURIER_SAW;
-	FOURIER_TRIANGLE;
-	FOURIER_SUMOFCOS;
-	PIANO;
-	PIANO_2;
-	PIANO_3;
-	NONE;
-}
 ChordSpaceFilterType :: enum {
 	DEFAULT;
 	ALL;
@@ -106,17 +91,29 @@ ChordSpaceFilterAggregate :: enum {
 	INTERSECTION;
 	UNION;
 }
-AsmShapeType :: enum {
-	RECTANGLE;
-}
-CustomAudioType :: enum {
-	TUNING_SYSTEM;
-	PITCH_SET_AS_FREQUENCY;
-}
 SpiralType :: enum {
 	PROPER;
 	CONCENTRIC_CIRCLE;
 	BOOK;
+}
+OscWaveType :: enum {
+	SINE;
+	SQUARE;
+	SAW;
+	TRIANGLE;
+	FOURIER_SINE;
+	FOURIER_SQUARE;
+	FOURIER_SAW;
+	FOURIER_TRIANGLE;
+	FOURIER_SUMOFCOS;
+	PIANO;
+	PIANO_2;
+	PIANO_3;
+	NONE;
+}
+CustomAudioType :: enum {
+	TUNING_SYSTEM;
+	PITCH_SET_AS_FREQUENCY;
 }
 RowSystemType :: enum {
 	none;
@@ -126,14 +123,8 @@ RowSystemType :: enum {
 	midi_velocity;
 	midi_pitch;
 }
-GetOrCreateMSpaceType :: enum {
-	GET_BY_NAME;
-	GET_BY_ID;
-	GET_BY_INDEX;
-}
-LinearPitchSpaceView :: enum {
-	RATIO_PROPORTIONAL;
-	FORCE_EQUAL;
+AsmShapeType :: enum {
+	RECTANGLE;
 }
 SimpleSynthMessageType :: enum {
 	VOLUME;
@@ -142,6 +133,15 @@ SimpleSynthMessageType :: enum {
 	RELEASE_SECONDS;
 	ATTACK_CURVE;
 	RELEASE_CURVE;
+}
+LinearPitchSpaceView :: enum {
+	RATIO_PROPORTIONAL;
+	FORCE_EQUAL;
+}
+GetOrCreateMSpaceType :: enum {
+	GET_BY_NAME;
+	GET_BY_ID;
+	GET_BY_INDEX;
 }
 S3CamStartType :: enum {
 	MIN_ZY;

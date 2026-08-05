@@ -5702,6 +5702,9 @@ for abs_path_name : perm.all_data.all_run_external_update_events
 }
 array_reset_keeping_memory(*perm.all_data.all_run_external_update_events);
 
+/*REMINDER : This needs to happen before audio buffer loading so that if we load audio into the buffer
+it gets all loaded accurately on the same frame.
+*/
 for * dl : global_dynamic_libraries if dl.ExternalUpdatePerFrame_proc_address != null {
 	//TODO We could have these arrays be in 1 struct in AllData so we can just copy it over directly
 	shared_lib : SharedLibraryData = AllDataToSharedLibraryData(dl, audio_data, game_input, perm.all_data);
