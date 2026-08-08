@@ -4662,14 +4662,14 @@ List all loaded dynamic libraries.
 DONE);
 				} else {
 					for global_dynamic_libraries {
-						if it.ExternalUpdate_proc_address != null {
+						if it.ExternalRunOnce_proc_address != null {
 							print_to_builder(*sb, "%\n", it.input_path_name);
 						}
 					}
 
 					append(*sb, "\n\nRunning Per Frame:\n");
 					for global_dynamic_libraries {
-						if it.ExternalUpdatePerFrame_proc_address != null {
+						if it.ExternalPerFrame_proc_address != null {
 							print_to_builder(*sb, "%\n", it.input_path_name);
 						}
 					}
@@ -5676,12 +5676,12 @@ for abs_path_name : perm.all_data.all_run_external_update_events
 	if !found_euf {
 		print("% external update file not found.\n", dl.abs_path_name);
 		continue;
-	} else if dl.ExternalUpdate_proc_address == null {
-		print("Null found for ExternalUpdate proc in file : %.\n", dl.abs_path_name);
+	} else if dl.ExternalRunOnce_proc_address == null {
+		print("Null found for ExternalRunOnce proc in file : %.\n", dl.abs_path_name);
 		continue;
 	}
 	//TODO We happens if we have an invalid function pointer here, I guess we can't really know and crash.
-	//So we should set ExternalUpdate to null whenever that is possible to avoid issues.
+	//So we should set ExternalRunOnce to null whenever that is possible to avoid issues.
 
 	// We could reload as a terminal command but we do in here for now so it is clearer.
 	// Although we compile the file as a terminal command for now but we could also do it here.
@@ -5689,8 +5689,8 @@ for abs_path_name : perm.all_data.all_run_external_update_events
 
 	//TODO We could cast this beforehand to reuse but I will leave it like this for now so we only
 	//keep 1 pointer and dont have to reset it all the time.
-	ExternalUpdate := cast(Type_ExternalUpdate) dl.ExternalUpdate_proc_address;
-	ExternalUpdate(*shared_lib);
+	ExternalRunOnce := cast(Type_ExternalRunOnce) dl.ExternalRunOnce_proc_address;
+	ExternalRunOnce(*shared_lib);
 
 	perm.all_data.my_shared_data = shared_lib.my_shared_data;
 	dl.my_per_dl_data = shared_lib.my_per_dl_data;
@@ -5705,11 +5705,11 @@ array_reset_keeping_memory(*perm.all_data.all_run_external_update_events);
 /*REMINDER : This needs to happen before audio buffer loading so that if we load audio into the buffer
 it gets all loaded accurately on the same frame.
 */
-for * dl : global_dynamic_libraries if dl.ExternalUpdatePerFrame_proc_address != null {
+for * dl : global_dynamic_libraries if dl.ExternalPerFrame_proc_address != null {
 	//TODO We could have these arrays be in 1 struct in AllData so we can just copy it over directly
 	shared_lib : SharedLibraryData = AllDataToSharedLibraryData(dl, audio_data, game_input, perm.all_data);
-	ExternalUpdatePerFrame := cast(Type_ExternalUpdate) dl.ExternalUpdatePerFrame_proc_address;
-	ExternalUpdatePerFrame(*shared_lib);
+	ExternalPerFrame := cast(Type_ExternalRunOnce) dl.ExternalPerFrame_proc_address;
+	ExternalPerFrame(*shared_lib);
 
 	perm.all_data.my_shared_data = shared_lib.my_shared_data;
 	dl.my_per_dl_data = shared_lib.my_per_dl_data;

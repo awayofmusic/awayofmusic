@@ -523,6 +523,27 @@ QuadToTriangles :: (quad : Quad2F) -> [2] Triangle2F {
 	return tris;
 }
 
+//TODO Could make a version of this that return 2 triangles instead.
+MakeQuadLine :: (start : Vector2F, end : Vector2F, thickness : float) -> Quad2F
+{
+	v_diff : Vector2F = end - start;
+	length : float = Length(v_diff);
+	theta : float = atan2(v_diff.y, v_diff.x);
+	rotation := MakeRotationMatrix2F(theta);
+	scale := MakeScaleMatrix2F(length, 1.0);
+	transform : Matrix2F = rotation * scale;
+
+	//Note : doing in clockwise motion for now
+	//TODO multiplying thickness by length here is a hack for now to consider perspective projection
+	lower_left  := start + (transform * MakeV2F(0,-thickness));
+	lower_right := start + (transform * MakeV2F(1,-thickness));
+	upper_left  := start + (transform * MakeV2F(0, thickness));
+	upper_right := start + (transform * MakeV2F(1, thickness));
+
+	quad := MakeQuad2F(lower_left, upper_left, upper_right, lower_right);
+	return quad;
+}
+
 Rectangle2 :: struct {
     min : Vector2F;
     max : Vector2F;

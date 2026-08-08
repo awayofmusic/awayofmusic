@@ -1,3 +1,4 @@
+#import "Remap_Context"(VERBOSE=false);
 #import "Basic";
 #import "thegame_shared_library";
 #import "thegame_audio";
@@ -12,7 +13,9 @@ m_in : *MIDI_Input;
 sld : SharedLibraryData;
 
 #program_export
-ExternalUpdate :: (shared_lib : *SharedLibraryData) {
+ExternalRunOnce :: (shared_lib : *SharedLibraryData) {
+	Remap_Context();
+
 	#if OS == .WINDOWS {
 	midi_port_number : int = 1;
 	} else {
@@ -72,16 +75,19 @@ ExternalUpdate :: (shared_lib : *SharedLibraryData) {
 	my_synth.envelope = MakeVolumeEnvelope();
 	AddSimpleWaveFromFrequency(0, *my_synth, shared_lib.audio_data);
 	// for 0..1 AddSimpleWaveFromFrequency(0, *my_synth, shared_lib.audio_data);
-}
 
-FIXED_OCTAVE : u8 : 12*5;
-//TODO FROM HERE add guides for dl and then maybe an example with generalized audio/synth and also generalized rendering
-#program_export
-ExternalUpdatePerFrame :: (sld : *SharedLibraryData) {
+	//Store synth and other data in here if we want it to persist with code reloads.
 	// if sld.my_per_dl_data == null {
 	// 	sld.my_per_dl_data = New(MyExternData);
 	// }
 	// my_data := cast(*MyExternData) sld.my_per_dl_data;
+}
+
+FIXED_OCTAVE : u8 : 12*5;
+#program_export
+ExternalPerFrame :: (sld : *SharedLibraryData) {
+	Remap_Context();
+	
 	channel : u8 = 0;
 	velocity : u8 = 100;
 	note : u8;
@@ -118,19 +124,12 @@ ExternalUpdatePerFrame :: (sld : *SharedLibraryData) {
 	}
 }
 
-USE_INTERNAL_AUDIO : bool : false;
-
-//These could be stored in my_per_dl_data or my_shared_data if needed.
+//These could be stored in my_per_dl_data or my_shared_data if needed to persist with code reload.
 my_synth : SimpleSynth;
 pos : int = 0;
 note_is_on : bool = false;
-previous_timestamp : Apollo_Time;
 midi_input_callback :: (input: *MIDI_Input, message: MIDI_Message, timestamp: Apollo_Time, user_data: *void) {
 	print_message_info(message, timestamp);
-	#if 0 {
-	print("time_delta = %\n", timestamp - previous_timestamp);
-	previous_timestamp = timestamp;
-	}
 
 	my_sld := cast(*SharedLibraryData) user_data;
 
@@ -151,7 +150,7 @@ midi_input_callback :: (input: *MIDI_Input, message: MIDI_Message, timestamp: Ap
 		music_pt := cast(float64) ((cast(int)message.note_info.note) - FIXED_OCTAVE);
 		frequency : float = MusicPtToFrequency(music_pt, tuning_system, tuning_pitches);
 		UpdateWaveFrequency(frequency, *my_synth.simple_waves[0], my_sld.audio_data.*);
-		//Then we use this flag to generate the sample in ExternalUpdatePerFrame
+		//Then we use this flag to generate the sample in ExternalPerFrame
 		note_is_on = true;
 
 		pos += 1;

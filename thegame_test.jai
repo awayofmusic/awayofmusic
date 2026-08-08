@@ -12575,8 +12575,8 @@ Test_LoadDL :: (
 			AssertEquals(ldl_data.fixed_test_path, dl.input_path_name);
 			AssertEquals(abs_path, dl.abs_path_name);
 			AssertEquals(true, dl.module_handle != null);
-			AssertEquals(true, dl.ExternalUpdate_proc_address != null);
-			AssertEquals(true, dl.ExternalUpdatePerFrame_proc_address != null);
+			AssertEquals(true, dl.ExternalRunOnce_proc_address != null);
+			AssertEquals(true, dl.ExternalPerFrame_proc_address != null);
 		} else {
 			print("Sometimes this test fails due to dynamic library loading so try rerunning it before assuming it failed.\n");
 			print("If this happens often, we can likely remove this test since we have it in unit tests anyways.\n");
@@ -12589,7 +12589,7 @@ Test_LoadDL :: (
 			AssertEquals(ldl_data.test_path_2, dl_2.input_path_name);
 			AssertEquals(abs_path_2, dl_2.abs_path_name);
 			AssertEquals(true, dl_2.module_handle != null);
-			AssertEquals(true, dl_2.ExternalUpdate_proc_address != null);
+			AssertEquals(true, dl_2.ExternalRunOnce_proc_address != null);
 		} else {
 			print("Sometimes this test fails due to dynamic library loading so try rerunning it before assuming it failed.\n");
 			print("If this happens often, we can likely remove this test since we have it in unit tests anyways.\n");

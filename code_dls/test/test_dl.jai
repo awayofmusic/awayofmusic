@@ -1,3 +1,4 @@
+#import "Remap_Context"(VERBOSE=false);
 #import "Basic";
 #import "thegame_shared_library";
 #import "thegame_audio";
@@ -15,7 +16,9 @@ WE COULD ALSO allow rendering to an op_space once we add op spaces since the ren
 //as long as we can compile it which implies that the inputs we use are in the function call.
 //TODO should pass in audio somehow for synth and audio creation levels
 #program_export
-ExternalUpdate :: (shared_lib : *SharedLibraryData) {
+ExternalRunOnce :: (shared_lib : *SharedLibraryData) {
+	Remap_Context();
+
 	//TODO We could set ids from context everywhere so its the same everywhere and then we don't need it here.
 	// ALL_NEXT_IDS = context.ALL_NEXT_IDS.;
 	// print("run external update\n");
@@ -88,7 +91,7 @@ MyExternData :: struct {
 //TODO FROM HERE Do a similar test but with midi input
 //Also add guides for dl and then maybe an example with generalized audio/synth and also generalized rendering
 #program_export
-ExternalUpdatePerFrame :: (sld : *SharedLibraryData) {
+ExternalPerFrame :: (sld : *SharedLibraryData) {
 	if sld.my_per_dl_data == null {
 		sld.my_per_dl_data = New(MyExternData);
 	}

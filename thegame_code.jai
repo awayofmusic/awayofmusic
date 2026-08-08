@@ -13941,7 +13941,11 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		//with a test to clear and have a different filter or something
 		//then maybe a test changing dims and then do it with asm and then make code
 		//RESIZABLE 3d op spaces should update size properly with frustum and other 3d data
-		ClearOpSpace(clear_data, ad);
+		ClearOpSpace(clear_data,
+			ad.all_open_op_spaces,
+			ad.all_closed_op_spaces,
+			ad.all_op_space_spec_data,
+			ad.all_op_spec_data_3D);
 	}
 	//TODO FROM HERE put circle data and shapes in op space specific data 
 	case OpCode.create_circle; {

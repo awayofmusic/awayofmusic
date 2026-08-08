@@ -3,7 +3,7 @@
 #import "thegame_input";
 
 #program_export
-ExternalUpdate :: (shared : *SharedLibraryData) {
+ExternalRunOnce :: (shared : *SharedLibraryData) {
 	//TODO Need a dynamic library that runs every frame in order for this to work.
 	if IsKeyboardPress(#char "W", .{alt_pressed=true}, .DOWN_THIS_FRAME, shared.game_input) {
 		print("pressed alt+w\n");

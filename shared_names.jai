@@ -20,6 +20,10 @@ G_STARTUP_SETTINGS_NAME :: #run sprint("%/generated_startup_settings", SETTINGS_
 G_RUNTIME_SETTINGS_NAME :: #run sprint("%/generated_runtime_settings", SETTINGS_DIR_NAME);
 G_INPUT_MAPPINGS_NAME :: #run sprint("%/generated_input_mappings", SETTINGS_DIR_NAME);
 
+/*Colors for knowing the general internal color palette
+TODO This is separated out from shared library because it is currently used in the renderer which does not depend on shared library.
+Maybe we should either put these in renderer or separate them out from the renderer instead.
+*/
 WHITE_V :: Vector4F.{1.0, 1.0, 1.0, 1.0};
 BLACK_V :: Vector4F.{0.0, 0.0, 0.0, 1.0};
 LOW_WHITE_V :: Vector4F.{0.95, 0.95, 0.95, 1.0};
@@ -59,3 +63,5 @@ ORANGE_V :: Vector4F.{1.0, 204.0/255.0, 102.0/255.0, 1.0};
 GREENC_V :: Vector4F.{73.0/255.0, 143.0/255.0, 51.0/255.0, 1.0};
 YELLOW_V :: Vector4F.{245.0/255.0, 245.0/255.0, 50.0/255.0, 1.0};
 PINK_V := Vector4F.{255.0/255.0, 111.0/255.0, 255/255.0, 1.0};
+/*End of colors
+*/

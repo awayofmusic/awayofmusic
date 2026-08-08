@@ -93,7 +93,7 @@ main :: () {
 	tano(0,0..2) ~= int.[0,4,7];
 	tano(0,2..4) ~= int.[0,3,7];
 	
-	//Opening other op spaces can be found in guides/space_2d.
+	//Opening other op spaces can be found in guides/circle.
 
 	/*
 	rd.row_system_id = synth.ret_synth_id;

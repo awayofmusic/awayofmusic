@@ -792,10 +792,10 @@ LoadDynamicLibrary :: (dl : *DynamicLibrary) -> success : bool, msg : string {
 
 	//TODO Can separate this out if we want to get multiple proc addresses for different functions eventually.
 	//TODO Should we change the name of first one to ExternalRunOnce?
-	dl.ExternalUpdate_proc_address = GetProcAddress(dl.module_handle, "ExternalUpdate");
-	dl.ExternalUpdatePerFrame_proc_address = GetProcAddress(dl.module_handle, "ExternalUpdatePerFrame");
-	if dl.ExternalUpdate_proc_address == null && dl.ExternalUpdatePerFrame_proc_address == null {
-		return false, tprint("No ExternalUpdate or ExternalUpdatePerFrame function found in : %.\n", dl.abs_path_name);
+	dl.ExternalRunOnce_proc_address = GetProcAddress(dl.module_handle, "ExternalRunOnce");
+	dl.ExternalPerFrame_proc_address = GetProcAddress(dl.module_handle, "ExternalPerFrame");
+	if dl.ExternalRunOnce_proc_address == null && dl.ExternalPerFrame_proc_address == null {
+		return false, tprint("No ExternalRunOnce or ExternalPerFrame function found in : %.\n", dl.abs_path_name);
 	}
 
 	return true, tprint("Library loaded : %.\n", dl.input_path_name);
@@ -1119,10 +1119,10 @@ LoadDynamicLibrary :: (dl : *DynamicLibrary) -> success : bool, msg : string {
 
 
 	//TODO Can separate this out if we want to get multiple proc addresses for different functions eventually.
-	dl.ExternalUpdate_proc_address = Posix.dlsym(dl.module_handle, "ExternalUpdate");
-	dl.ExternalUpdatePerFrame_proc_address = Posix.dlsym(dl.module_handle, "ExternalUpdatePerFrame");
-	if dl.ExternalUpdate_proc_address == null && dl.ExternalUpdatePerFrame_proc_address == null {
-		return false, tprint("No ExternalUpdate or ExternalUpdatePerFrame function found in : %.\n", dl.abs_path_name);
+	dl.ExternalRunOnce_proc_address = Posix.dlsym(dl.module_handle, "ExternalRunOnce");
+	dl.ExternalPerFrame_proc_address = Posix.dlsym(dl.module_handle, "ExternalPerFrame");
+	if dl.ExternalRunOnce_proc_address == null && dl.ExternalPerFrame_proc_address == null {
+		return false, tprint("No ExternalRunOnce or ExternalPerFrame function found in : %.\n", dl.abs_path_name);
 	}
 
 	return true, tprint("Library loaded : %.\n", dl.input_path_name);
@@ -1222,7 +1222,7 @@ UnloadDLL :: (dl : *DynamicLibrary) -> success : bool, msg : string {
 		// log(msg, flags=.VERBOSE_ONLY);
 		dl.module_handle = null;
 	}
-	dl.ExternalUpdate_proc_address = null;
+	dl.ExternalRunOnce_proc_address = null;
 	return true, tprint("Successfully unloaded %.\n", dl.input_path_name);
 }
 RemoveDynamicLibrary :: (dl : *DynamicLibrary) -> success : bool, msg : string {
@@ -1245,7 +1245,7 @@ RemoveDynamicLibrary :: (dl : *DynamicLibrary) -> success : bool, msg : string {
 }
 
 LoadDLSuccess :: inline (dl : DynamicLibrary) -> bool {
-	success : bool = dl.module_handle != null && dl.ExternalUpdate_proc_address != null;
+	success : bool = dl.module_handle != null && dl.ExternalRunOnce_proc_address != null;
 	return success;
 }
 
@@ -1330,7 +1330,7 @@ CreateDynamicLibrary :: (rel_file_name_no_ext : string) -> success : bool, msg :
 	return true, tprint("Loaded dynamic library : %.\n", dl.input_path_name);
 }
 
-//TODO Should we rename this function? Maybe ReloadExternalUpdate?
+//TODO Should we rename this function? Maybe ReloadExternalRunOnce?
 //NOTE : We have 3 reload states in case we don't reload but it does not fail for automatic dynamic lib reloading.
 ReloadState :: enum u8 {
 	RELOADED;
@@ -1355,7 +1355,7 @@ ReloadDynamicLibrary :: (dl : *DynamicLibrary) -> ReloadState, msg : string {
 			}
 			//Note : This is the address to the function which is itself an address because a function
 			//pointer is an address. So this is already an addres to an address so we can check it for null.
-			// euf.ExternalUpdate = cast(Type_ExternalUpdate) dl.ExternalUpdate_proc_address;
+			// euf.ExternalRunOnce = cast(Type_ExternalRunOnce) dl.ExternalRunOnce_proc_address;
 			return .RELOADED, tprint("Reloaded : %.\n", dl.input_path_name);
 		}
 		return .NO_CHANGE, tprint("No changes : %.\n", dl.input_path_name);
@@ -1765,12 +1765,12 @@ global_dynamic_libraries : [..] DynamicLibrary;
 // ResetDynamicLibraries :: () {
 // 	array_reset_keeping_memory(*global_dynamic_libraries);
 // }
-/*We have currently separated this from ExternalUpdateFile where we use this as the platform layer dynamic library
+/*We have currently separated this from ExternalRunOnceFile where we use this as the platform layer dynamic library
 which remains in-game agnostic so we only store void pointer and path names. Then we associate with
 */
 DynamicLibrary :: struct {
 	//NOTE : These are all based on the input path without extension.
-	//input path without extension which we split in LoadExternalUpdateFile and then pass in to CreateExternalUpdateFile
+	//input path without extension which we split in LoadExternalRunOnceFile and then pass in to CreateExternalRunOnceFile
 	no_ext_path_name : string; 
 	input_path_name : string; //input path with extension
 	use_input_path_name : string; //input path with _use and extension for dynamic lib copying
@@ -1779,7 +1779,7 @@ DynamicLibrary :: struct {
 	//This is the complete absolute path with the extensions
 	abs_path_name : string;
 
-	//TODO Maybe we can JUST store this here and everything else in ExternalUpdateFile
+	//TODO Maybe we can JUST store this here and everything else in ExternalRunOnceFile
 	//so that this is just platform specific later for dynamic libraries
 	#if OS == .WINDOWS {
 	module_handle : HMODULE; //HMODULE == *void
@@ -1792,10 +1792,10 @@ DynamicLibrary :: struct {
 
 	//TODO Can separate these out if we want to allow multiple GetProcAddress eventually to allow 
 	//different functions in different places or that have different purposes.
-	//NOTE : These are referenced as function types in ExternalUpdateFile which is what we use in game.
-	ExternalUpdate_proc_address : *void;
-	ExternalUpdatePerFrame_proc_address : *void;
-	// ExternalUpdate : Type_ExternalUpdate;
+	//NOTE : These are referenced as function types in ExternalRunOnceFile which is what we use in game.
+	ExternalRunOnce_proc_address : *void;
+	ExternalPerFrame_proc_address : *void;
+	// ExternalRunOnce : Type_ExternalRunOnce;
 
 	//My external data specific to this dl. my_shared_data is the same across all dls but this is specific to each dl.
 	my_per_dl_data : *void;

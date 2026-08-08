@@ -17206,7 +17206,7 @@ Test_LoadDL :: () {
 		AssertEquals(lock_path_name, dl.lock_file_name);
 		AssertEquals(abs_path_name, dl.abs_path_name);
 		AssertEquals(true, dl.module_handle != null);
-		AssertEquals(true, dl.ExternalUpdate_proc_address != null);
+		AssertEquals(true, dl.ExternalRunOnce_proc_address != null);
 
 		old_write_time = dl.last_write_time;
 	}
@@ -17237,11 +17237,11 @@ Test_LoadDL :: () {
 		AssertEquals(lock_path_name, dl.lock_file_name);
 		AssertEquals(abs_path_name, dl.abs_path_name);
 		AssertEquals(true, dl.module_handle != null);
-		AssertEquals(true, dl.ExternalUpdate_proc_address != null);
+		AssertEquals(true, dl.ExternalRunOnce_proc_address != null);
 
 		AssertEquals(1, ad.all_external_update_files.count);
 		AssertEquals(abs_path_name, euf.abs_path_name);
-		AssertEquals(euf.ExternalUpdate, dl.ExternalUpdate_proc_address);
+		AssertEquals(euf.ExternalRunOnce, dl.ExternalRunOnce_proc_address);
 	}
 	}
 
@@ -17268,7 +17268,7 @@ Test_LoadDL :: () {
 			AssertEquals(lock_path_name, dl.lock_file_name);
 			AssertEquals(abs_path_name, dl.abs_path_name);
 			AssertEquals(true, dl.module_handle != null);
-			AssertEquals(true, dl.ExternalUpdate_proc_address != null);
+			AssertEquals(true, dl.ExternalRunOnce_proc_address != null);
 
 
 

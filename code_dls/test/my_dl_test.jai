@@ -13,7 +13,7 @@ WE COULD ALSO allow rendering to an op_space once we add op spaces since the ren
 //as long as we can compile it which implies that the inputs we use are in the function call.
 //TODO should pass in audio somehow for synth and audio creation levels
 #program_export
-ExternalUpdate :: (shared_lib : *SharedLibraryData) {
+ExternalRunOnce :: (shared_lib : *SharedLibraryData) {
 	// print("run external update\n");
 	// found_new_points = !found_new_points;
 	// print("found_new_points=%\n", found_new_points);
