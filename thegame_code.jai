@@ -14410,8 +14410,7 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 			chord_s2.cs_filters, chord_s2.cs_filter_aggregate,,op_spec_data.spec_2D_alloc);
 
 		AddChordS2ToOpSpace(asm_cs2.op_space_id, chord_s2,
-			*op_spec_data.all_op_collision_entities,
-			*ad.all_dspace_to_op_space_id);
+			*op_spec_data.all_op_collision_entities);
 	}
 	case OpCode.map_cs2; {
 		mem_address : int = ComputeRAMLocation(ci.operands[0], ad.all_register_memory, ad.ram_memory);

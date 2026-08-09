@@ -1644,8 +1644,7 @@ Test_CreateChordS2 :: (
 	FilterCS2D(chord_s2.*, cs2_points.*, *op_spec_data.ass, chord_s2.cs_filters, chord_s2.cs_filter_aggregate,,op_spec_data.spec_2D_alloc);
 
 	AddChordS2ToOpSpace(s2_op_space.id, chord_s2,
-		*op_spec_data.all_op_collision_entities,
-		*perm.all_data.all_dspace_to_op_space_id); 
+		*op_spec_data.all_op_collision_entities);
 
 
 	vl_end_points, vl_points_no_dim := ProcessVoiceLeadingEventsNDim(chord_s2.dspace_id,

@@ -3259,6 +3259,9 @@ AllDataToSharedLibraryData :: inline (
 	sl.all_op_space_spec_data = *all_data.all_op_space_spec_data;
 	sl.all_op_spec_data_3D = *all_data.all_op_spec_data_3D;
 
+	sl.all_cs2_points_2D = *all_data.all_cs2_points_2D;
+	sl.all_chord_space_points = *all_data.all_chord_space_points;
+
 	return sl;
 }
 
@@ -4547,6 +4550,7 @@ CircleOrientation :: struct {
 	rotate_rad : float;
 }
 
+
 AsmChordS2Data :: struct {
 	//return values
 	ret_dspace_id : int;
@@ -4575,192 +4579,54 @@ AsmChordS2Data :: struct {
    //MAYBE 2d is ok but maybe its going overboard and will be too slow
 	// transform : Matrix2F64;
 } @LibraryAsmGen
-CreateChordS2Data :: struct {
-	world_pos : Vector2F;
-	scale_world_unit : float = 2.0;
-   point_dim : Vector2F = .{0.7,0.7};
-   //This is the default transform from the book. Should we put it somewhere else instead?
-	transform : Matrix2F = #run (ROTATE_NEG90 * ROTATE_NEG45 * REFLECT_90);
-
-	//TODO Should we allo both or is tuning_system_id enough since this is a chord_space.
-	//I guess I am thinking what if we want the geometry without the sound... but then someone can make it.
-   lp_count : int = 12;
-	tuning_system_id : int = 0; //12-ET is default 0
-	is_sound_float : bool = false;
-
-	vl_order_text : bool = true;
-	vl_order_color : bool = true;
-
-	//This defaults to all points with just the ALL filter
-	new_cs_filters : [] CSFilter = .[CSFilter.{filter_type=.ALL}];
-	cs_filter_aggregate : ChordSpaceFilterAggregate;
-
-	osc_wave_type : OscWaveType;
-}
-
-CreateChordSpace2 :: inline (
-	create_cs2 : CreateChordS2Data,
-   op_spec_data : *OpSpaceSpecData)
--> *ChordSpace2 
+AsmFiltersToTempFilters :: inline (
+	asm_cs_filters : [] AsmCSFilter,
+	ram_memory : RAMMemory)
+-> [] CSFilter, CPUError
 {
-	chord_s2 : *ChordSpace2 = array_add(*op_spec_data.all_op_chord_s2);
-	// chord_s2.space_name = copy_string(space_name);
-	//TODO Could use this later for efficiency and then add to SpacePoint as well for efficient op_space rendering.
-	// chord_s2.op_space_id = op_space_id;
-	//TODO We can grab these ids from op_spec data if that is needed although maybe having unique ids for now is better
-	chord_s2.dspace_id = context.ALL_NEXT_IDS.DSPACE_ID;
-	defer context.ALL_NEXT_IDS.DSPACE_ID += 1;
-	chord_s2.dspace_world_center = create_cs2.world_pos;
-	chord_s2.dspace_point_dim = create_cs2.point_dim;
-	// chord_s2.invariant_ids = int.[0,1];
-	chord_s2.random_color_0 = RandomColorAlpha1();
-	chord_s2.random_color_1 = RandomColorAlpha1();
-	//TODO Could pass in a render order and then add these values to it.
-	//Which might be a bit confusing though
-	chord_s2.space_pt_render_order = 6;
-	chord_s2.music_pt_render_order = 9;
-	chord_s2.vl_pt_render_order = chord_s2.music_pt_render_order-1;
-	chord_s2.vl_order_text = create_cs2.vl_order_text;
-	chord_s2.vl_order_color = create_cs2.vl_order_color;
-	chord_s2.music_pt_count = create_cs2.lp_count;
-	chord_s2.tuning_system_id = create_cs2.tuning_system_id;
-	chord_s2.is_sound_float = create_cs2.is_sound_float;
-
-	chord_s2.synth.wave_type = create_cs2.osc_wave_type;
-	chord_s2.synth.envelope = MakeVolumeEnvelope();
-	// for 0..1 AddSimpleWaveFromFrequency(0, *chord_s2.synth, audio_data);
-
-	//MusicPt : currently this goes to middle of the outer squares (will we ever use it without adding the other half square)
-	//Note : This now goes to a bit outside the rectangles. What if we allow rotation of the chord_s2?
-	// chord_s2.dspace_dim = 1.5 * scale_world_unit * PointwiseProduct(point_dim, MakeV2F(create_cs2.lp_count+1, create_cs2.lp_count+1)); //TODO should be a quad
-	chord_s2.scale_world_unit = create_cs2.scale_world_unit;
-	chord_s2.dspace_dim = create_cs2.scale_world_unit * PointwiseProduct(create_cs2.point_dim, MakeV2F(create_cs2.lp_count+1, create_cs2.lp_count+1)); //TODO should be a quad
-	chord_s2.transform = create_cs2.transform;
-	// chord_s2.invariant_0_unit_length = create_cs2.transform * (scale_world_unit * Vector2F.{1.0, 0});
-	// chord_s2.invariant_1_unit_length = create_cs2.transform * (scale_world_unit * Vector2F.{0, 1.0});
-	//TODO change this to column matrix even though its the same in this case
-	x_axis : Vector2F = chord_s2.scale_world_unit * Vector2F.{1,0};
-	x_axis = create_cs2.transform * x_axis;
-	y_axis : Vector2F = chord_s2.scale_world_unit * Vector2F.{0,1};
-	y_axis = create_cs2.transform * y_axis;
-	chord_s2.invariant_to_world_matrix = NewBasisToStandardBasisMatrix(x_axis, y_axis);
-	chord_s2.world_to_invariant_matrix = Inverse(chord_s2.invariant_to_world_matrix);
-	chord_s2.swapped_invariant_to_world = NewBasisToStandardBasisMatrix(y_axis, x_axis);
-	chord_s2.swapped_world_to_voice = Inverse(chord_s2.swapped_invariant_to_world);
-	
-	//This is middle from the bottom with a non-transformed chord_s2. 
-	//It is a fun_region_pos and NOT a world_pos. 
-	middle_chord_fun_region_pos := Vector2F.{0, 0.5*create_cs2.lp_count};
-	//The zero_pos is where the {0,0} point is without a world offset which we use in 
-	//FunRegionPosToWorldPos to move points about the chord_s2 like with voice leadings.
-	zero_rel_pos : Vector2F = chord_s2.scale_world_unit*(Vector2F.{0,0} - middle_chord_fun_region_pos);
-	chord_s2.zero_pos = create_cs2.transform * zero_rel_pos;
-	// chord_s2.zero_pos = chord_s2.dspace_world_center + transform * zero_rel_pos;
-
-	//DOC : On clear op space, we reset this allocator and reset the chord_s2 arrays.
-	//When adding new chord_s2, this array is new and then allocates its data in the cleared allocator again
-	//so we are just resuing it completely. We leave it resizable just in case we want it to be changeable later
-	//from a dynamic library otherwise it could be just an array view.
-	chord_s2.cs_filters.allocator = op_spec_data.spec_2D_alloc;
-	for create_cs2.new_cs_filters {
-		csf : *CSFilter = array_add(*chord_s2.cs_filters);
-		csf.* = it;
-		csf.value_set = array_copy(it.value_set,,op_spec_data.spec_2D_alloc);
+	//TODO We could pass in temp as the allocator but we always copy this over
+	//after anyways for chord_s2 and chord_s3 so putting this here now to keep it consistent.
+	cs_filters := NewArray(asm_cs_filters.count, CSFilter,,temp);
+	for asm_cs_filters {
+		cs_filters[it_index].filter_index = it.filter_index;
+		cs_filters[it_index].filter_value = it.filter_value;
+		cs_filters[it_index].filter_type = it.filter_type;
+		err : CPUError;
+		cs_filters[it_index].value_set, err = GetAsmArray(it.value_set, ram_memory);
+		if err.is_error return .[], err;
 	}
-
-	return chord_s2;
+	return cs_filters, NO_CPU_ERROR;
 }
-//REMIDNER THIS DOES NOT ACTUALLY WORK WITH THE ZOOM FACTOR PUTTING HERE AS A REMINDER
-#if 0 {
-UpdateChordS2Matrices :: inline (zoom_factor : float, chord_s2 : *ChordSpace2) {
-	x_axis : Vector2F = (chord_s2.scale_world_unit/zoom_factor) * Vector2F.{1,0};
-	x_axis = chord_s2.transform * x_axis;
-	y_axis : Vector2F = (chord_s2.scale_world_unit/zoom_factor) * Vector2F.{0,1};
-	y_axis = chord_s2.transform * y_axis;
-	chord_s2.invariant_to_world_matrix = NewBasisToStandardBasisMatrix(x_axis, y_axis);
-	chord_s2.world_to_invariant_matrix = Inverse(chord_s2.invariant_to_world_matrix);
-	chord_s2.swapped_invariant_to_world = NewBasisToStandardBasisMatrix(y_axis, x_axis);
-	chord_s2.swapped_world_to_voice = Inverse(chord_s2.swapped_invariant_to_world);
-	
-	//This is middle from the bottom with a non-transformed chord_s2. 
-	//It is a fun_region_pos and NOT a world_pos. 
-	middle_chord_fun_region_pos := Vector2F.{0, 0.5*chord_s2.music_pt_count};
-	//The zero_pos is where the {0,0} point is without a world offset which we use in 
-	//FunRegionPosToWorldPos to move points about the chord_s2 like with voice leadings.
-	zero_rel_pos : Vector2F = (chord_s2.scale_world_unit/zoom_factor)*(Vector2F.{0,0} - middle_chord_fun_region_pos);
-	chord_s2.zero_pos = chord_s2.transform * zero_rel_pos;
-}
-}
-
-GetOrCreateCS2Points :: inline (
-	lp_count : int, //linear_point_count
-	all_cs2_points_2D : *[..] ChordS2Points2D)
--> *ChordS2Points2D
+FilterLocalVLDistanceFromChords :: inline (
+	max_vl_distance : int,
+	space_point_fun_region_pos : [$fr_dim] int,
+	tsc : int,
+	chords_to_check : [][chord_dim] int,
+	$chord_dim : int)
+-> bool
 {
-	cs2_points, found_csp := ArrayFindFirstByNameId(all_cs2_points_2D.*, lp_count, "lp_count");
-	if found_csp return cs2_points;
+	pitch_set : [] int = FunRegionPosToPitchSet(space_point_fun_region_pos, tsc, chord_dim);
+	is_within_vl_distance : bool = false;
+	for chord : chords_to_check {
+		//TODO Also filter for 2-note chord space in 3d, and 2 and 3 in 4d
+		//TODO FROM HERE CHANGE THIS NAME PULL THIS OUT AND MOVE TO 4D AND ALLOW MULTIPLE FILTERS
+		//EG THIS ONE AND CHROMATIC TO SEE CLOSEST CHROMATIC OR THIS AND DIATONIC TO SEE CLOSEST DIATONIC
+		total_vl_distance : int = 0;
+		for note, note_index : chord {
+			total_vl_distance += abs(note - pitch_set[note_index]);
+		}
 
-	csp : *ChordS2Points2D = array_add(all_cs2_points_2D);
-	csp.id = context.ALL_NEXT_IDS.NEXT_CS2_POINTS_ID;
-	context.ALL_NEXT_IDS.NEXT_CS2_POINTS_ID += 1;
-	csp.lp_count = lp_count;
+		fun_region_distance : int = 0;
+		chord_fun_region_pos := OrderedPitchSetToFundamentalRegion(chord, tsc);
+		for note, note_index : chord {
+			fun_region_distance += abs(chord_fun_region_pos[note_index] - space_point_fun_region_pos[note_index]);
+		}
 
-	for x1 : -lp_count..lp_count for x2 : -lp_count..lp_count {
-		if x1 <= x2 && x2 <= x1 + lp_count && 
-			// x1 + x2 == 0
-			// x1 + x2 >= 0 && x1 + x2 < lp_count
-			x1 + x2 >= 0 && x1 + x2 <= lp_count //includes duplicate music_pt_swapping side
-		{
-			shape : *SpaceShape = array_add(*csp.chord_sp_2D);
-			shape.fun_region = NewArray(2, float64);
-			shape.fun_region[0] = cast(float64) x1;
-			shape.fun_region[1] = cast(float64) x2;
-			shape.pitch_set = FunRegionPosToPitchSet(shape.fun_region, lp_count, 2);
-			shape.shape_text = sprint("%,%", shape.pitch_set[0], shape.pitch_set[1]);
+		if fun_region_distance <= max_vl_distance || total_vl_distance <= max_vl_distance {
+			return true;
 		}
 	}
-
-	return csp;
-}
-
-//DOC : We pass in the op space allocator to set the arrays for fun region and pitch set with the proper op space allocator
-FilterCS2D :: inline (
-	//TODO I think eventually we can remove this and just have rects maybe we can clean it up eventually first
-	//and then see if it's possible because we still use the matrices for world pos for example
-	chord_s2 : ChordSpace2,
-	csp : ChordS2Points2D,
-	ass : *AllSpaceShapes,
-	cs_filters : [] CSFilter,
-	cs_filter_aggregate : ChordSpaceFilterAggregate)
-{
-	for c_shape : csp.chord_sp_2D if FilterChordSpacePoints(c_shape.fun_region, csp.lp_count, cs_filters, cs_filter_aggregate) {
-		s_rect : *SpaceRect = array_add(*ass.all_space_rects);
-		s_rect.shape = c_shape;
-		s_rect.dspace_id = chord_s2.dspace_id;
-		s_rect.color = LIGHT_BROWN;
-		//TODO Should we pass in the render order instead so we can set overlapping points/geometries?
-		s_rect.render_order = chord_s2.space_pt_render_order;
-		//TODO We can pass this in as well as a group id for easier deletion later, although maybe the dspace_id is enough
-		//Also I generally prefer just clearing and recreating the whole op to clear the allocator
-		// s_rect.dspace_shape_group = chord_s2.next_group_order;
-
-		world_pos : Vector2F = FunRegionPosToWorldPosMatrix(c_shape.fun_region, chord_s2);
-		s_rect.rect = RectCenterDim(world_pos, chord_s2.dspace_point_dim);
-		UpdateChordS2Shape(*s_rect.shape, c_shape.fun_region, chord_s2.music_pt_count);
-		//TODO Could add an option where we can add the text for each point here as SpaceText when needed.
-	}
-	//TODO Should we pull this out, then we can make chord_s2 : ChordSpace2 instead of pointer *ChordSpace2
-	// chord_s2.next_group_order += 1;
-}
-//DOC : We pass in the allocator here from the op space spec data
-//to store the pitch set and string
-UpdateChordS2Shape :: inline (
-	s : *SpaceShape,
-	fun_region : [] float64,
-	lp_count : int)
-{
-	s.pitch_set = FunRegionPosToPitchSet(fun_region, lp_count, 2);
-	s.shape_text = sprint("%,%", s.pitch_set[0], s.pitch_set[1]);
+	return false;
 }
 
 MapChordS2Data :: struct {
@@ -4770,159 +4636,6 @@ MapChordS2Data :: struct {
 	vl_deltas : AsmArray(float64);
 	//TODO Should we add a color here to identify specific voice leadings?
 } @LibraryAsmGen
-
-CreateVoiceLeadingShapes2D :: inline (
-	op_space_id : int,
-	chord_s2 : *ChordSpace2,
-	//TODO These name are terrible need to make them clearer
-	vl_end_points : [] VLEndPoint,
-	vl_points : [] VLPointNoDim,
-	ass : *AllSpaceShapes)
-{
-	vl_point_index : int = 0;
-	for vl_end_points {
-		space_rect : *SpaceRect = array_add(*ass.all_space_rects);
-		space_rect.op_space_id = op_space_id;
-		space_rect.dspace_id = chord_s2.dspace_id;
-		space_rect.color = FGREEN_V;
-		//TODO We could pass in custom render order per space and add it here and to vl points so we can
-		//set the values for custom geometries above or below it.
-		space_rect.render_order = chord_s2.music_pt_render_order + it.order;
-		space_rect.dspace_shape_group = chord_s2.next_group_order;
-
-		vl_op_pos : Vector2F = FunRegionPosToWorldPosMatrix(it.fun_region_float, chord_s2);
-		space_rect.rect = RectCenterDim(vl_op_pos, chord_s2.dspace_point_dim);
-
-		UpdateChordS2Shape(*space_rect.shape, it.fun_region_float, chord_s2.music_pt_count);
-
-		if chord_s2.vl_order_text {
-			space_text : *SpaceText = array_add(*ass.all_space_text);
-			space_text.op_space_id = op_space_id;
-			space_text.dspace_id = chord_s2.dspace_id;
-			//TODO I think we could store this render_order OR I guess this i the default text op render order
-			//Maybe we could store that somewhere as default instead.
-			space_text.render_order = 10003;
-			//TODO Maybe this should be a different group in case we want to erase it later.
-			space_text.dspace_shape_group = chord_s2.next_group_order;
-			space_text.color = LOW_WHITE_V;
-
-			space_text.op_pos = vl_op_pos;
-			space_text.op_pos.y -= chord_s2.dspace_point_dim.y;
-			space_text.op_pos.x -= 0.5*chord_s2.dspace_point_dim.x;
-
-			space_string : string = tprint("%", it.order);
-			//Sanity check but we could just put an if here but max s64 is < 32 chars anyways
-			assert(space_string.count <= space_text.text_chars.count);
-			space_text.text.data = space_text.text_chars.data;
-			space_text.text.count = space_string.count;
-			memcpy(space_text.text.data, space_string.data, space_string.count);
-		}
-	}
-
-	//TODO We could do this in the loop above for each VLSpacePoint which would assume we have the same order.
-	//This method is order independent so is more resilient. ALSO If we don't have an vl_points, we just skip this loop.
-	//TODO We could also rotate these rects now so they look more like a line in chord_s2, although that would
-	//not work properly for points that teleport around the space.
-	for vl_points {
-		end_point : VLEndPoint = ArrayFindFirstByNameId(vl_end_points, it.vl_id, "id");
-		space_rect : *SpaceRect = array_add(*ass.all_space_rects);
-		space_rect.op_space_id = op_space_id;
-		space_rect.dspace_id = chord_s2.dspace_id;
-		//DOC : We add order here to avoid having overlap and render the vl points different on different frames
-		space_rect.render_order = chord_s2.vl_pt_render_order + end_point.order;
-		space_rect.dspace_shape_group = chord_s2.next_group_order;
-		space_rect.not_selectable = true;
-
-		//TODO Could pass in the size of vl_point_dim with chord_s2 instead of fixing it to 0.3.
-		op_pos : Vector2F = FunRegionPosToWorldPosMatrix(it.fun_region_float, chord_s2);
-		space_rect.rect = RectCenterDim(op_pos, 0.3*chord_s2.dspace_point_dim);
-
-		UpdateChordS2Shape(*space_rect.shape, it.fun_region_float, chord_s2.music_pt_count);
-
-		//I prefer color interpolation over arrow. I think having the option between text or this or arrow is ok.
-		if chord_s2.vl_order_color {
-			interp := cast(float) it.order / (0.5*end_point.vl_point_count); 
-			if interp > 1 interp = 1;
-			space_rect.color.rgb = Lerp(GREY_BLACK_V.rgb, interp, 0.85*WHITE_V.rgb);
-			space_rect.color.a = 1.0;
-		} else {
-			space_rect.color = GREY_DARK_V;
-		}
-	}
-	//TODO We could separate these for the SpaceRects of vl_points and vl_line_points if needed
-	//That could be an option so we could even have 1 group per end_point so then we can associate
-	//specific points to specific memory_Ranges/units
-	chord_s2.next_group_order += 1;
-}
-//This looked and felt bad on the space so I am removing it but can add it back later as an option if needed.
-//TODO This could be optional so then we can decide between triangle or text to see voice leading order
-//TODO I really don't like the way this triangle looks... maybe better to just lerp or do vl order.
-//Could leave as an option if somebody wants it i guess. OR Move it out and put it back in if needed.
-//That way put the order and then lerp from start to end.
-#if 0 {
-if it.is_last_vl_point {
-	space_tri : *SpaceTriangle = array_add(all_space_triangles);
-	space_tri.op_space_id = op_space_id;
-	space_tri.dspace_id = chord_s2.dspace_id;
-	//TODO I don't know what color to make this. This seems clear enough...
-	// space_tri.color = LOW_WHITE_V;
-	// space_tri.color = GREY_V;
-	space_tri.color = DBLUE_V;
-	// space_tri.color = GREY_DARK_V;
-	//TODO Maybe we should store this in chord_s2 as well.
-	space_tri.render_order = chord_s2.music_pt_render_order+3;
-	space_tri.dspace_shape_group = chord_s2.next_group_order;
-
-	//We orient the triangle from the last point to the next point
-	vl_line_point := ArrayFindFirstByNameId(vl_line_point_2D, it.vl_id, "id");
-	vl_line_point_pos : Vector2F = FunRegionPosToWorldPosMatrix(vl_line_point.fun_region_float, chord_s2);
-	next_vl_line_point_order : int = vl_line_point.order + 1;
-	next_vl_line_point, found_next_vl_line_point := 
-		ArrayFindFirstByNameId(vl_line_point_2D, next_vl_line_point_order, "order");
-	assert(found_next_vl_line_point); //sanity check since we need to have a next vl_line_point after the vl_point
-	next_vl_line_point_pos : Vector2F = FunRegionPosToWorldPosMatrix(next_vl_line_point.fun_region_float, chord_s2);
-	line, arrow := MakeQuadArrow(vl_line_point_pos, next_vl_line_point_pos, 0.14*chord_s2.dspace_point_dim.x);
-	space_tri.triangle = arrow;
-}
-}
-
-AddChordS2ToOpSpace :: inline (
-	op_space_id : int,
-	cs2 : ChordSpace2,
-	all_op_collision_entities : *[..] CollisionEntity,
-	//TODO Can remove this once we no longer use it
-	all_dspace_to_op_space_id : *[..] DSpaceToOpSpaceIndex) 
-{
-	coll : *CollisionEntity = array_add(all_op_collision_entities);
-	coll.entity_id = cs2.dspace_id;
-	coll.entity_type = EntityType.CHORD_S2;
-	coll.op_space_id = op_space_id;
-	coll.shape = CollisionShape.QUAD;
-
-	//Note : Add dspace_world_center after so it does not affect the rotation.
-	coll.quad.a.x -= 0.5*cs2.scale_world_unit*cs2.music_pt_count+1;
-	coll.quad.a = cs2.transform * coll.quad.a;
-	coll.quad.a += cs2.dspace_world_center;
-
-	coll.quad.b.y += 0.5*cs2.scale_world_unit*cs2.music_pt_count+1;
-	coll.quad.b = cs2.transform * coll.quad.b;
-	coll.quad.b += cs2.dspace_world_center;
-
-	coll.quad.c.x += 0.5*cs2.scale_world_unit*cs2.music_pt_count+1;
-	coll.quad.c = cs2.transform * coll.quad.c;
-	coll.quad.c += cs2.dspace_world_center;
-
-	coll.quad.d.y -= 0.5*cs2.scale_world_unit*cs2.music_pt_count+1;
-	coll.quad.d = cs2.transform * coll.quad.d;
-	coll.quad.d += cs2.dspace_world_center;
-
-	#if 0 {
-	dspace_to_op : *DSpaceToOpSpaceIndex = array_add(all_dspace_to_op_space_id);
-	dspace_to_op.dspace_id = cs2.dspace_id;
-	dspace_to_op.op_dspace_type = OpDSpaceType.CHORD_S2;
-	dspace_to_op.op_space_id = op_space_id;
-	}
-}
 
 /*TODO Should add values somewhere to relate space_points
 to fun_region_pos / other pitch sizes. So circles could
@@ -5923,13 +5636,6 @@ FunRegionData2D :: struct {
 	start_index : int;
 	fun_region_pos_count : int;
 }
-ChordS2Points2D :: struct {
-	id : int;
-	//tuning_system_count / linear_point_count because we can have multiple chord spaces 
-	//with the same points but different tuning systems
-	lp_count : int;
-	chord_sp_2D : [..] SpaceShape;
-}
 
 //TODO should this be in separate tables?
 ChordSpace2State :: enum {
@@ -6109,26 +5815,6 @@ ComputeTempRotatedGrid3DTransform :: inline (
 	return rotate_transform;
 }
 
-//TODO should have a version of this that is independent of grid (ie purely mathematical)
-//Can call RotateV3AboutCenter for convience here since that is purely mathematical and the same as this in 3D.
-RotatedGrid3DPosition :: inline (cube_data : SpacePoint3D, grid_3D : ChordSpace3) -> Vector3F {
-	rotate_pos : Vector3F = (grid_3D.mouse_rotate * grid_3D.temp_mouse_rotate *
-		(cube_data.rel_pos - grid_3D.center_of_rotation)) + grid_3D.center_of_rotation;
-	return rotate_pos;	
-}
-
-RotatedGrid3DPosition :: inline (rel_pos : Vector3F, grid_3D : ChordSpace3) -> Vector3F {
-	rotate_pos : Vector3F = (grid_3D.mouse_rotate * grid_3D.temp_mouse_rotate *
-		(rel_pos - grid_3D.center_of_rotation)) + grid_3D.center_of_rotation;
-	return rotate_pos;	
-}
-
-//TODO should move this to thegame_math.jai and test it
-RotateV3AboutCenter :: inline (pos : Vector3F, rotate : Matrix3F, center : Vector3F) -> Vector3F {
-	rotate_pos : Vector3F = (rotate * (pos - center)) + center;
-	return rotate_pos;	
-}
-
 RotatedRelPosInChordS3 :: inline (
 	rel_pos : Vector3F,
 	chord_s3 : ChordSpace3)
@@ -6137,337 +5823,6 @@ RotatedRelPosInChordS3 :: inline (
 	rotate_pos : Vector3F = (chord_s3.mouse_rotate * chord_s3.temp_mouse_rotate *
 		(rel_pos - chord_s3.center_of_rotation)) + chord_s3.center_of_rotation;
 	return rotate_pos;	
-}
-AsmCSFilter :: struct {
-	filter_index : int;
-	filter_value : float64;	
-	value_set : AsmArray(float64);
-	filter_type : ChordSpaceFilterType;	
-} @LibraryAsmGen
-AsmFiltersToTempFilters :: inline (
-	asm_cs_filters : [] AsmCSFilter,
-	ram_memory : RAMMemory)
--> [] CSFilter, CPUError
-{
-	//TODO We could pass in temp as the allocator but we always copy this over
-	//after anyways for chord_s2 and chord_s3 so putting this here now to keep it consistent.
-	cs_filters := NewArray(asm_cs_filters.count, CSFilter,,temp);
-	for asm_cs_filters {
-		cs_filters[it_index].filter_index = it.filter_index;
-		cs_filters[it_index].filter_value = it.filter_value;
-		cs_filters[it_index].filter_type = it.filter_type;
-		err : CPUError;
-		cs_filters[it_index].value_set, err = GetAsmArray(it.value_set, ram_memory);
-		if err.is_error return .[], err;
-	}
-	return cs_filters, NO_CPU_ERROR;
-}
-
-/*Filter by checking if in the chords we pass in through
-chord_fun_regions. For example this works with the diatonic
-triads but can be used for any set.
-*/
-FilterByChordSetFunRegions :: inline (
-	fun_region_pos : [] int,
-	chord_fun_regions : [][$chord_dim] int)
--> bool
-{
-	assert(chord_fun_regions.count > 0);
-	assert(fun_region_pos.count >= chord_dim);
-
-	for chord : chord_fun_regions {
-		arrays_equal : bool = true;
-		for d_pos,d_index : chord if d_pos != fun_region_pos[d_index] {
-			arrays_equal = false;
-			break;
-		}
-
-		if arrays_equal {
-			return true;
-		}
-	}
-	return false;
-}
-
-/*Filter by all chord that are within max_vl_distance of the chords_to_check array.
-
-TODO This is interesting because we can update the available
-chords within a certain vl_distance every time we change a 
-chord in a set or every time a new chord plays, for example.
-*/
-FilterLocalVLDistanceFromChords :: inline (
-	max_vl_distance : int,
-	space_point_fun_region_pos : [$fr_dim] int,
-	tsc : int,
-	chords_to_check : [][chord_dim] int,
-	$chord_dim : int)
--> bool
-{
-	pitch_set : [] int = FunRegionPosToPitchSet(space_point_fun_region_pos, tsc, chord_dim);
-	is_within_vl_distance : bool = false;
-	for chord : chords_to_check {
-		//TODO Also filter for 2-note chord space in 3d, and 2 and 3 in 4d
-		//TODO FROM HERE CHANGE THIS NAME PULL THIS OUT AND MOVE TO 4D AND ALLOW MULTIPLE FILTERS
-		//EG THIS ONE AND CHROMATIC TO SEE CLOSEST CHROMATIC OR THIS AND DIATONIC TO SEE CLOSEST DIATONIC
-		total_vl_distance : int = 0;
-		for note, note_index : chord {
-			total_vl_distance += abs(note - pitch_set[note_index]);
-		}
-
-		fun_region_distance : int = 0;
-		chord_fun_region_pos := OrderedPitchSetToFundamentalRegion(chord, tsc);
-		for note, note_index : chord {
-			fun_region_distance += abs(chord_fun_region_pos[note_index] - space_point_fun_region_pos[note_index]);
-		}
-
-		if fun_region_distance <= max_vl_distance || total_vl_distance <= max_vl_distance {
-			return true;
-		}
-	}
-	return false;
-}
-FilterLocalVLDistanceFromChords :: inline (
-	max_vl_distance : float64,
-	space_point_fun_region_pos : [] float64,
-	tsc : int,
-	chord : [] float64)
--> bool
-{
-	pitch_set : [] float64 = FunRegionPosToPitchSet(space_point_fun_region_pos, tsc, chord.count);
-	is_within_vl_distance : bool = false;
-	total_vl_distance : float64 = 0;
-	for note, note_index : chord {
-		total_vl_distance += abs(note - pitch_set[note_index]);
-	}
-
-	fun_region_distance : float64 = 0;
-	chord_fun_region_pos := OrderedPitchSetToFundamentalRegion(chord, cast(float64) tsc);
-	for note, note_index : chord {
-		fun_region_distance += abs(chord_fun_region_pos[note_index] - space_point_fun_region_pos[note_index]);
-	}
-
-	if fun_region_distance <= max_vl_distance || total_vl_distance <= max_vl_distance {
-		return true;
-	}
-	return false;
-}
-
-IsChordSpaceFilterSum :: inline (
-	fun_region_pos : [] int,
-	filter_value : int,
-	chord_dim : int)
--> bool
-{
-	sum : int = 0;
-	for 0..chord_dim-1 sum += fun_region_pos[it];
-	if sum == filter_value return true;
-	return false;
-}
-
-IsChordSpaceFilterSum :: inline (
-	fun_region_pos : [] $T,
-	filter_value : T,
-	chord_dim : int) 
--> bool
-{
-#assert(T == float || T == float64);
-	sum : T = 0;
-	for 0..chord_dim-1 sum += fun_region_pos[it];
-	if FloatBothEqual(sum, filter_value) return true;
-	return false;
-}
-
-IsChordSpaceFilterDimension :: inline (
-	fun_region_pos : [] $T,
-	filter_index : s32, filter_value : s32,
-	tuning_system_count : int) 
--> bool
-{
-	dim_value := cast(int) fun_region_pos[filter_index];
-	if PosMod(dim_value,tuning_system_count) == filter_value {
-		return true;		
-	}
-	return false;
-}
-
-InValueSet :: inline (
-	fr_pos : [] float64,
-	value_set : [] float64,
-	tuning_system_count : int) 
--> bool
-{
-	for fun_pos, f_index : fr_pos {
-		//fun mod is the pitch since the fundamental region modulo tuning count is the pitch
-		fun_mod : float64 = PosMod(fun_pos, cast(float64) tuning_system_count);
-		in_set : bool = false;
-		for value_set if Float64Equal(it, fun_mod) {
-			in_set = true;
-			break;
-		}
-		if !in_set return false;
-	}
-	return true;
-}
-
-//TODO Pass in cs_filter and then we can systematize
-//the filters and use the continuously by id if we pull
-//the filters out of
-FilterByInterDistance :: inline (
-	fr_pos : [] int,
-	tsc : int, //tuning_system_count
-	inter_distance : int,
-	input_smallest_distance : int,
-	min_diff_count : int)
--> bool
-{
-	equidistance : int = tsc / fr_pos.count;
-	fun_pos_diffs : [] int = FunRegionToPitchSetDeltas(fr_pos, tsc,,temp);
-
-	smallest_distance : int = input_smallest_distance;
-	diff_count : int = 0;
-	for fun_diff : fun_pos_diffs {
-		is_within_distance : bool = false;
-		for equidistance-inter_distance..equidistance+inter_distance {
-			is_within_distance ||= it == fun_diff;
-		}
-		if is_within_distance {
-			diff_count += 1;
-		}
-		if fun_diff < smallest_distance {
-			smallest_distance = fun_diff;
-		}
-	}
-
-	//TODO We can check only if a subset meet it here easily
-	if diff_count >= min_diff_count && 
-	   smallest_distance >= input_smallest_distance 
-	{
-		return true;
-	}
-	return false;
-}
-//TODO Pass in cs_filter and then we can systematize
-//the filters and use the continuously by id if we pull
-//the filters out of
-//TODO Remove this one once we remove the older filtering points
-FilterByInterDistance :: inline (
-	fun_region_pos : [] int,
-	tsc : int, //tuning_system_count
-	inter_distance : int,
-	input_smallest_distance : int,
-	min_diff_count : int,
-	$chord_dim : int)
--> bool
-{
-	equidistance : int = tsc / chord_dim;
-	fun_pos_diffs : [chord_dim] int = FunRegionToPitchSetDeltas(fun_region_pos, tsc, chord_dim);
-
-	smallest_distance : int = input_smallest_distance;
-	diff_count : int = 0;
-	for fun_diff : fun_pos_diffs {
-		is_within_distance : bool = false;
-		for equidistance-inter_distance..equidistance+inter_distance {
-			is_within_distance ||= it == fun_diff;
-		}
-		if is_within_distance {
-			diff_count += 1;
-		}
-		if fun_diff < smallest_distance {
-			smallest_distance = fun_diff;
-		}
-	}
-
-	//TODO We can check only if a subset meet it here easily
-	if diff_count >= min_diff_count && 
-	   smallest_distance >= input_smallest_distance 
-	{
-		return true;
-	}
-	return false;
-}
-
-//TODO Can likely remove the FilterByInterDistance since we can just pass in
-//augmented triad or diminished 7th into here which will have the same result.
-FilterByInterChordDistance :: inline (
-	max_diff : int,
-	fun_region_pos : [] int,
-	tsc : int, //tuning_system_count
-	//TODO This needs to be precomputed so we don't have recompute every time we call this function
-	input_chord_diffs : [][chord_dim] int,
-	$chord_dim : int)
--> bool
-{
-	pitch_set_deltas : [chord_dim] int = FunRegionToPitchSetDeltas(fun_region_pos, tsc, chord_dim);
-	quick_sort(pitch_set_deltas, (p1,p2) => p1-p2);
-	is_within_diff : bool = false;	
-	for chord_diffs : input_chord_diffs {
-		is_within_distance : bool = false;
-		total_delta_diff : int = 0;
-		for c_diff, c_index : chord_diffs {
-			total_delta_diff += abs(c_diff - pitch_set_deltas[c_index]);
-		}
-		if total_delta_diff <= max_diff {
-			is_within_diff = true;
-			break;
-		}
-	}
-
-	if is_within_diff return true;
-	return false;
-}
-
-//TODO Add this back to filtering without chord_dim and just use
-//fun region pos so we can 
-FilterSameValueCount :: inline (
-	same_value_count : int,
-	fun_region_pos : [] int,
-	tsc : int, //tuning_system_count
-	$chord_dim : int,
-	//We pass these in so we can reuse instead of instantiating
-	//new arrays for every points
-	equal_values : *[..] int,
-	equal_count : *[..] int)
--> bool
-{
-	//Note : FunRegionPosToPitchSet is sorted which is why we can check sequentially
-	//for same pairs
-	pitch_set := FunRegionPosToPitchSet(fun_region_pos, tsc, chord_dim,,temp);
-	for fun_index : 1..chord_dim-1 {
-		if pitch_set[fun_index] == pitch_set[fun_index-1] {
-			already_equal : bool = false;
-			for <<equal_values if it == pitch_set[fun_index] {
-				(<<equal_count)[it_index] += 1;
-				already_equal = true;
-			}
-			if !already_equal {
-				array_add(equal_values, pitch_set[fun_index]);
-				array_add(equal_count, 2);
-			}
-		}
-	}
-
-	// dim_reduction : int = ArraySum(<<equal_count);
-
-	is_valid_dim : bool = false;
-	//TODO This can == or >= depending if we want the precise same_value_count 
-	// or also any count >= like in 3D, same_value_count == 2 will also give
-	//single notes with all 3 same values.
-	// for <<equal_count if it == same_value_count {
-	for <<equal_count if it >= same_value_count {
-		is_valid_dim = true;
-		break;
-	}
-
-	//Reset memory here so we can reuse to check other points
-	array_reset_keeping_memory(equal_values);
-	array_reset_keeping_memory(equal_count);
-
-	return is_valid_dim;
-	// if dim_reduction >= input_dim_reduction {
-	// if max_dim == input_dim_reduction {
-	// 	return true;
-	// }			
-	// return false;
 }
 
 //TODO We could just pass in char width and height so this is reusable without the text editor data
@@ -6487,32 +5842,6 @@ Text3DBackgroundRect :: inline (
 	// rect_formatted = RectCenterDim(text_formatted_pos + Vector2F.{0.3,-0.15}, Vector2F.{1,1});
 	return rect_formatted;
 }
-ChordSpacePoints3D :: struct {
-	id : int;
-	tuning_system_count : int;
-	chord_dim : int;
-	//TODO We could make this not resizable and just copy
-	//the points over if that is more efficient
-	//Maybe we can change the struct and just the the vector 3
-	//and the pitch set for generalized version
-	//maybe with an id for convenience
-	chord_sp_3D : [..] SpacePoint3D;
-}
-FindChordSpacePoints3D :: inline (
-	chord_dim : int,
-	tuning_system_count : int,
-	all_chord_space_points : [] ChordSpacePoints3D) 
--> *ChordSpacePoints3D, found : bool
-{
-	for * all_chord_space_points {
-		if it.chord_dim == chord_dim && 
-			it.tuning_system_count == tuning_system_count 
-		{
-			return it, true;
-		}
-	}
-	return null, false;
-}
 
 #if 0 {
 SortVisibleSpacePoints :: inline (s1 : SpacePoint3D, s2 : SpacePoint3D) -> int {
@@ -6520,96 +5849,6 @@ SortVisibleSpacePoints :: inline (s1 : SpacePoint3D, s2 : SpacePoint3D) -> int {
 	if sort_value == 0 sort_value = cast(int) s2.render_solid_cube - cast(int) s1.render_solid_cube;
 	return sort_value;
 }
-}
-
-OrderedPitchSetToSpacePoint3D :: inline (
-	ordered_pitch_set : [$chord_dim] int,
-	tuning_system : TuningSystem,
-	visible_space_points_3D : [] SpacePoint3D)
--> SpacePoint3D, found_space_point_3D : bool
-{
-	fun_region_pos := OrderedPitchSetToFundamentalRegion(ordered_pitch_set, tuning_system.music_pt_count);
-	space_point_3D, found_space_point_3D := FunRegionPosToSpacePoint3D(fun_region_pos, visible_space_points_3D);
-	return space_point_3D, found_space_point_3D;
-}
-
-FunRegionPosToSpacePoint3D :: inline (
-	fun_region_pos : [$chord_dim] int,
-	visible_space_points_3D : [] SpacePoint3D)
--> SpacePoint3D, found_space_point_3D : bool
-{
-	space_point_3D : SpacePoint3D = ---;
-	found_space_point_3D : bool = false;
-	for point_3D : visible_space_points_3D {
-		arrays_equal : bool = true;
-		for 0..chord_dim-1 if point_3D.fun_region_pos[it] != fun_region_pos[it] {
-			arrays_equal = false;
-			break;
-		}
-		if arrays_equal {
-			found_space_point_3D = true;
-			space_point_3D = point_3D;
-			break;
-		}
-	}
-	return space_point_3D, found_space_point_3D;
-}
-
-GetOrCreateChordSpacePoints3D :: inline (
-	chord_dim : int,
-	tuning_system_count : int, //tuning_system_count
-	all_chord_space_points : *[..] ChordSpacePoints3D)
--> *ChordSpacePoints3D
-{
-	csp, found_csp := FindChordSpacePoints3D(chord_dim, tuning_system_count, all_chord_space_points.*);
-	if found_csp return csp;
-	// for * all_chord_space_points.* if it.chord_dim == chord_dim && it.tuning_system_count == tuning_system_count {
-	// 	//Early out since we already have these chord space poitns
-	// 	return it;
-	// }
-
-	chord_space_points : *ChordSpacePoints3D = array_add(all_chord_space_points);
-	chord_space_points.id = context.ALL_NEXT_IDS.NEXT_CHORD_SPACE_POINT_ID;
-	context.ALL_NEXT_IDS.NEXT_CHORD_SPACE_POINT_ID += 1;
-	chord_space_points.tuning_system_count = tuning_system_count;
-	chord_space_points.chord_dim = chord_dim;
-
-	p_loops : PermutationLoops;
-	p_loops.loop_count = chord_dim;
-	p_loops.start_value = -tuning_system_count;
-	p_loops.end_value = tuning_system_count;
-	new_fun_pos := NewArray(chord_dim, float64,,temp);
-	for x : p_loops {
-		//TODO Pass in tuning_system_count
-		is_non_descending_order : bool = true;
-		for 0..p_loops.loop_count-2 {
-			is_non_descending_order &&= x[it] <= x[it+1];
-		}
-		is_non_descending_order &&= x[p_loops.loop_count-1] <= x[0] + tuning_system_count;
-
-		x_sum : int = ArraySum(x);
-		sum_in_bounds : bool = x_sum >= 0 && x_sum < tuning_system_count;
-
-		//TODO Can use this to filter out specific cross section although we 
-		//do these with the generalized filters now.
-		// cross_section_sum : bool = x_sum == 0;
-
-		// for x1 : -tsc..tsc for x2 : -tsc..tsc for x3 : -tsc..tsc 
-		// if x[0] <= x[1] && x[1] <= x[2] && x[2] <= x[0] + tsc &&
-		// 	// x[0] + x[1] + x[2] == 0
-		// 	x[0] + x[1] + x[2] >= 0 && x[0] + x[1] + x[2] < tsc
-		// {
-		if is_non_descending_order && sum_in_bounds {
-			sp3 : *SpacePoint3D = array_add(*chord_space_points.chord_sp_3D);
-			for x new_fun_pos[it_index] = cast(float64) it;
-			//DOC : We don't need an allocator here since we will reuse the chord space points everywhere.
-			//This is more efficient if we have multiple chord spaces in different 3d op spaces for example and for filtering.
-			UpdateSpacePoint3D(sp3, tuning_system_count, new_fun_pos);
-		}
-	}
-	// print("chord space size = %\n", chord_space_points.chord_sp_3D.count);
-
-	return chord_space_points;
 }
 
 /*DOC : We pass in an allocator here to allocate all the values needed for the 3d space points fr poses and pitch sets.
@@ -6790,400 +6029,6 @@ MakePitchSpace3 :: inline (
 	return pitch_s3;
 }
 
-MapChordS3Data :: struct {
-	op_space_id : int;
-	//TODO This will be fetched by higher_dim for now and then eventually
-	//the input will also need to be a generalized array
-	vl_start_chord : AsmArray(float64);
-	vl_deltas : AsmArray(float64);
-
-	//TODO add dspace_shape_group/ref to vl_input and each vl here so we can use it later if needed
-	//for memory ranges and also for specific deletion. Could put a ref for the LineEndpoint and the InterPoint.
-	vl_index_ref : int;
-	//TODO I think we can just remove this as well as we are no longer using it
-	// dspace_id : int;
-
-	//TODO Remove this once we clean up 3d data and generalize the asm code library generation
-	// old_vl_input_data : int;
-	// vl_data : int;
-	// vl_count : int;
-
-	//TODO we should add this so that the vls can be either selectable or not
-	// vl_points_selectable : AsmBool;
-} @LibraryAsmGen
-
-//Analogous to CreateSpace3D in Library
-//TODO Rename to AsmS3Data
-//@LibraryGen
-AsmSpace3Data :: struct {
-	op_space_id : int;
-	tuning_system_id : int;
-	higher_dim : int;
-	asm_cs_filters : AsmArray(AsmCSFilter);
-
-	//Putting this here so we can set the camera to see the entire 3d space but maybe
-	s3_cam_start_type : S3CamStartType;
-	cam_start_pos : Vector3F64;
-
-	//TODO We can eventually add an option to send to midi
-	//but that would involve registering midi note off somehow
-	//can do with either a button press or when we change frequency/pitch values
-	osc_wave_type : OscWaveType;
-
-	/*DOC : We should make it clear that all values have to be set
-	and what the current defaults are. If 3d rotation feels wonky
-	then generally increasing the depth to between 26-40 should feel better.
-	This also depends on the size of the op space.
-	Can play around with n and f as well but those are more finicky.
-	*/
-	set_3d_perspective : AsmBool;
-	depth : float64 = DEFAULT_3D_DEPTH; 
-	n : float64 = DEFAULT_3D_N; 
-	f : float64 = DEFAULT_3D_F;
-} @LibraryAsmGen
-
-DEFAULT_CHORD_S3_ROTATION : Matrix3F : #run MakeRotationZ(PI/3.285) * MakeRotationY(PI/4);
-DEFAULT_CS3_DATA :: CreateChordS3Data.{
-	higher_dim = 3,
-	mouse_rotate = DEFAULT_CHORD_S3_ROTATION
-};
-DEFAULT_CHORD_S4_ROTATION : Matrix3F : #run MakeRotationZ(-PI/4);
-DEFAULT_CS4_DATA :: CreateChordS3Data.{
-	higher_dim = 4,
-	mouse_rotate = DEFAULT_CHORD_S4_ROTATION
-};
-S3CamStartType :: enum {
-	MIN_ZY;
-	USER_SET;
-	POINT_FOCUS;
-} @LibraryAsmGen
-
-//UPDATE CreateSpaceS3 in Library
-CreateChordS3Data :: struct {
-	//TODO I think we can remove these 2 now since they are not used and we just use the op_space instead
-	chord_s3_world_pos : Vector2F;
-	chord_s3_dim : Vector2F = OP_SPACE_DEFAULT_SIZE;
-
-	//TODO should we set these defaults somewhere else or is having them here good enough?
-	depth : float = DEFAULT_3D_DEPTH;
-	n : float = DEFAULT_3D_N; 
-	f : float = DEFAULT_3D_F;
-
-	s3_cam_start_type : S3CamStartType;
-	cam_focus_fun_region_pos : [] float64;
-	cam_trans : Matrix4x3F = DEFAULT_CAM_TRANS;
-	center_of_rotation : Vector3F = DEFAULT_CENTER_OF_ROTATION;
-
-	//TODO This rotates the points. Maybe we should rename to space_rotate? 
-	//It is because we use the mouse to rotate the space, so I will leave this here
-	//for clarity for now so we remember and to be consistent with other names.
-	mouse_rotate : Matrix3F;
-
-	//TODO Use this with tuning_system and also for audio wave generation.
-	//Test if this is working in 3D and 4D.
-	//This can differ from tuning system since we can have 12 point tuning system
-	//that is not equal temperament but offset. We still draw them equally space right now
-	//since we will not be doing offset 3d geometries. People can implement those on their own if needed.
-	lp_count : int = 12; //linear_point_count
-	//default tuning system id
-	tuning_system_id : int = 0;//12-ET is default 0
-
-	//For now 3 or 4 and eventualy >= 3 once we generalize for all dimensions.
-	higher_dim : int = 3;
-
-	op_space_id : int;
-
-	osc_wave_type : OscWaveType;
-	lerp_vl_colors : bool;
-
-	//TODO Should just pass in a filter table here and grab filters
-	//or an array of filters and add them to a filter table separately
-	new_cs_filters : [] CSFilter = .[CSFilter.{filter_type=.ALL}];
-	cs_filter_aggregate : ChordSpaceFilterAggregate;
-}
-
-CreateSpace3D :: inline (
-	op_world_size : Vector2F,
-	create_cs3 : CreateChordS3Data, 
-	op_3D : *OpSpecData3D)
-{
-	//TODO We could return an error hear instead of asserting
-	assert(create_cs3.higher_dim >= 3);
-
-	// chord_s3 : ChordSpace3;
-	op_3D.op_space_3D.dspace_id = context.ALL_NEXT_IDS.DSPACE_ID;
-	defer context.ALL_NEXT_IDS.DSPACE_ID += 1;
-	op_3D.op_space_3D.op_space_id = create_cs3.op_space_id;
-
-	op_3D.op_space_3D.higher_dim = create_cs3.higher_dim;
-	op_3D.op_space_3D.mouse_rotate = create_cs3.mouse_rotate;
-	op_3D.op_space_3D.temp_mouse_rotate = Matrix3F_Identity;
-	op_3D.op_space_3D.temp_cam_rotate = Matrix3F_Identity;
-	op_3D.op_space_3D.cam_trans = DEFAULT_CAM_TRANS;
-	op_3D.op_space_3D.center_of_rotation = create_cs3.center_of_rotation;
-	//TODO Can we remove these and just use op_space world pos and dim?
-	op_3D.op_space_3D.chord_s3_world_pos = create_cs3.chord_s3_world_pos;
-	op_3D.op_space_3D.chord_s3_dim = create_cs3.chord_s3_dim;
-
-	//TODO We don't need to do this since we can just reuse the 3d spec data
-	// op_3D.op_space_3D.new_cs_filters.allocator = op_3D.spec_3D_alloc;
-	for create_cs3.new_cs_filters {
-		csf : *CSFilter = array_add(*op_3D.op_space_3D.new_cs_filters);
-		csf.* = it;
-		//This should get cleared with the allocator if we clear or delete the op spaces
-		//and then we can just copy the arrays again when we create the new one.
-		csf.value_set = array_copy(it.value_set,,op_3D.spec_3D_alloc);
-		// array_add(*op_3D.op_space_3D.new_cs_filters, it);
-	}
-
-	//TODO Can pass this is as a setting. Also should likely be settable while running.
-	op_3D.op_space_3D.render_vl_order_as_int = true;
-	op_3D.op_space_3D.lerp_vl_colors = create_cs3.lerp_vl_colors;
-	// op_3D.op_space_3D.osc_waves = NewArray(op_3D.op_space_3D.higher_dim, OscWave,, context.allocator);
-
-	//TODO This can be arbitrary now so we should set the osc waves at runtime based on size of chord
-	op_3D.op_space_3D.default_wave_type = create_cs3.osc_wave_type;
-	op_3D.op_space_3D.synth.wave_type = create_cs3.osc_wave_type;
-	op_3D.op_space_3D.synth.envelope = MakeVolumeEnvelope();
-	// for 0..op_3D.op_space_3D.higher_dim-1 {
-	// 	AddSimpleWaveFromFrequency(0, *op_3D.op_space_3D.synth, audio_data);
-	// }
-
-	op_3D.op_space_3D.lp_count = create_cs3.lp_count;
-	op_3D.op_space_3D.tuning_system_id = create_cs3.tuning_system_id;
-
-
-	//Resize op space and set 3d perspective variables
-	//TODO We can allow these to be update
-	op_3D.op_space_3D.n = create_cs3.n;
-	op_3D.op_space_3D.f = create_cs3.f;
-	op_3D.op_space_3D.depth = create_cs3.depth;
-
-	#if 1 {
-	ResizeOpSpace3D(op_world_size, *op_3D.op_space_3D);
-	} else {
-	//TODO coudl move this down and create an update function so we can update when we resize or just resize 3d op space function
-	op_3D.op_space_3D.viewport = MakeViewportFullDim(create_cs3.chord_s3_dim, create_cs3.depth);
-	//Note : without depth precision
-	// op_3D.op_space_3D.p_frustum = MakeFrustumProjectionWithG(op_3D.op_space_3D.viewport.g, op_3D.op_space_3D.viewport.s, n, f);
-	//Note : Depth precision adds floating point precision farther away and pre inverts z for the depth buffer
-	/*Note : VIEWPORT G AND S are used in p_frustum here in order to do appropriate clipping in
-	*/
-	//TODO Recompute this and viewport above if we change the size of the window to change 3D clipping viewport
-	op_3D.op_space_3D.p_frustum = MakeFrustumProjectionDepthPrecisionWithG(op_3D.op_space_3D.viewport.g, op_3D.op_space_3D.viewport.s, 
-		create_cs3.n, create_cs3.f);
-	}
-	// return op_3D.op_space_3D;
-}
-ResizeOpSpace3D :: inline (
-	new_op_size : Vector2F,
-	s3 : *ChordSpace3)
-{
-	// s3.depth = DEFAULT_3D_DEPTH * OP_SPACE_DEFAULT_SIZE.y / new_op_size.y;
-	// s3.f = DEFAULT_3D_F * new_op_size.y / OP_SPACE_DEFAULT_SIZE.y;
-	// s3.n = DEFAULT_3D_N * new_op_size.y / OP_SPACE_DEFAULT_SIZE.y;
-	// print("s3.depth=%\n", s3.depth);
-	s3.viewport = MakeViewportFullDim(new_op_size, s3.depth);
-	//Note : without depth precision
-	// s3.p_frustum = MakeFrustumProjectionWithG(s3.viewport.g, s3.viewport.s, n, f);
-	//Note : Depth precision adds floating point precision farther away and pre inverts z for the depth buffer
-	/*Note : VIEWPORT G AND S are used in p_frustum here in order to do appropriate clipping in
-	*/
-	//TODO Recompute this and viewport above if we change the size of the window to change 3D clipping viewport
-	s3.p_frustum = MakeFrustumProjectionDepthPrecisionWithG(
-		s3.viewport.g, s3.viewport.s, s3.n, s3.f);
-}
-Space3DStartCamTrans :: inline (
-	s3_cam_start_type : S3CamStartType,
-	cam_focus_fun_region_pos : [] float64,
-	user_set_cam_tran : Matrix4x3F,
-	op_3D : OpSpecData3D)
--> Matrix4x3F
-{
-	//TODO Check this works with new points and compare/test each one
-	//TODO We could pull this out so we could use it elsewhere
-	cam_trans : Matrix4x3F = DEFAULT_CAM_TRANS;
-	if s3_cam_start_type == {
-	case S3CamStartType.USER_SET;
-		cam_trans = user_set_cam_tran;
-	case S3CamStartType.MIN_ZY;
-		//TODO Do we really need this because we can do it ourselves with POINT_FOCUS now and just pass in that point instead of doing it here. 
-		//I'll leave it for now because it is convenient from user perspective.
-		min_zy_pos := Vector3F.{FLOAT32_MAX, FLOAT32_MAX, FLOAT32_MAX};
-		//TODO Can remove the render_solid_cube check once we no longer use that for audio.
-		// for op_3D.all_op_space_points_3D if it.dspace_id == chord_s3.dspace_id && it.render_solid_cube {
-		for op_3D.all_op_space_points_3D {
-			rotated_pos : Vector3F = RotatedGrid3DPosition(it.rel_pos, op_3D.op_space_3D);
-			if rotated_pos.z < min_zy_pos.z || rotated_pos.y < min_zy_pos.y {
-				min_zy_pos = rotated_pos;
-			}
-		}
-		UpdateTranslation(*cam_trans, min_zy_pos - Vector3F.{0,0,10});
-	case S3CamStartType.POINT_FOCUS;
-		//TODO If the point is not visible should we still put the camera there or just default?
-		#if 1 {
-		found_visible_point : bool = false;
-		//TODO Can remove the render_solid_cube check once we no longer use that for audio.
-		// for op_3D.all_op_space_points_3D if it.dspace_id == chord_s3.dspace_id && it.render_solid_cube {
-		for op_3D.all_op_space_points_3D  {
-			//TODO Once we don't have fixed arrays in SpacePoint3D then we can remove this.
-			// fun_region_array : [] float64 = array_view(it.fun_region,0,chord_s3.higher_dim);
-			if ArraysFloatEqual(it.fun_region, cam_focus_fun_region_pos) {
-				rotated_pos : Vector3F = RotatedGrid3DPosition(it.rel_pos, op_3D.op_space_3D);
-				UpdateTranslation(*cam_trans, rotated_pos - Vector3F.{0,0,10});
-				found_visible_point = true;
-				break;
-			}
-		}
-		if !found_visible_point {
-			cam_trans = DEFAULT_CAM_TRANS;
-		}
-		} else {
-		//TODO If we use this would need to update this function to take in [] float64.
-		rel_pos : Vector3F = FunRegionFloatPosToRelPos(cam_focus_fun_region_pos, chord_s3.lp_count);
-		rotated_pos : Vector3F = RotatedGrid3DPosition(rel_pos, chord_s3);
-		UpdateTranslation(*cam_trans, rotated_pos);
-		}
-	}
-	return cam_trans;
-}
-
-//TODO Could make a version where we pass in pitch set and it converts it for us OR just convert externally
-//since we only call this in asm directly anyways.
-//TODO FROM HERE get this all working for generalized n dimensions here and then
-//set up specific filtering for 2d and 3d and then write a test that checks this new function with the old functions
-//TODO We could do a version with ints since all chord space points are ints
-//TODO We can call this FilterFunRegion so it is clearly more generalized
-FilterChordSpacePoints :: inline (
-	fr_pos : [] float64,
-	tuning_system_count : int,
-	cs_filters : [] CSFilter,
-	cs_filter_aggregate := ChordSpaceFilterAggregate.UNION) 
--> bool
-{
-	all_cs_filter_checks : [] bool = NewArray(cs_filters.count, bool, true,, temp);
-
-	point_in_filter : bool = false;
-	for cs_filter, filter_index : cs_filters {
-		if cs_filter.filter_type == {
-		case ChordSpaceFilterType.ALL; {
-			point_in_filter = true;
-		}
-		case ChordSpaceFilterType.SUM; {
-			//TODO We can convert fr_pos to pitch set here if that makes more sense or have sum pitch set and just sum
-			//unless people just convert externally anyways
-			point_in_filter = IsChordSpaceFilterSum(fr_pos, cast(float64) cs_filter.filter_index, fr_pos.count);
-		}
-		//TODO Replace this with a chord_set option and then pass in diatonic chords for 3d option
-		case ChordSpaceFilterType.IN_VALUE_SET; {
-			point_in_filter = InValueSet(fr_pos, cs_filter.value_set, tuning_system_count);
-		}
-		case ChordSpaceFilterType.NO_DUPLICATE_PITCHES; {
-			point_in_filter = true;
-			pitch_set : [] float64 = FunRegionPosToPitchSet(fr_pos, tuning_system_count, fr_pos.count,,temp);
-			for i0 : 0..pitch_set.count-2 {
-				for i1 : i0+1..pitch_set.count-1 {
-					if Float64Equal(pitch_set[i0], pitch_set[i1]) {
-						point_in_filter = false;
-						break i0;
-					}
-				}
-			}
-		}
-		case ChordSpaceFilterType.DIATONIC; {
-			if tuning_system_count == 12 {
-				//NOTE : We do the PosMod in InValueSet so no need to convert to pitches here anyways
-				// pitch_set : [] float64 = FunRegionPosToPitchSet(fr_pos, tuning_system_count, fr_pos.count,,temp);
-				point_in_filter = InValueSet(fr_pos, float64.[0,2,4,5,7,9,11], tuning_system_count);
-			}
-		}
-		//TODO This is a default so it's a filtered version for each chord space but we can remove it and just put chromatic or all if needed
-		case ChordSpaceFilterType.DEFAULT; #through;
-		case ChordSpaceFilterType.CHROMATIC; {
-			fr_pos_int : [] int = NewArray(fr_pos.count, int);
-			for fr_pos fr_pos_int[it_index] = round_to_int(it);
-			//TODO Leaving this here for simplified asm but maybe I can remove it once we can reuse the data
-			if tuning_system_count == 12 {
-				if fr_pos.count == {
-				case 2; point_in_filter = FilterByInterDistance(fr_pos_int, tuning_system_count, 2, 2, fr_pos.count);
-				case 3; point_in_filter = FilterByInterDistance(fr_pos_int, tuning_system_count, 2, 3, fr_pos.count);
-				//TODO This is set from 4d but check how it is there and in higher dimensions
-				case; point_in_filter = FilterByInterDistance(fr_pos_int, tuning_system_count, 1, 2, fr_pos.count);
-				}
-			} else {
-				inter_distance : int = cs_filter.filter_index;
-				diminished_equidistance : int = round_to_int(cs_filter.filter_value);
-				point_in_filter = FilterByInterDistance(fr_pos_int, tuning_system_count, inter_distance, diminished_equidistance, fr_pos.count);
-			}
-		}
-		case ChordSpaceFilterType.LOCAL_VL_DISTANCE_TO_CHORD; {
-			//DOC : We see if the value_set is filter_value total vl close
-			point_in_filter = FilterLocalVLDistanceFromChords(cs_filter.filter_value,
-				fr_pos, tuning_system_count, cs_filter.value_set);
-		}
-		}
-
-		all_cs_filter_checks[filter_index] = point_in_filter;	
-	}
-
-	//TODO We can easily do OR, AND, DIFF and other set operations now
-	//Maybe consider group operations as well based on some function like transposition
-	all_true_filters : bool = true;
-	if cs_filter_aggregate == .UNION all_true_filters = false;
-	for all_cs_filter_checks if cs_filter_aggregate == {
-	case .INTERSECTION; all_true_filters &&= it;
-	case .UNION; all_true_filters ||= it;
-	}
-		
-	return all_true_filters;
-}
-//TODO FROM HERE we need a function similar to this but that actually goes through all the chord space points
-//to see if that allows us to go to higher dimensions actually. right now only 6 can be done with significant delay for generation.
-//then add an allocator to store the values and a clear op instruction to clear everything including allocator
-FilterCS3D :: inline (
-	//TODO Should we search for this in here or externally?
-	//We could have both for a consistent error as well
-	csp : ChordSpacePoints3D,
-	op_space_points_3D : *[..] SpacePoint3D,
-	cs_filters : [] CSFilter,
-	cs_filter_aggregate : ChordSpaceFilterAggregate)
-{
-	for csp.chord_sp_3D {
-		if FilterChordSpacePoints(it.fun_region, csp.tuning_system_count, cs_filters, cs_filter_aggregate) {
-			array_add(op_space_points_3D, it);
-		}
-	}
-}
-Remove3DPointsWithFilter :: inline (op_space_points_3D : *[..] SpacePoint3D) {
-	for op_space_points_3D.* if !it.do_not_remove_with_filter {
-		remove it;
-	}
-}
-
-//TODO We could pass in op spec 3d in here and set the alloc ourselves
-//ALTHOUGH if we allow creation like this later, then people can set this themselves and use their own
-//allocators for their own sets of data and so then this would be better overall.
-UpdateSpacePoint3D :: inline (
-	sp_3d : *SpacePoint3D,
-	tuning_system_count : int,
-	fun_pos : [] float64,
-	//TODO Not sure if this is worth it but I can leave it for now
-	$round_pitches_below_octave : bool = false)
-{
-	//TODO We could store these ids in the op spec data for 3d now and just pass them in from there.
-	//Maybe not if we also do it from chord space points then... I'll leave it for now and see if we actually use this id
-	sp_3d.id = context.ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID;
-	context.ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID += 1;
-	//TODO We don't need to store the fun region, only the rel_pos and pitch_set
-	//We can always get fun_region back from pitch set BUT the generalized space point 3d
-	//should only have rel_pos and pitch_set since that's all we need for rendering and audio
-	//HOWEVER maybe having the extra array could be useful for people in general
-	//NOTE THAT all these are stored on the context allocator which should always be op_spec_3d passed into here right now
-	sp_3d.fun_region = array_copy(fun_pos);
-	sp_3d.rel_pos = FunRegionFloatPosToRelPos(fun_pos, tuning_system_count);
-	sp_3d.pitch_set = FunRegionPosToPitchSet(fun_pos, tuning_system_count, fun_pos.count, round_pitches_below_octave);
-	sp_3d.shape_text = sprint("%", sp_3d.pitch_set);
-}
 
 valid_chord_space_filters :: ChordSpaceFilterType.[.SUM];
 UpdateOpSpacePointsByFilter :: inline (
@@ -7278,43 +6123,6 @@ FunRegionFloatPosToRelPos :: inline (
 	}
 	return rel_pos;
 }
-//TODO Remove the fixed functions above once this is working
-//TODO Can remove lp_count if we don't use it
-FunRegionFloatPosToRelPos :: inline (
-	fun_region_pos : [] float64,
-	lp_count : int)
--> Vector3F
-{
-	assert(fun_region_pos.count >= 3);
-	// lp_offset : float = lp_count - 12.0;
-	// lp_factor : float = (lp_count - 12.0);
-	rel_pos : Vector3F = 5.0 *
-		MakeV3F(
-			cast(float) fun_region_pos[0],
-			cast(float) fun_region_pos[1],
-			cast(float) fun_region_pos[2]);
-		// - 2.0*Vector3F.{0,0,lp_factor};
-
-	//TODO Test generalizing this maybe set each dim after 3 to x,y,z in turn
-	//so we move it the least amount. Eventually, this could be a function that is set
-	//by the user through dl OR they just set it themselves 
-	//TODO We could make this one case so its more systematic, just the {1,1,0} looks/feels better for 4d than {3,0,0}
-	if fun_region_pos.count == 4 {
-		rel_pos += (cast(float) fun_region_pos[3]) * Vector3F.{1,1,0};
-	} 
-	else if fun_region_pos.count >= 5 {
-		offset : Vector3F;
-		for 3..fun_region_pos.count-1 {
-			if it % 3 == {
-			case 0; offset = Vector3F.{3,0,0};
-			case 1; offset = Vector3F.{0,3,0};
-			case 2; offset = Vector3F.{0,0,3};
-			}
-			rel_pos += (cast(float) fun_region_pos[it]) * offset;
-		}
-	}
-	return rel_pos;
-}
 
 FunRegionPosToRelPos :: inline (
 	fun_region_pos : Vector3F) 
@@ -7385,6 +6193,14 @@ Chord :: struct($size : int, $note_pos_type : Type) {
 	// chord_pos : note_pos_type;
 	// timer : float;
 	// text : string;
+}
+}
+
+#if 0 {
+RotatedGrid3DPosition :: inline (cube_data : SpacePoint3D, grid_3D : ChordSpace3) -> Vector3F {
+	rotate_pos : Vector3F = (grid_3D.mouse_rotate * grid_3D.temp_mouse_rotate *
+		(cube_data.rel_pos - grid_3D.center_of_rotation)) + grid_3D.center_of_rotation;
+	return rotate_pos;	
 }
 }
 
@@ -10711,31 +9527,11 @@ SetAudioType :: enum {
   and so it is better that we just have int in the first place***
 */
 
+//TODO Some old functions that are no longer used with compile-time array or other
+//types. Leaving here in case someone needs them but otherwise we can remove eventually.
 //TODO Is it better to pass in fun_region_pos : [chord_dim] int directly?
 //seems less prone to weird errors
-FunRegionPosToPitchSet :: inline (
-	fun_region_pos : [] $T,
-	tuning_system_count : int,
-	chord_dim : int,
-	//DOC : This is used for mapping vls to chord spaces in 3d because otherwise we could have slight
-	//floating point rounding below the octave and then we get the octave above. It's not WRONG but it feels
-	//inconsistent, but maybe I can remove this later anyways
-	//NOTE I AM NOT USING THIS ANYMORE but I will leave it here as a reminder just in case
-	$round_pitches_below_octave : bool = false)
--> [] T
-{
-#assert(T == int || T == float || T == float64);
-	pitch_set : [] T = NewArray(chord_dim, T, false);
-	for 0..chord_dim-1 {
-		#if round_pitches_below_octave rounded_fun := cast(T) round_to_int(fun_region_pos[it]);
-		else rounded_fun := fun_region_pos[it];
-		pitch_set[it] = PosMod(rounded_fun, cast(T) tuning_system_count);
-	}
-	quick_sort(pitch_set, (p1,p2) => p1-p2);
-	
-	return pitch_set;
-}
-
+#if 0 {
 FunRegionPosToPitchSet :: inline (
 	fun_region_pos : [$chord_dim] $T,
 	tuning_system_count : int)
@@ -10751,36 +9547,6 @@ FunRegionPosToPitchSet :: inline (
 	return pitch_set;
 }
 
-FunRegionToPitchSetDeltas :: inline (
-	//TODO We have this as [] int instead of chord_dim
-	//because thats what SpacePoint3D holds but we could
-	//do [$chord_dim] int if we ever resolve that to be
-	//specific for each dimension
-	fun_region_pos : [] int,
-	tsc : int, //tuning_system_count
-	$chord_dim : int)
--> [chord_dim] int
-{
-	fun_pos_diffs : [chord_dim] int;
-	fun_pos_diffs[0] = PosMod(PosMod(fun_region_pos[0],tsc) - PosMod(fun_region_pos[chord_dim-1],tsc), tsc);
-	for 1..chord_dim-1 {
-		fun_pos_diffs[it] = PosMod(PosMod(fun_region_pos[it],tsc) - PosMod(fun_region_pos[it-1],tsc), tsc);
-	}
-	return fun_pos_diffs;
-}
-FunRegionToPitchSetDeltas :: inline (
-	fr_pos : [] int,
-	tsc : int)
--> [] int
-{
-	fun_pos_diffs : [] int = NewArray(fr_pos.count, int);
-	fun_pos_diffs[0] = PosMod(PosMod(fr_pos[0],tsc) - PosMod(fr_pos[fr_pos.count-1],tsc), tsc);
-	for 1..fr_pos.count-1 {
-		fun_pos_diffs[it] = PosMod(PosMod(fr_pos[it],tsc) - PosMod(fr_pos[it-1],tsc), tsc);
-	}
-	return fun_pos_diffs;
-}
-
 //TODO can $size be in [$size] int
 //TODO write tests for this function
 //(6,8,11) -> (-1,6,8) -> (-4,-1,6)
@@ -10793,6 +9559,8 @@ OrderedPitchSetToFundamentalRegion :: (
 	return OrderedPitchSetToFundamentalRegion(input, tuning_system_music_pt_count); 
 }
 
+//Leaving this here for now since it works with ints but we don't use it so compiled out for now.
+//Someone can generalize it in shared library if needed for ints later since i dont want duplicate logic if we don't need it.
 //TODO This is sorted in here so can likely remove
 //the word ordered...
 OrderedPitchSetToFundamentalRegion :: inline (
@@ -10853,42 +9621,6 @@ OrderedPitchSetToFundamentalRegion :: inline (
 	return poses;
 }
 
-//TODO Update compile time array to use this so we only have 1 algorithm function for floats
-OrderedPitchSetToFundamentalRegion :: inline (
-	input : [] $T, 
-	tuning_system_count : T)
--> [] T
-{
-	poses : [] T = NewArray(input.count, T);
-	OrderedPitchSetToFundamentalRegion(input, tuning_system_count, poses);
-	return poses;
-}
-OrderedPitchSetToFundamentalRegion :: inline (
-	input : [] $T, 
-	tuning_system_count : T,
-	poses : [] T)
-{
-#assert(T == float || T == float64);
-assert(input.count == poses.count);
-	for input_pos, input_index : input {
-		poses[input_index] = PosMod(input_pos, tuning_system_count);
-	}
-	quick_sort(poses, (i1, i2) => i1 - i2);
-	sum_poses : T = ArraySum(poses);
-	while sum_poses > tuning_system_count ||
-		   FloatBothEqual(sum_poses, tuning_system_count)
-	{
-		last_value : T = poses[poses.count-1] - tuning_system_count;
-		// for < size-1..1 poses[it] = poses[it-1];
-		for < 1..input.count-1 poses[it] = poses[it-1];
-   	poses[0] = last_value;
-		sum_poses = ArraySum(poses);
-	}
-	//TODO is this unnecessary now that we fixed the ordering bug?
-	// quick_sort(poses, (i1, i2) => i1 - i2);
-	// return poses;
-}
-
 //TODO can we have a reflected conversion instead if we store the
 //reflected matrix instead
 FunRegionPosToWorldPos :: inline (
@@ -10902,7 +9634,6 @@ FunRegionPosToWorldPos :: inline (
 	return world_pos;
 }
 
-#if 0 {
 FunRegionPosToWorldPos :: inline (
 	fun_region_pos : [2] float, 
 	chord_s2 : ChordSpace2) 
@@ -10915,357 +9646,6 @@ FunRegionPosToWorldPos :: inline (
 }
 }
 
-FunRegionPosToWorldPosMatrix :: inline (fun_region_pos : [2] float64, chord_s2 : ChordSpace2) -> Vector2F {
-	v : Vector2F = MakeV2F(cast(float) fun_region_pos[0], cast(float) fun_region_pos[1]);
-	return FunRegionPosToWorldPosMatrix(v, chord_s2);
-}
-FunRegionPosToWorldPosMatrix :: inline (fun_region_pos : [2] float, chord_s2 : ChordSpace2) -> Vector2F {
-	return FunRegionPosToWorldPosMatrix(MakeV2F(fun_region_pos), chord_s2);
-}
-FunRegionPosToWorldPosMatrix :: inline (fun_region_pos : [] float64, chord_s2 : ChordSpace2) -> Vector2F {
-	assert(fun_region_pos.count == 2);
-	v : Vector2F = MakeV2F(cast(float) fun_region_pos[0], cast(float) fun_region_pos[1]);
-	return FunRegionPosToWorldPosMatrix(v, chord_s2);
-}
-FunRegionPosToWorldPosMatrix :: inline (
-	fun_region_pos : Vector2F,
-	chord_s2 : ChordSpace2)
--> Vector2F 
-{
-	world_pos : Vector2F = chord_s2.zero_pos;
-	world_pos += chord_s2.invariant_to_world_matrix * fun_region_pos;
-	// world_pos := chord_s2.zero_pos + chord_s2.invariant_to_world_matrix * fun_region_pos;
-	//NOTE : We need to add this after so it does not effect the rotation above
-	//which is assumed to be about {0,0}
-	world_pos += chord_s2.dspace_world_center;
-	return world_pos;
-}
-
-//NOTE : This was calculated as the inverse of FunRegionPosToWorldPosMatrix, so we maintain the order of that in reverse.
-//TODO This can all be float64 once the world is float64.
-WorldPosToFunRegionPosMatrix :: inline (
-	world_pos : Vector2F,
-	chord_s2 : ChordSpace2)
--> Vector2F 
-{
-	//Split this up into 2 lines to make the order very explicit.
-	fr_pos : Vector2F = world_pos - chord_s2.dspace_world_center - chord_s2.zero_pos; 
-	fr_pos = chord_s2.world_to_invariant_matrix * fr_pos; 
-	return fr_pos;
-}
-
-//https://en.wikipedia.org/wiki/Encyclopedia_of_Triangle_Centers
-VLEndPoint :: struct {
-	//TODO This id should be replace with vl_index so we can
-	//know which point is selected or playing so we can make
-	//everything light up to see which value is which.
-	id : int;
-	dspace_id : int;
-	//TODO We can remove this eventually if we don't use it. Unless we continue using it for 3d.
-	//In which case we could make a union with this and vl_point_count if that helps.
-	space_point_id : int;
-	//TODO Could store chord_dim in here instead of at compile-time if we want arbitrary dimensions
-	//but then we would need the array to be somewhere else in memory as well...
-	//TODO Should this be float64 instead. Especially once world_pos is float64 eventually
-	// fun_region_pos : [chord_dim] float;
-	//TODO Rename to fun_region_float?
-	//TODO Remove this gradually and replace with float64 instead
-	//float64 will be world_pos eventually I think so we can have
-	//x_index : float64 for better precision and longer pieces overall
-	// fun_region_pos : [chord_dim] float;
-	/*TODO IMPORTANT Should we store chord_dim in here and then put the fun_region_float in their own array?
-	  This would generalize this for all dimensions and also we could collapse to 1 array VLLinePoint for rendering 
-	  for example, instead of needing vl_rel_poses and those aggregating arrays which may take longer than fetching anyways.
-	  Especially if we can just fetch sequentially. I think I like the idea of putting the values in a separate array
-	  with an index in here and chord_dim so we can fetch directly anyways then. Or we store id in the other array
-	  for now and then we do it with index later once we optimize the data tables.
-	*/
-	fun_region_float : [] float64;
-	/*TODO If chord_dim >= 5 we could have a generalized array system here
-	that fetches the points from somewhere else so we can keep the current vl processing system
-	while 
-	*/
-	//TODO Could remove this if we maintain order in
-	//array as is but leaving just in case we don't
-	order : int;
-	//TODO I am putting this here, but do we actually need it?
-	//I think we do for MemoryUnitToChordSpace highlighting
-	//so we know which memory units were associated to this
-	//specific memory_unit but we can remove it if we don't need it
-	vl_index : int;
-
-	//TODO Could cache SpacePoint3D in here or as SoA
-	vl_point_count : int;
-}
-
-VLPointNoDim :: struct {
-	//TODO Do we even need this?
-	//could just use dspace_id instead
-	//Keeping both for now so we can reference vl_id and dspace_id
-	//especially if eventually if we have a vl that does not start
-	//from a point eventually.
-	vl_id : int;
-	dspace_id : int;
-	//TODO If we generalize 2D can make rel_pos Vector2F for the 2 case
-	//TODO Can we remove this or is this good for optimizations so we don't have to compute every time?
-	// #if chord_dim >= 3 {
-	// rel_pos : Vector3F;
-	// } else #if chord_dim == 2 {
-	// //TODO Can we call this rel_pos as well?
-	// rel_pos : Vector2F;
-	// }
-	//TODO If we pull this out then we have same struct
-	//for 3D and 4D and could store fun_region_pos somewhere
-	//else if we need it for some other reason.
-	//Like SoA for example and just clear it on update for 4D
-	//TODO Could just put fun_region_size since we have an extra
-	//32 bit here even on higher dimensions
-	//TODO Or we pass in at compile time and then have different
-	//cases for fetching rendering data but same case for displaying...
-	// chord_dim : s32;
-	// fun_region_pos : [chord_dim] float;
-	fun_region_float : [] float64;
-
-	//Keep track of the order from one music_pt to another for things like color gradation.
-	order : int;
-}
-
-VLEvent :: struct {
-	voice_leading_sizes : [] float64;
-}
-//TODO Can likely remove all the uncompiled code and comments from here not that it's n-dimensional and working everywhere.
-//We could wait until it's used a bit or tested but I think it's fine to cleanup now.
-//This will be a much cleaner algorithm for voice leadings so anyone can use it clearly.
-ProcessVoiceLeadingEventsNDim :: inline (
-	//TODO May not need this with new model. It depends if we want to store the voice leadings or just convert them to space_rect directly.
-	//I will leave here for now in case we want to use it later.
-	chord_space_id : int,
-	//TODO I think we can just put [chord_dim] float64 here and just [] float64 once we remove chord_dim
-	start_chord : [] float64,
-	//TODO We could possibly make this [][] float64 if that is better.	
-	vl_events : [] VLEvent,
-	music_pt_count : int,
-	//TODO Should we pass this in here or through vl_input. Still need this for 3d
-	vl_index : int = 0)
--> [] VLEndPoint, [] VLPointNoDim
-{
-//We could have chord_dim == 1 but we don't draw voice leadings on linear space yet...
-//This algorithm is specifically for chord spaces anyways
-// #assert(chord_dim >= 2);
-	// chord_dim : int = start_chord.count;
-	//TODO We can return these as errors instead now.
-	assert(start_chord.count >= 2);
-	for vl_events assert(it.voice_leading_sizes.count == start_chord.count);
-
-	return_vl_point_result : [..] VLEndPoint;
-	return_vl_point_result.allocator = context.allocator;
-	return_voice_leading_point_result : [..] VLPointNoDim;
-	return_voice_leading_point_result.allocator = context.allocator;
-
-	//TODO Can remove this now that we don't use space_point. Also space_point_id from VLLinePoint
-	//Can also remove the same code from below as well once this is tested in all dimensions.
-	#if 0 {
-	//TODO We should not even use space points and just put fun_region_pos and compute it with rendering
-	//or cache that in rel_pos because if our initial points are not in the space we still need to draw them.
-	//The problem with using space_points here is that 1) it is dependent on dimension and 
-	//2) we cannot do points that are in between. Need to consider audio then when we add points outside the tuning system 
-	/*TODO I Cannot fully change until vl_input is done in float64 which requires a bit of work so I will do it
-	soon but a bit later. Maybe do chord_s2 and spiral first before checking this out.
-	*/
-	#if start_chord.count >= 3 {
-	start_pos_fun_region := OrderedPitchSetToFundamentalRegion(vl_input.input_music_pt_poses, music_pt_count);
-	start_point, found_start_point := FunRegionPosToSpacePoint3D(start_pos_fun_region, points_in_space);
-	// start_point, found_start_point := OrderedPitchSetToSpacePoint3D(vl_input.input_music_pt_poses, tuning_system, points_in_space);
-	assert(found_start_point);
-	} else {
-	start_point, found_start_point := ArrayFindFirstByNameId(points_in_space, MakeV2I(start_pos_fun_region), "int_pos");
-	assert(found_start_point);
-	}
-	}
-
-
-	vl_point_result : VLEndPoint;
-	vl_point_result.id = context.ALL_NEXT_IDS.NEXT_VL_ID;
-	context.ALL_NEXT_IDS.NEXT_VL_ID += 1;
-	vl_point_result.dspace_id = chord_space_id;
-	// vl_point_result.space_point_id = start_point.id;
-	//TODO Should be able to do this directly but vl_input has to have float64 music_pts
-	// vl_point_result.fun_region_pos = OrderedPitchSetToFundamentalRegion(vl_input.input_music_pt_floats, cast(float64) music_pt_count);
-	vl_point_result.fun_region_float = OrderedPitchSetToFundamentalRegion(start_chord, cast(float64) music_pt_count);
-	// start_pos_fun_region := OrderedPitchSetToFundamentalRegion(start_chord, cast(float64) music_pt_count);
-	// // for start_pos_fun_region vl_point_result.fun_region_pos[it_index] = cast(float) it;
-	// for start_pos_fun_region {
-	// 	//TODO Remove this now once it works everywhere. Can leave here commented in case we want it later.
-	// 	// vl_point_result.fun_region_pos[it_index] = cast(float) it;
-	// 	vl_point_result.fun_region_float[it_index] = it;
-	// }
-	vl_point_result.order = return_vl_point_result.count;
-	vl_point_result.vl_index = vl_index;
-	array_add(*return_vl_point_result, vl_point_result);
-
-	//TODO Using vl_total_int_pos as a check right now to make sure we end on the same space_point as the vl_event
-	//but we can remove it if ever we no longer need that check below.
-	// vl_total_int_pos : [start_chord.count] int = vl_input.input_music_pt_poses;
-	total_float_pos : [] float64 = array_copy(start_chord);
-	vl_increments : [] float64 = NewArray(start_chord.count, float64);
-
-	//TODO We should be able to pass this in so we can adjust it
-	vl_increment_delta : float64 = 0.1;
-	vl_total_float_sizes : [] float64 = NewArray(start_chord.count, float64);
-	vl_acc_increment : [] float64 = NewArray(start_chord.count, float64);
-	for vl_event : vl_events 
-	{
-		/* NOTES ON ALGORITHM LOGIC
-	    We take the ratio = voice_leading_sizes[it] / abs_max_vl where 0<=ratio<=1
-	    So if ratio == 1 then vl_increment = vl_increment_delta (0.2)
-	       if ratio == 0.5 then vl_increment = 0.5 * vl_increment_delta (0.1)
-
-        So if voice_leading_sizes[0] == 2 and voice_leading_sizes[1] == 1 they will reach 2 and 1 
-        at the same time since vl_increment[0] = 0.2 and vl_increment[1] = 0.1 and so they will
-        both take 10 steps and we will have a linear increment.
-		It also accounts for if the voice_leading_sizes[it] is negative then vl_increment is negative and will
-		therefore decrement the total_float_pos and the vl_acc_increment.
-			
-	    If vls are negative then increments will be negative and if vls are positive then inrements will be positive. 
-	    So therefore, the total_float_pos gets += by vl_increment and the remaining_size gets -= by vl_increment below.
-	    So  if voice_leading_sizes[0] == 2 then vl_increment[0] == 0.2 
-	    	then it will take 10 steps to go from 0->2
-	        if voice_leading_sizes[0] == -2 then vl_increment[0] == -0.2 
-	    	then it will take 10 steps to go from 0->-2
-	    */
-		for 0..start_chord.count-1 vl_total_float_sizes[it] = vl_event.voice_leading_sizes[it];
-		abs_max_vl : float64 = abs(vl_total_float_sizes[0]);
-		for 1..start_chord.count-1 {
-			abs_vl : float64 = abs(vl_total_float_sizes[it]);
-			if abs_vl > abs_max_vl abs_max_vl = abs_vl;
-		}
-
-		for 0..start_chord.count-1 vl_increments[it] = vl_increment_delta * vl_event.voice_leading_sizes[it] / abs_max_vl;
-
-		//TODO could pull this out but doing it this way reduces floating point error
-		// for 0..start_chord.count-1 total_float_pos[it] = cast(float) vl_total_int_pos[it];
-		
-		p_order : int = 0;
-		/*TODO If we want to remove the first and last points in voice leading for rendering purposes 
-		to prevent popup behind the cubes, then we could start the vl_acc_increment 1 increment higher and 
-		remove 1 increment from vl_total_float_sizes so we don't go till the end.
-		*/
-		for * vl_acc_increment it.* = 0; //TODO Could do a memset here if that works for float64
-		while !ArraysFloatEqual(vl_acc_increment, vl_total_float_sizes) {
-			/*TODO for finer grained chord spaces (Cent scale maybe) then we would decrease the delta increments to 1/1200
-				setting back to fundamental region will likely be the same and so the algorithm would barely need to change otherwise
-			*/
-			vl_point : VLPointNoDim;
-			vl_point.vl_id = return_vl_point_result[return_vl_point_result.count-1].id;
-			vl_point.dspace_id = chord_space_id;
-			vl_point.order = p_order;
-			p_order += 1;
-			//NOTE : The idea here is that the fundamental region will be small and within the float32 bounds.
-			//Is this always true? Maybe not... then we would have to change the world_pos to being float64
-			//which we should likely do eventually anyways.
-			vl_point.fun_region_float = OrderedPitchSetToFundamentalRegion(total_float_pos, cast(float64) music_pt_count);
-			// fun_region_64 := OrderedPitchSetToFundamentalRegion(total_float_pos, cast(float64) music_pt_count);
-			// for fun_region_64 {
-			// 	// vl_point.fun_region_pos[it_index] = cast(float) it;
-			// 	vl_point.fun_region_float[it_index] = it;
-			// }
-			//TODO Shuold we just compute these at render time? Caching them does save computation but also is dimension specific
-			//Could add the difference in dimension within the function then
-			// #if start_chord.count >= 3 {
-			// //TODO Likely better to compute these in renderer in case we decide to widen it and store the value in chord_s3
-			// //it keeps this function independent of the chord spaces
-			// vl_point.rel_pos = FunRegionFloatPosToRelPos(vl_point.fun_region_pos, music_pt_count);
-			// } else {
-			// // vl_point.rel_pos = FunRegionPosToWorldPosMatrix(vl_point.fun_region_pos, chord_s2);
-			// }
-			array_add(*return_voice_leading_point_result, vl_point);
-
-			for 0..start_chord.count-1 {
-				vl_acc_increment[it] += vl_increments[it];
-				total_float_pos[it] += vl_increments[it];
-			}
-		}
-
-		return_vl_point_result[return_vl_point_result.count-1].vl_point_count = p_order;
-
-		/*Add the last vl_point and then also the next vl_line_segment. This will be a duplicate
-		if we have another one which is ok in case we want to split of vls by line segments.
-		Probably won't but leaving here as a reminder.
-		TODO Maybe we can remove the last point since we have VLLinePoint anyways
-		*/
-		last_point : VLPointNoDim;
-		last_point.vl_id = return_vl_point_result[return_vl_point_result.count-1].id;
-		last_point.dspace_id = chord_space_id;
-		last_point.order = p_order;
-		//NOTE : The idea here is that the fundamental region will be small and within the float32 bounds.
-		//Is this always true? Maybe not... then we would have to change the world_pos to being float64
-		//which we should likely do eventually anyways.
-		last_point.fun_region_float = OrderedPitchSetToFundamentalRegion(total_float_pos, cast(float64) music_pt_count);
-		// fun_region_64 := OrderedPitchSetToFundamentalRegion(total_float_pos, cast(float64) music_pt_count);
-		// for fun_region_64 {
-		// 	// last_point.fun_region_pos[it_index] = cast(float) it;
-		// 	//TODO We can set this directly now since this will use the passed in allocator anyways
-		// 	last_point.fun_region_float[it_index] = it;
-		// }
-
-		//TODO Currently we don't use this for 2D, so if we remove for 3D as well then we can just store fun_region_pos.
-		//Likely make separate function for this which passes in start_chord.count
-		// #if start_chord.count >= 3 {
-		// last_point.rel_pos = FunRegionFloatPosToRelPos(last_point.fun_region_pos, music_pt_count);
-		// } else {
-		// // last_point.rel_pos = FunRegionPosToWorldPosMatrix(next_point.fun_region_pos, chord_s2);
-		// }
-		array_add(*return_voice_leading_point_result, last_point);
-
-		//TODO could remove this check but leaving here for now so we always validate actual endpoint with traversed endpoint
-		#if 0 {
-		check_next_int_pos : [start_chord.count] int;
-		for 0..start_chord.count-1 check_next_int_pos[it] = vl_total_int_pos[it] + vl_event.voice_leading_sizes[it];
-		total_pos_int : [start_chord.count] int;
-		for 0..start_chord.count-1 total_pos_int[it] = round_to_int(total_float_pos[it]);
-		assert(ArraysFixedEqual(check_next_int_pos, total_pos_int));
-		}
-
-		//TODO This would be a 2D/3D difference
-		//TODO Can remove this and loop above once
-		#if 0 {
-		#if start_chord.count >= 3 {
-		next_pos_fun_region := OrderedPitchSetToFundamentalRegion(total_pos_int, music_pt_count);
-		next_point, found_next_point := FunRegionPosToSpacePoint3D(next_pos_fun_region, points_in_space);
-		// next_point, found_next_point := OrderedPitchSetToSpacePoint3D(total_pos_int, tuning_system, points_in_space);
-		assert(found_next_point);
-		} else {
-		next_point, found_next_point := ArrayFindFirstByNameId(points_in_space, MakeV2I(next_pos_fun_region), "int_pos");
-		assert(found_next_point);
-		}
-		}
-		
-		// next_pos_fun_region := OrderedPitchSetToFundamentalRegion(total_pos_int, music_pt_count);
-
-		next_vl_line_point : VLEndPoint;
-		next_vl_line_point.id = context.ALL_NEXT_IDS.NEXT_VL_ID;
-		context.ALL_NEXT_IDS.NEXT_VL_ID += 1;
-		next_vl_line_point.dspace_id = chord_space_id;
-		// next_vl_line_point.space_point_id = next_point.id;
-		// next_vl_line_point.fun_region_pos = OrderedPitchSetToFundamentalRegion(vl_input.input_music_pt_poses, music_pt_count);
-		// next_vl_line_point.fun_region_pos = OrderedPitchSetToFundamentalRegion(total_float_pos, cast(float64) music_pt_count);
-		next_vl_line_point.fun_region_float = OrderedPitchSetToFundamentalRegion(total_float_pos, cast(float64) music_pt_count);
-		// next_pos_fun_region := OrderedPitchSetToFundamentalRegion(total_float_pos, cast(float64) music_pt_count);
-		// for next_pos_fun_region {
-		// 	// next_vl_line_point.fun_region_pos[it_index] = cast(float) it;
-		// 	next_vl_line_point.fun_region_float[it_index] = it;
-		// }
-		//TODO We could store the op_space position as an optimization here alone with op_space_id eventually
-		next_vl_line_point.order = return_vl_point_result.count;
-		next_vl_line_point.vl_index = vl_index;
-		array_add(*return_vl_point_result, next_vl_line_point);
-
-
-		// vl_total_int_pos = total_pos_int;
-	}
-
-	return return_vl_point_result, return_voice_leading_point_result;
-}
 PointRectInLinearSpace :: inline (point : SpacePoint, linear : Space2D) -> Rectangle2 {
 	world_pos : Vector2F = linear.dspace_world_pos + point.dspace_pos;
 	rect : Rectangle2 = RectCenterDim(world_pos, linear.dspace_point_dim - Vector2F.{0.1,0.1});
