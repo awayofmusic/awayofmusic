@@ -3,6 +3,8 @@
 #import "thegame_shared_library";
 #import "thegame_math";
 #import "thegame_audio";
+#import "shared_names";
+#import "thegame_array_poly";
 
 #program_export
 ExternalRunOnce :: (sld : *SharedLibraryData) {
@@ -67,5 +69,48 @@ ExternalRunOnce :: (sld : *SharedLibraryData) {
 	//This needs to be set after in case we set the camera based on filtered points
 	op_3D.op_space_3D.cam_trans = Space3DStartCamTrans(create_cs3.s3_cam_start_type, create_cs3.cam_focus_fun_region_pos, create_cs3.cam_trans, op_3D);
 
-	//TODO FROM HERE add generalized voice leadings for 3d
+
+	start_chord := float64.[0,4,7];
+	vl_events := VLEvent.[
+		.{.[0,-1,0]},
+		.{.[8,9,8]}
+	];
+	vl_end_points, vl_points_no_dim := ProcessVoiceLeadingEventsNDim(op_3D.op_space_3D.dspace_id,
+		start_chord, vl_events, op_3D.op_space_3D.lp_count, 0);
+
+	//TODO Could pull this out and say draw vls or people can just do it themselves so they can set colors or sizes themselves
+	for vl : vl_end_points {
+		sp : *SpacePoint3D = array_add(*op_3D.all_op_space_points_3D);
+		sp.draw_wire_mesh = true;
+		sp.do_not_remove_with_filter = true;
+		sp.color = RED_V;
+		UpdateSpacePoint3D(sp, op_3D.op_space_3D.lp_count, vl.fun_region_float,, op_3D.spec_3D_alloc);
+
+		//TODO Can use spec_3D_alloc here and set any string size if needed and then clear on op clear
+		//TODO Could make this optional like with 2d
+		space_text : *SpaceText3D = array_add(*op_3D.all_op_text_3D);
+		space_text.op_pos = sp.rel_pos;
+		SetSpaceText3D(tprint("%", vl.order), space_text);
+	}
+
+	for vl : vl_points_no_dim {
+		end_point : VLEndPoint = ArrayFindFirstByNameId(vl_end_points, vl.vl_id, "id");
+		sp : *SpacePoint3D = array_add(*op_3D.all_op_space_points_3D);
+		//TODO Could make this lerping optional like with 2d
+		//TODO Can add lerp_vl_color here to the asm if we want to make this more explicit from blue to green or something else
+		//OR we just do that in dynamic libraries later
+    	// sp.color = LBLUE_V;
+		interp := cast(float) it_index / (0.9*end_point.vl_point_count);
+		// interp := cast(float) it_index / (0.9*vl_points_no_dim.count);
+		// interp := cast(float) it_index / cast(float) vl_points_no_dim.count;
+		if interp > 1 interp = 1;
+		sp.color.rgb = Lerp(GREY_DARKERM2_V.rgb, interp, WHITE_V.rgb);
+		sp.color.a = 1.0;
+    	// sp.color = Lerp(ColorMultNoAlpha(0.6, LBLUE_V), cast(float)it_index/cast(float)vl_points_no_dim.count, LBLUE_V);
+    	// sp.color = Lerp(LBLUE_V, cast(float)it_index/cast(float)vl_points_no_dim.count, FGREEN_V);
+		sp.scale_value = 0.3;
+		sp.do_not_remove_with_filter = true;
+		sp.is_selectable = true;
+		UpdateSpacePoint3D(sp, op_3D.op_space_3D.lp_count, vl.fun_region_float,, op_3D.spec_3D_alloc);
+	}
 }
