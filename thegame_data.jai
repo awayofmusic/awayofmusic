@@ -49,16 +49,6 @@ WorldSpaceToViewportSpace :: inline (world_pos : Vector2F, cam : Camera2D, rende
 	viewport := ViewportOffset(cam_pos, render_group);
 	return viewport;
 }
-//TODO This is very SIMDable
-WorldSpaceToCameraSpace :: inline (world_pos : $vec_type, cam : $cam_type) -> vec_type {
-	cam_rel : vec_type = world_pos - cam.world_pos;
-	return cam_rel;
-}
-
-CameraSpaceToWorldSpace :: inline (cam_pos : $vec_type, cam : $cam_type) -> vec_type {
-	cam_rel : vec_type = cam_pos + cam.world_pos;
-	return cam_rel;
-}
 
 PixelSpaceToWorldSpace :: inline (pixel_pos : s64, pixels_per_square : float) -> float {
 	world_pos : float = pixel_pos / pixels_per_square;
@@ -89,12 +79,6 @@ DimSpaceToCameraSpace :: inline (dspace_pos : $vec_type, space : DimensionalSpac
 	return cam_pos;
 }
 
-WorldRectToCamRect :: inline (world_rect : Rectangle2, cam : Camera2D) -> Rectangle2 {
-	cam_rect : Rectangle2 = world_rect;
-	cam_rect.min -= cam.world_pos;
-	cam_rect.max -= cam.world_pos;
-	return cam_rect;
-}
 
 //TODO write inverse of this function
 //and write unit_tests for both
@@ -473,12 +457,6 @@ DrawTextInputBox :: inline (
 	text_cursor_start.y += 0.5*rect_height;
 	PushText(text_cursor_start, text_string, GREY_DARK_V, render_group, order = 10003);
 	PushTypeCursor(text_cursor_start, cursor_diff_x, font_height, render_group);
-}
-
-PushTextAndCursorShaderOrder :: inline (render_group : *RenderGroup)
-{
-	PushShaderEntries(render_group, 10002, 10000, 9999999);
-	PushSetShaderColor(render_group, 10004);
 }
 
 ComputeFontHeightSquares :: inline (font_height : int, render_group : *RenderGroup) -> float {
@@ -2753,25 +2731,6 @@ UnselectCursorWithSameFixedCharPoint :: inline (cursor : *TextCursor) {
 	}	
 }
 
-/*TODO
-	it may be time for an entity struct which would have
-	the world pos and the relative height
-
-	height could be used to know what were interacting with to only
-	grab whats on top without ambiguity
-*/
-ChosenEntity :: struct {
-	id : int;
-	//TODO separate UpdateEntityType function so we can have pre and post processing
-	entity_type : EntityType;
-	//TODO default for now but we should consider this more in all
-	//specific cases
-	order : int = 1000;
-	//TODO should we have extra data in here?
-	//TODO should we have list of ids and entity_types?
-	// other_id : int;
-}
-
 EqualsChosenEntity :: inline (
 	c1 : ChosenEntity, c2 : ChosenEntity) 
 -> bool
@@ -2779,16 +2738,6 @@ EqualsChosenEntity :: inline (
 	result : bool = c1.id == c2.id &&
 					c1.entity_type == c2.entity_type;
 	return result;
-}
-
-HoverEntity :: struct {
-	id : int;
-	entity_type : EntityType;
-	//TODO use custom order here instead of hover_entity_type_order
-	// order : int;
-	//TODO could have a list of ids and entity_types instead here
-	// other_id : int;
-	//TODO could cache hover mesh here so we don't have to fetch again
 }
 
 //TODO SETTINGS auto_save should be done here
@@ -2852,6 +2801,7 @@ AllData :: struct #type_info_no_size_complaint {
 	// renderer_data : *RendererData;
 	// audio_data : *AudioData;
 	// game_input : *GameInput;
+	shared_lib_data : SharedLibraryData;
 
 	global_rules : GlobalRules;
 	//TODO Should this be in AllCodeData since we reset
@@ -3227,25 +3177,33 @@ AllData :: struct #type_info_no_size_complaint {
 
 //TODO If we set all this in AllData as 1 struct then we can just have 1 move
 AllDataToSharedLibraryData :: inline (
+	sl : *SharedLibraryData,
 	dl : *DynamicLibrary,
+	renderer_data : *RendererData,
 	audio_data : *AudioData, 
 	game_input : *GameInput, 
+	//TODO Could make a SharedFrameData here if we have more data that is reset every frame.
+	frame_hover_entities : *[..] HoverEntity,
 	all_data : *AllData) 
--> SharedLibraryData {
-	sl : SharedLibraryData;
+{
 	//TODO Could set one of these per dynamic library for convenience
 	sl.my_shared_data = all_data.my_shared_data;
 	sl.my_per_dl_data = dl.my_per_dl_data;
 	// sl.extern_alloc = all_data.extern_alloc;
 
 	sl.global_rules = all_data.global_rules;
+	sl.renderer_data = renderer_data;
 	sl.audio_data = audio_data;
 	sl.game_input = game_input;
 	sl.all_tuning_systems = *all_data.all_tuning_systems;
 	sl.all_tuning_pitches = *all_data.all_tuning_pitches;
 
+	sl.render_mspace_id = all_data.render_mspace_id;
 	sl.all_mspace_data = *all_data.all_mspace_data;
 	sl.free_mspace_data_pool = *all_data.free_mspace_data_pool;
+	//TODO Need to move dl processing to after audio processing but before audio buffering before we can add this
+	//Also add GameAudioPlay when we do that so we can access
+	// sl.audio_mspace_id = all_data.audio_mspace_id;
 
 	sl.all_linear_to_tuning_system = *all_data.all_linear_to_tuning_system;
 	sl.all_linear_pitch_spaces = *all_data.all_linear_pitch_spaces;
@@ -3262,7 +3220,8 @@ AllDataToSharedLibraryData :: inline (
 	sl.all_cs2_points_2D = *all_data.all_cs2_points_2D;
 	sl.all_chord_space_points = *all_data.all_chord_space_points;
 
-	return sl;
+	sl.all_chosen_entities = all_data.all_chosen_entities;
+	sl.frame_hover_entities = frame_hover_entities.*;
 }
 
 //DOC : This return the string directly from memory so we need to copy it with or without an allocator
@@ -3341,26 +3300,6 @@ MoveFixedCameraOpSpaces :: inline (
 		distance_from_last_cam : Vector2F = (it.world_offset - last_cam_pos);
 		it.world_offset = new_cam_pos + distance_from_last_cam;
 	}	
-}
-
-IsFixedViewableOpSpace :: inline (
-	op_space : OperationSpace,
-	render_mspace_id : int)
--> bool 
-{
-	is_viewable : bool = op_space.fixed_op_type == .FIXED_TO_CAMERA ||
-		(op_space.fixed_op_type == .FIXED_TO_MSPACE && 
-		 op_space.fixed_mspace_id == render_mspace_id);
-	return is_viewable;
-}
-OpSpaceFixedToMSpace :: inline (
-	op_space : OperationSpace,
-	render_mspace_id : int)
--> bool 
-{
-	skip : bool = op_space.fixed_op_type == .FIXED_TO_MSPACE && 
-		render_mspace_id == op_space.fixed_mspace_id;
-	return skip;	
 }
 
 #if 0 {
@@ -8461,73 +8400,6 @@ OffsetSpaceToWorldSpace :: inline (
 	return world_pos;	
 }
 
-//TODO Do the same with WorldSpaceToOffsetSpace
-WorldSpaceToOpSpace :: inline (
-	world_pos : Vector2F,
-	op_space : OperationSpace,
-	op_cam_pos : Vector2F)
--> Vector2F
-{
-	// op_pos : Vector2F = world_pos - op_space.world_offset + op_cam_pos;
-	//NOTE : This is the version that works with zoom factor in the renderer
-	// op_pos : Vector2F = ((world_pos + op_cam_pos) * op_space.render_groups.scissor_group.zoom_factor) - op_space.world_offset;
-	// op_pos : Vector2F = ((world_pos + op_cam_pos) * op_space.render_groups.scissor_group.zoom_factor) - op_space.world_offset;
-	//NOTE : This was computed by algebraically rearranging the OpSpaceToWorldSpace equation which seems to work for rendering op to world space.
-	op_pos : Vector2F = ((world_pos - op_space.world_offset) / op_space.render_groups.scissor_group.zoom_factor) + op_cam_pos;
-	return op_pos;
-}
-
-/*NOTE : We account for the op_space zoom_factor in here, we could even move it into the op_space if this works.
-This is more efficient than putting in the renderer directly since it's just 1 multiplication here and also
-does not effect the rest of the code so everything else stays the same which seems better overall.
-I am not 100% sure it works in all cases so we will see with regular usage but it seems to work for now.
-ALTERNATIVE OPTION
-	- multiply group.pixels_per_square with zoom_factor (left it commented out in .RECTANGLE)
-	and then need to divide the world_offset here and also in OpSpaceToCameraSpace and also
-	the background rectangle needs its own division.
-*/
-//TODO This is very SIMDable
-OpSpaceToWorldSpace :: inline (
-	op_pos : Vector2F,
-	op_space : OperationSpace,
-	op_cam_pos : Vector2F)
--> Vector2F
-{
-	// world_pos : Vector2F = op_pos - op_cam_pos + op_space.world_offset;
-	//This seems to work... need to try and compute WorldSpaceToOpSpace from here and check mouse coordinates
-	//This seems to do nothing, im confused an don't want to do this anymore.
-	//NOTE What we were using with zoom_factor in the renderer
-	// world_pos : Vector2F = op_pos - op_cam_pos + op_space.world_offset / op_space.render_groups.scissor_group.zoom_factor;
-	// world_pos : Vector2F = (op_pos - op_cam_pos) + op_space.world_offset / op_space.render_groups.scissor_group.zoom_factor;
-	world_pos : Vector2F = ((op_pos - op_cam_pos) * op_space.render_groups.scissor_group.zoom_factor) + op_space.world_offset;
-	return world_pos;
-}
-
-OpRectToWorldRect :: inline (
-	op_rect : Rectangle2,
-	op_space : OperationSpace,
-	op_cam_pos : Vector2F)
--> Rectangle2
-{
-	world_rect := op_rect;
-	world_rect.min = OpSpaceToWorldSpace(op_rect.min, op_space, op_cam_pos);
-	world_rect.max = OpSpaceToWorldSpace(op_rect.max, op_space, op_cam_pos);
-	return world_rect;
-}
-
-OpRectToCamRect :: inline (
-	op_rect : Rectangle2,
-	op_space : OperationSpace,
-	op_cam_pos : Vector2F,
-	world_cam : Camera2D)
--> Rectangle2
-{
-	cam_rect := op_rect;
-	cam_rect.min = OpSpaceToCameraSpace(op_rect.min, op_space, op_cam_pos, world_cam);
-	cam_rect.max = OpSpaceToCameraSpace(op_rect.max, op_space, op_cam_pos, world_cam);
-	return cam_rect;
-}
-
 /*TODO
 We no longer use this in favor of just moving the op_space
 based on the camera movement that frame.
@@ -8543,73 +8415,6 @@ based on the camera movement that frame.
 // 	}
 // 	return op_world_cam;
 // }
-OpSpaceToCameraSpace :: inline (
-	op_pos : Vector2F,
-	op_space : OperationSpace,
-	op_cam_pos : Vector2F,
-	//TODO Can remove this if the per_frame_world_cam works well
-	cam : Camera2D) 
--> Vector2F
-{
-	//TODO In order to fix op spaces, we just have to set the cam (world_cam) to be 0 and then
-	//WorldSpaceToCameraSpace will not add an offset. This is a clean mathematical way to make
-	//the op spaces move around with the camera instead of being fixed to the world.
-	//It would be more efficient to update the camera externally per op space since then we don't need an if statement
-	//but that might be more prone to error since then we have to remember to do that everywhere.
-	//BETTER to pass it in since this is computed many times per frame, it would reduce computation substantially
-	//ALSO if we simd this eventually, then nothing would change and there would be no need for simd branching
-	// op_world_cam : Camera2D = GetOpSpaceWorldCam(op_space, cam);
-	world_pos : Vector2F = OpSpaceToWorldSpace(op_pos, op_space, op_cam_pos);
-	cam_pos : Vector2F = WorldSpaceToCameraSpace(world_pos, cam);
-	// cam_pos : Vector2F = WorldSpaceToCameraSpace(world_pos, op_world_cam);
-	// cam_pos : Vector2F = WorldSpaceToCameraSpace(world_pos, op_space.per_frame_world_cam);
-	//This seems to work... I guess you have to do the flip of the zoom on the parts that are not affected...
-	//NOTE: This is the old version that works with zoom_factor in the renderer
-	// cam_pos : Vector2F = world_pos - cam.world_pos / op_space.render_groups.scissor_group.zoom_factor;
-	return cam_pos;
-}
-
-OpQuadToCamQuad :: inline (
-	quad : Quad2F, 	
-	op_space : OperationSpace,
-	op_cam_pos : Vector2F,
-	cam : Camera2D)
--> Quad2F
-{
-	cam_quad : Quad2F = ---;
-	cam_quad.a = OpSpaceToCameraSpace(quad.a, op_space, op_cam_pos, cam);
-	cam_quad.b = OpSpaceToCameraSpace(quad.b, op_space, op_cam_pos, cam);
-	cam_quad.c = OpSpaceToCameraSpace(quad.c, op_space, op_cam_pos, cam);
-	cam_quad.d = OpSpaceToCameraSpace(quad.d, op_space, op_cam_pos, cam);
-	return cam_quad;
-}
-
-OpTriangleToCamTriangle :: inline (
-	tri : Triangle2F,
-	op_space : OperationSpace,
-	op_cam_pos : Vector2F,
-	cam : Camera2D)
--> Triangle2F
-{
-	cam_tri : Triangle2F = ---;
-	cam_tri.a = OpSpaceToCameraSpace(tri.a, op_space, op_cam_pos, cam);
-	cam_tri.b = OpSpaceToCameraSpace(tri.b, op_space, op_cam_pos, cam);
-	cam_tri.c = OpSpaceToCameraSpace(tri.c, op_space, op_cam_pos, cam);
-	return cam_tri;
-}
-
-OpCircleToCamCircle :: inline (
-	circle : Circle2,
-	op_space : OperationSpace,
-	op_cam_pos : Vector2F,
-	cam : Camera2D)
--> Circle2
-{
-	cam_c : Circle2 = ---;
-	cam_c.pos = OpSpaceToCameraSpace(circle.pos, op_space, op_cam_pos, cam);
-	cam_c.radius = circle.radius * op_space.render_groups.scissor_group.zoom_factor;
-	return cam_c;
-}
 
 //TODO should we store music_pt_set_id in here for convenience?
 //this would also make it easier to use as a SetOfMPS

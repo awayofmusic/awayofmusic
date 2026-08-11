@@ -135,6 +135,8 @@ for op_space : perm.all_data.all_open_op_spaces {
 //TODO where should we put this and his HoverEntity a good name?
 //TODO temp data
 //TODO need a an array for each op_space
+//TODO I think we should store this in all_data and just reset here every frame instead
+//although this way is more secure
 frame_hover_entities : [..] HoverEntity;
 frame_hover_entities.allocator = temp;
 
@@ -5670,6 +5672,8 @@ if IsInputMapPress(.RUN_EXTERNAL_UPDATE, .DOWN_THIS_FRAME, game_input) {
 }
 //TODO FROM HERE WE COULD JUST CALL THIS FROM run_dl command NOW 
 //since hotkey running can be more easily done through per frame dl now
+//ACTUALLY NO because if we want accurate audio data, we need to call this after audio processing per frame
+//otherwise we will have 1 frame off for audio data.
 for abs_path_name : perm.all_data.all_run_external_update_events
 {
 	dl, found_euf := ArrayFindFirstByNameId(global_dynamic_libraries, abs_path_name, "abs_path_name");
@@ -5685,34 +5689,46 @@ for abs_path_name : perm.all_data.all_run_external_update_events
 
 	// We could reload as a terminal command but we do in here for now so it is clearer.
 	// Although we compile the file as a terminal command for now but we could also do it here.
-	shared_lib : SharedLibraryData = AllDataToSharedLibraryData(dl, audio_data, game_input, perm.all_data);
+	AllDataToSharedLibraryData(*perm.all_data.shared_lib_data, dl, renderer_data, audio_data, game_input, 
+		*frame_hover_entities, perm.all_data);
 
 	//TODO We could cast this beforehand to reuse but I will leave it like this for now so we only
 	//keep 1 pointer and dont have to reset it all the time.
 	ExternalRunOnce := cast(Type_ExternalRunOnce) dl.ExternalRunOnce_proc_address;
-	ExternalRunOnce(*shared_lib);
+	ExternalRunOnce(*perm.all_data.shared_lib_data);
 
-	perm.all_data.my_shared_data = shared_lib.my_shared_data;
-	dl.my_per_dl_data = shared_lib.my_per_dl_data;
+	perm.all_data.my_shared_data = perm.all_data.shared_lib_data.my_shared_data;
+	dl.my_per_dl_data = perm.all_data.shared_lib_data.my_per_dl_data;
 
 	//NOTE : ids are now passed in through the context
-	// shared_lib.all_next_ids = *ALL_NEXT_IDS;
+	// perm.all_data.shared_lib_data.all_next_ids = *ALL_NEXT_IDS;
 
-	// print("test foo = %\n", shared_lib.test_foo(1));
+	// print("test foo = %\n", perm.all_data.shared_lib_data.test_foo(1));
 }
 array_reset_keeping_memory(*perm.all_data.all_run_external_update_events);
 
 /*REMINDER : This needs to happen before audio buffer loading so that if we load audio into the buffer
 it gets all loaded accurately on the same frame.
+
+TODO Likely should put this after audio processing but before buffer loading then so we can have the updated
+audio positions and also the updated audio mspace id.
+
+TODO FROM HERE we should likely have this so it does not start running automatically and starts running
+whenever we call run_dl_per_frame. This could then be done in a startup_dl to simplifiy things
+Can then also have stop_dl_per_frame.
+add a bool in the dynamic library that say is_running_dl_per_frame
+THEN maybe add the startup_dl that runs on startup automatically to set everything up
+AND THEN do music_pts/tano in dl with adding audio timing as well.
 */
 for * dl : global_dynamic_libraries if dl.ExternalPerFrame_proc_address != null {
 	//TODO We could have these arrays be in 1 struct in AllData so we can just copy it over directly
-	shared_lib : SharedLibraryData = AllDataToSharedLibraryData(dl, audio_data, game_input, perm.all_data);
+	AllDataToSharedLibraryData(*perm.all_data.shared_lib_data, dl, renderer_data, audio_data, game_input, 
+		*frame_hover_entities, perm.all_data);
 	ExternalPerFrame := cast(Type_ExternalRunOnce) dl.ExternalPerFrame_proc_address;
-	ExternalPerFrame(*shared_lib);
+	ExternalPerFrame(*perm.all_data.shared_lib_data);
 
-	perm.all_data.my_shared_data = shared_lib.my_shared_data;
-	dl.my_per_dl_data = shared_lib.my_per_dl_data;
+	perm.all_data.my_shared_data = perm.all_data.shared_lib_data.my_shared_data;
+	dl.my_per_dl_data = perm.all_data.shared_lib_data.my_per_dl_data;
 }
 
 

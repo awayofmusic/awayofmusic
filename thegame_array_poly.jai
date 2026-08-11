@@ -2,6 +2,10 @@
 /*TODO
 	should maybe eventually pull these out as thegame_data_query
 	or maybe only when we begin optimizing the tables
+
+	Should we just put this in thegame_shared_library to remove 1 import?
+	I guess we usually use them but maybe in general i prefer encouraging loops?
+	I don't know... What do you think?
 */
 
 //TODO Update this with new ,, operator to have no allocator

@@ -302,6 +302,14 @@ PushClear :: (color : Vector4F, group : *RenderGroup, order : int = 0) {
 	clear.order = order;
 }
 
+//TODO Should likely use this everywhere we placed it. We set shaders in different orders in some places
+//but this is good for now also to be used in dynamic libraries.
+DEFAULT_TEXT_ORDER :: 10003;
+PushTextAndCursorShaderOrder :: inline (render_group : *RenderGroup) {
+	PushShaderEntries(render_group, 10002, 10000, 9999999);
+	PushSetShaderColor(render_group, 10004);
+}
+
 PushText :: (offset : Vector2F, text_string : string, color : Vector4F, group : *RenderGroup, order : int = 0) {
 	text := cast(*RText) PushRenderEntry(group, RenderType.TEXT);
 	// text := cast(*RText) PushRenderEntry(group, RText);

@@ -92,6 +92,7 @@ MyExternData :: struct {
 //Also add guides for dl and then maybe an example with generalized audio/synth and also generalized rendering
 #program_export
 ExternalPerFrame :: (sld : *SharedLibraryData) {
+	Remap_Context();
 	if sld.my_per_dl_data == null {
 		sld.my_per_dl_data = New(MyExternData);
 	}

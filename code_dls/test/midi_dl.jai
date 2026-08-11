@@ -6,15 +6,26 @@
 #import "thegame_array_poly";
 
 #import "jai-midi";
+//These could be stored globally but then would not persist with code reload.
+MyMidiData :: struct {
+	m_out : *MIDI_Output;
+	m_in : *MIDI_Input;
 
-m_out : *MIDI_Output;
-m_in : *MIDI_Input;
-
-sld : SharedLibraryData;
+	my_synth : SimpleSynth;
+	pos : int = 0;
+	note_is_on : bool = false;	
+}
 
 #program_export
 ExternalRunOnce :: (shared_lib : *SharedLibraryData) {
 	Remap_Context();
+
+	//Store synth and other data in here if we want it to persist with code reloads.
+	//Can just use global data if we don't do reloads.
+	if shared_lib.my_per_dl_data == null {
+		shared_lib.my_per_dl_data = New(MyMidiData);
+	}
+	my_data := cast(*MyMidiData) shared_lib.my_per_dl_data;
 
 	#if OS == .WINDOWS {
 	midi_port_number : int = 1;
@@ -22,13 +33,8 @@ ExternalRunOnce :: (shared_lib : *SharedLibraryData) {
 	midi_port_number : int = 0;
 	}
 	//NOTE : If we are using a midi instrument, then we just need to hook up the midi in below to the midi out from the midi instrument.
-	m_out = open_output(midi_port_number);
-	//NOTE : We cannot set shared_lib directly since it is rebuilt everytime we call this so the pointer will change on the stack.
-	//We could fix that by setting shared lib in all data and then separting out audio data and render data.
-	//So we set it globally in here and pass it in. The pointers should not change in general.
-	//If we have an issue then we will move the data values together in all data to match it up and keep it consistent.
-	sld = shared_lib.*;
-	m_in = open_input(0, midi_input_callback, *sld);
+	my_data.m_out = open_output(midi_port_number);
+	my_data.m_in = open_input(0, midi_input_callback, shared_lib);
 
 	gocss : GetOrCreateSimpleSynthData;
 	gocss.synth_name = "s0";
@@ -71,16 +77,11 @@ ExternalRunOnce :: (shared_lib : *SharedLibraryData) {
 
 	//This is an example of how you would create your own synth and put audio data directly into the audio buffer.
 	//The simple synth is a synth that has several different oscillator waves and a ASR volume envelope.
-	my_synth.wave_type = OscWaveType.SINE;
-	my_synth.envelope = MakeVolumeEnvelope();
-	AddSimpleWaveFromFrequency(0, *my_synth, shared_lib.audio_data);
-	// for 0..1 AddSimpleWaveFromFrequency(0, *my_synth, shared_lib.audio_data);
+	my_data.my_synth.wave_type = OscWaveType.SINE;
+	my_data.my_synth.envelope = MakeVolumeEnvelope();
+	AddSimpleWaveFromFrequency(0, *my_data.my_synth, shared_lib.audio_data);
+	// for 0..1 AddSimpleWaveFromFrequency(0, *my_data.my_synth, shared_lib.audio_data);
 
-	//Store synth and other data in here if we want it to persist with code reloads.
-	// if sld.my_per_dl_data == null {
-	// 	sld.my_per_dl_data = New(MyExternData);
-	// }
-	// my_data := cast(*MyExternData) sld.my_per_dl_data;
 }
 
 FIXED_OCTAVE : u8 : 12*5;
@@ -88,6 +89,8 @@ FIXED_OCTAVE : u8 : 12*5;
 ExternalPerFrame :: (sld : *SharedLibraryData) {
 	Remap_Context();
 	
+	my_data := cast(*MyMidiData) sld.my_per_dl_data;
+
 	channel : u8 = 0;
 	velocity : u8 = 100;
 	note : u8;
@@ -108,36 +111,33 @@ ExternalPerFrame :: (sld : *SharedLibraryData) {
   	}
   	if pressed_note {
 		note_on : MIDI_Message = create_midi_message(.Note_On, note, velocity, channel);
-		send_midi_message(m_out, note_on);
+		send_midi_message(my_data.m_out, note_on);
 	}
   	if lifted_note {
 		note_off : MIDI_Message = create_midi_message(.Note_Off, note, velocity, channel);
-		send_midi_message(m_out, note_off);
+		send_midi_message(my_data.m_out, note_off);
 	}
 
 	//If we want a non-midi instrument, then we just put the synth samples with the key presses above
 	//or any other input or function that we want the synth samples to be generated with.
-	if note_is_on {
+	if my_data != null && my_data.note_is_on {
 		//These functions are examples of how one would create their own synths and then generate samples per frame here.
 		// UpdateWaveFrequency(frequency, *my_synth.simple_waves[0], sld.audio_data);
-		GenerateSimpleSynthSamples(*my_synth, sld.audio_data.float_buffer, sld.audio_data);
+		GenerateSimpleSynthSamples(*my_data.my_synth, sld.audio_data.float_buffer, sld.audio_data);
 	}
 }
 
-//These could be stored in my_per_dl_data or my_shared_data if needed to persist with code reload.
-my_synth : SimpleSynth;
-pos : int = 0;
-note_is_on : bool = false;
 midi_input_callback :: (input: *MIDI_Input, message: MIDI_Message, timestamp: Apollo_Time, user_data: *void) {
 	print_message_info(message, timestamp);
 
 	my_sld := cast(*SharedLibraryData) user_data;
+	my_data := cast(*MyMidiData) my_sld.my_per_dl_data;
 
 	//If we allow multiple notes at once then we would have to check the specific midi note values with the note on and off messages.
 	if message.status == MIDI_Status.Note_On {
 		print("note=%\n", message.note_info.note);
 		//This will add the note visually if needed. Can comment it out if we just want the synth sounds.
-		CreateMusicPtInMemory(cast(int) message.note_info.note - FIXED_OCTAVE, 0, pos, pos+1, *my_sld.all_mspace_data.*[0].all_music_pts);
+		CreateMusicPtInMemory(cast(int) message.note_info.note - FIXED_OCTAVE, 0, my_data.pos, my_data.pos+1, *my_sld.all_mspace_data.*[0].all_music_pts);
 
 		//I am not a huge fan of these array polymorph functions but it simplifies things nicely. 
 		//Better to use a loop when possible.
@@ -149,13 +149,13 @@ midi_input_callback :: (input: *MIDI_Input, message: MIDI_Message, timestamp: Ap
 		tuning_pitches : [] TuningPitch = ArrayFindAllVarName(my_sld.all_tuning_pitches.*, tuning_system.id, "tuning_system_id",, temp);
 		music_pt := cast(float64) ((cast(int)message.note_info.note) - FIXED_OCTAVE);
 		frequency : float = MusicPtToFrequency(music_pt, tuning_system, tuning_pitches);
-		UpdateWaveFrequency(frequency, *my_synth.simple_waves[0], my_sld.audio_data.*);
+		UpdateWaveFrequency(frequency, *my_data.my_synth.simple_waves[0], my_sld.audio_data.*);
 		//Then we use this flag to generate the sample in ExternalPerFrame
-		note_is_on = true;
+		my_data.note_is_on = true;
 
-		pos += 1;
+		my_data.pos += 1;
 	}
 	if message.status == MIDI_Status.Note_Off {
-		note_is_on = false;
+		my_data.note_is_on = false;
 	}
 }

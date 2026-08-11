@@ -24,6 +24,7 @@ since that is self contained anyways. Maybe if this file gets too big or if the 
 */
 SharedLibraryData :: struct {
 	//TODO add renderer data
+	renderer_data : *RendererData;
 	audio_data : *AudioData;
 	game_input : *GameInput;
 
@@ -32,11 +33,17 @@ SharedLibraryData :: struct {
 
 	//Tuning system data
 	all_tuning_systems : *[..] TuningSystem;
-	all_tuning_pitches : *[..] TuningPitch;
+	all_tuning_pitches : *[..] TuningPitch;	
 
 	//Music space data
+	render_mspace_id : int;
 	all_mspace_data : *[..] MusicSpaceData;
 	free_mspace_data_pool : *[..] MusicSpaceData;
+	//TODO need to move the dynamic library running to be after audio processing but before audio buffering
+	//so we can get accurate GameAudioPlay and audio_mspace_id. Also likely need to move the RunOnce dl as well.
+	//That's a good reason to not have it run directly from the terminal command.
+	//When we do this, need to test it to to make sure its in sync.
+	// audio_mspace_id : int;
 
 	//Linear row data
 	all_linear_to_tuning_system : *[..] LinearToTuningSystem;
@@ -58,8 +65,10 @@ SharedLibraryData :: struct {
 	all_cs2_points_2D : *[..] ChordS2Points2D;
 	all_chord_space_points : *[..] ChordSpacePoints3D;
 
-	//TODO FROM HERE Pass in OperationSpace with finding them for now (can check create closed op space or do later when needed)
-	//and then also pass RendererData and GameInput
+
+	//Can use these to check if certain entities are chosen or mouse hovering for general input (eg mouse, keyboard, midi...)
+	all_chosen_entities : [] ChosenEntity;
+	frame_hover_entities : [] HoverEntity;
 
 	//TODO How should we pass this in? Or should we pass it in at all?
 	//I guess we need to pass it for each function that creates things as we add them.
@@ -341,6 +350,9 @@ MusicSpaceData :: struct {
 	//TODO Could have a different struct for this without the
 	//op_space_id and maybe just rect if that's the only shape in the base.
 	all_base_collision_entities : [..] CollisionEntity;	
+
+	//TODO I can put a void pointer in here if that helps store data for dynamic libraries
+	// my_mspace_data : *void;
 }
 AsmGetOrCreateMSpaceData :: struct {
 	ret_mspace_id : int;
@@ -2647,6 +2659,35 @@ EntityType :: enum {
 	UI_OPERATION_SELECT;
 }
 
+/*TODO
+	it may be time for an entity struct which would have
+	the world pos and the relative height
+
+	height could be used to know what were interacting with to only
+	grab whats on top without ambiguity
+*/
+ChosenEntity :: struct {
+	id : int;
+	//TODO separate UpdateEntityType function so we can have pre and post processing
+	entity_type : EntityType;
+	//TODO default for now but we should consider this more in all
+	//specific cases
+	order : int = 1000;
+	//TODO should we have extra data in here?
+	//TODO should we have list of ids and entity_types?
+	// other_id : int;
+}
+
+HoverEntity :: struct {
+	id : int;
+	entity_type : EntityType;
+	//TODO use custom order here instead of hover_entity_type_order
+	// order : int;
+	//TODO could have a list of ids and entity_types instead here
+	// other_id : int;
+	//TODO could cache hover mesh here so we don't have to fetch again
+}
+
 /*TODO 
 	should these orders all be different for safety or
 	can we keep some the same knowing that, for example,
@@ -3512,6 +3553,196 @@ ClearOpSpace :: inline (
 		reset(*op_3D.spec_3D_pool);
 	}
 	}
+}
+
+//TODO This is very SIMDable
+WorldSpaceToCameraSpace :: inline (world_pos : $vec_type, cam : $cam_type) -> vec_type {
+	cam_rel : vec_type = world_pos - cam.world_pos;
+	return cam_rel;
+}
+CameraSpaceToWorldSpace :: inline (cam_pos : $vec_type, cam : $cam_type) -> vec_type {
+	cam_rel : vec_type = cam_pos + cam.world_pos;
+	return cam_rel;
+}
+WorldRectToCamRect :: inline (world_rect : Rectangle2, cam : Camera2D) -> Rectangle2 {
+	cam_rect : Rectangle2 = world_rect;
+	cam_rect.min -= cam.world_pos;
+	cam_rect.max -= cam.world_pos;
+	return cam_rect;
+}
+
+//TODO Do the same with WorldSpaceToOffsetSpace
+WorldSpaceToOpSpace :: inline (
+	world_pos : Vector2F,
+	op_space : OperationSpace,
+	op_cam_pos : Vector2F)
+-> Vector2F
+{
+	// op_pos : Vector2F = world_pos - op_space.world_offset + op_cam_pos;
+	//NOTE : This is the version that works with zoom factor in the renderer
+	// op_pos : Vector2F = ((world_pos + op_cam_pos) * op_space.render_groups.scissor_group.zoom_factor) - op_space.world_offset;
+	// op_pos : Vector2F = ((world_pos + op_cam_pos) * op_space.render_groups.scissor_group.zoom_factor) - op_space.world_offset;
+	//NOTE : This was computed by algebraically rearranging the OpSpaceToWorldSpace equation which seems to work for rendering op to world space.
+	op_pos : Vector2F = ((world_pos - op_space.world_offset) / op_space.render_groups.scissor_group.zoom_factor) + op_cam_pos;
+	return op_pos;
+}
+
+/*NOTE : We account for the op_space zoom_factor in here, we could even move it into the op_space if this works.
+This is more efficient than putting in the renderer directly since it's just 1 multiplication here and also
+does not effect the rest of the code so everything else stays the same which seems better overall.
+I am not 100% sure it works in all cases so we will see with regular usage but it seems to work for now.
+ALTERNATIVE OPTION
+	- multiply group.pixels_per_square with zoom_factor (left it commented out in .RECTANGLE)
+	and then need to divide the world_offset here and also in OpSpaceToCameraSpace and also
+	the background rectangle needs its own division.
+*/
+//TODO This is very SIMDable
+OpSpaceToWorldSpace :: inline (
+	op_pos : Vector2F,
+	op_space : OperationSpace,
+	op_cam_pos : Vector2F)
+-> Vector2F
+{
+	// world_pos : Vector2F = op_pos - op_cam_pos + op_space.world_offset;
+	//This seems to work... need to try and compute WorldSpaceToOpSpace from here and check mouse coordinates
+	//This seems to do nothing, im confused an don't want to do this anymore.
+	//NOTE What we were using with zoom_factor in the renderer
+	// world_pos : Vector2F = op_pos - op_cam_pos + op_space.world_offset / op_space.render_groups.scissor_group.zoom_factor;
+	// world_pos : Vector2F = (op_pos - op_cam_pos) + op_space.world_offset / op_space.render_groups.scissor_group.zoom_factor;
+	world_pos : Vector2F = ((op_pos - op_cam_pos) * op_space.render_groups.scissor_group.zoom_factor) + op_space.world_offset;
+	return world_pos;
+}
+
+OpSpaceToCameraSpace :: inline (
+	op_pos : Vector2F,
+	op_space : OperationSpace,
+	op_cam_pos : Vector2F,
+	//TODO Can remove this if the per_frame_world_cam works well
+	cam : Camera2D) 
+-> Vector2F
+{
+	//TODO In order to fix op spaces, we just have to set the cam (world_cam) to be 0 and then
+	//WorldSpaceToCameraSpace will not add an offset. This is a clean mathematical way to make
+	//the op spaces move around with the camera instead of being fixed to the world.
+	//It would be more efficient to update the camera externally per op space since then we don't need an if statement
+	//but that might be more prone to error since then we have to remember to do that everywhere.
+	//BETTER to pass it in since this is computed many times per frame, it would reduce computation substantially
+	//ALSO if we simd this eventually, then nothing would change and there would be no need for simd branching
+	// op_world_cam : Camera2D = GetOpSpaceWorldCam(op_space, cam);
+	world_pos : Vector2F = OpSpaceToWorldSpace(op_pos, op_space, op_cam_pos);
+	cam_pos : Vector2F = WorldSpaceToCameraSpace(world_pos, cam);
+	// cam_pos : Vector2F = WorldSpaceToCameraSpace(world_pos, op_world_cam);
+	// cam_pos : Vector2F = WorldSpaceToCameraSpace(world_pos, op_space.per_frame_world_cam);
+	//This seems to work... I guess you have to do the flip of the zoom on the parts that are not affected...
+	//NOTE: This is the old version that works with zoom_factor in the renderer
+	// cam_pos : Vector2F = world_pos - cam.world_pos / op_space.render_groups.scissor_group.zoom_factor;
+	return cam_pos;
+}
+
+OpRectToWorldRect :: inline (
+	op_rect : Rectangle2,
+	op_space : OperationSpace,
+	op_cam_pos : Vector2F)
+-> Rectangle2
+{
+	world_rect := op_rect;
+	world_rect.min = OpSpaceToWorldSpace(op_rect.min, op_space, op_cam_pos);
+	world_rect.max = OpSpaceToWorldSpace(op_rect.max, op_space, op_cam_pos);
+	return world_rect;
+}
+
+OpRectToCamRect :: inline (
+	op_rect : Rectangle2,
+	op_space : OperationSpace,
+	op_cam_pos : Vector2F,
+	world_cam : Camera2D)
+-> Rectangle2
+{
+	cam_rect := op_rect;
+	cam_rect.min = OpSpaceToCameraSpace(op_rect.min, op_space, op_cam_pos, world_cam);
+	cam_rect.max = OpSpaceToCameraSpace(op_rect.max, op_space, op_cam_pos, world_cam);
+	return cam_rect;
+}
+
+OpQuadToCamQuad :: inline (
+	quad : Quad2F, 	
+	op_space : OperationSpace,
+	op_cam_pos : Vector2F,
+	cam : Camera2D)
+-> Quad2F
+{
+	cam_quad : Quad2F = ---;
+	cam_quad.a = OpSpaceToCameraSpace(quad.a, op_space, op_cam_pos, cam);
+	cam_quad.b = OpSpaceToCameraSpace(quad.b, op_space, op_cam_pos, cam);
+	cam_quad.c = OpSpaceToCameraSpace(quad.c, op_space, op_cam_pos, cam);
+	cam_quad.d = OpSpaceToCameraSpace(quad.d, op_space, op_cam_pos, cam);
+	return cam_quad;
+}
+
+OpTriangleToCamTriangle :: inline (
+	tri : Triangle2F,
+	op_space : OperationSpace,
+	op_cam_pos : Vector2F,
+	cam : Camera2D)
+-> Triangle2F
+{
+	cam_tri : Triangle2F = ---;
+	cam_tri.a = OpSpaceToCameraSpace(tri.a, op_space, op_cam_pos, cam);
+	cam_tri.b = OpSpaceToCameraSpace(tri.b, op_space, op_cam_pos, cam);
+	cam_tri.c = OpSpaceToCameraSpace(tri.c, op_space, op_cam_pos, cam);
+	return cam_tri;
+}
+
+OpCircleToCamCircle :: inline (
+	circle : Circle2,
+	op_space : OperationSpace,
+	op_cam_pos : Vector2F,
+	cam : Camera2D)
+-> Circle2
+{
+	cam_c : Circle2 = ---;
+	cam_c.pos = OpSpaceToCameraSpace(circle.pos, op_space, op_cam_pos, cam);
+	cam_c.radius = circle.radius * op_space.render_groups.scissor_group.zoom_factor;
+	return cam_c;
+}
+
+IsFixedViewableOpSpace :: inline (
+	op_space : OperationSpace,
+	render_mspace_id : int)
+-> bool 
+{
+	is_viewable : bool = op_space.fixed_op_type == .FIXED_TO_CAMERA ||
+		(op_space.fixed_op_type == .FIXED_TO_MSPACE && 
+		 op_space.fixed_mspace_id == render_mspace_id);
+	return is_viewable;
+}
+//TODO Should we use this above for clarity and avoid duplicate code?
+OpSpaceFixedToMSpace :: inline (
+	op_space : OperationSpace,
+	render_mspace_id : int)
+-> bool 
+{
+	skip : bool = op_space.fixed_op_type == .FIXED_TO_MSPACE && 
+		render_mspace_id == op_space.fixed_mspace_id;
+	return skip;	
+}
+//TODO Could pass renderer_data here instead if that makes more sense.
+IsTopOpSpace :: inline (op_space_id : int, open_op_space_render_groups : [] OpSpaceRenderGroups) -> bool {
+	is_top : bool = open_op_space_render_groups.count > 0 && 
+		peek(open_op_space_render_groups).op_space_id == op_space_id;
+	return is_top;
+}
+IsChosenOpSpace :: inline (op_space_id : int, all_chosen_entities : [] ChosenEntity) -> bool {
+	for all_chosen_entities if it.entity_type == EntityType.OP_SPACE && it.id == op_space_id {
+		return true;
+	}	
+	return false;
+}
+IsHoveringOpSpace :: inline (op_space_id : int, frame_hover_entities : [] HoverEntity) -> bool {
+	for frame_hover_entities if it.entity_type == EntityType.OP_SPACE && it.id == op_space_id {
+		return true;
+	}	
+	return false;
 }
 
 /*DOC : All the data specific to each op space.
