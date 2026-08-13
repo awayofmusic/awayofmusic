@@ -736,8 +736,8 @@ KeyPressType :: enum u8 {
 then we can have an array for keyboard and midi inputs in here
 */
 InputMapping :: struct {
-	/*DOC : This is unecessary but we store it in here for debugging
-	convenience so we can see which input map we are updating.
+	/*DOC : This is unecessary because we index by the enum but we store it in here 
+	for debugging convenience so we can see which input map we are updating.
 	*/
 	input_map_type : InputMapType;
 	//TODO Should this be utf32 : u32 instead for text input?
@@ -783,6 +783,14 @@ KeyboardMap :: struct {
 	modifier_flags: Jai_Input.Event.Modifier_Flags;
 	//TODO Can set this or in a separate array so that
 	// description : string;
+}
+
+CopyDefaultInputMappings :: inline () -> [] InputMapping {
+	copy_im : [] InputMapping = array_copy(DEFAULT_INPUT_MAPPINGS);
+	for DEFAULT_INPUT_MAPPINGS {
+		copy_im[it_index].keyboard_maps = array_copy(it.keyboard_maps);
+	}	
+	return copy_im;
 }
 
 //TODO Can add default midi keymaps as well later based on an 88-key piano

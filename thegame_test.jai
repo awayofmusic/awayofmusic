@@ -12545,7 +12545,7 @@ Test_LoadDL :: (
 			cmd_success_2 := run_command(.. cmd_string_2, capture_and_return_output=true);
 			ldl_data.test_path_2 = test_path_2;
 
-			array_resize(*perm.test_data.all_sub_tests, 7);
+			array_resize(*perm.test_data.all_sub_tests, 8);
 		} else {
 			print("Need to compile % and % to run this test.\n", fixed_test_path, test_path_2);
 			print("Can run unit test Test_LoadDL which will compile it if it's there.\n");
@@ -12596,7 +12596,7 @@ Test_LoadDL :: (
 
 		AssertEquals(0, perm.all_data.all_mspace_data[0].all_music_pts.count);
 
-		run_test := MakeTerminalEvent(.run_dl, ldl_data.fixed_test_path);
+		run_test := MakeTerminalEvent(.run_dl_once, ldl_data.fixed_test_path);
 		array_add(*perm.all_data.all_terminal_events, run_test);
 	}
 	case 2; {
@@ -12609,7 +12609,7 @@ Test_LoadDL :: (
 			AssertEquals(3, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		}
 
-		run_test := MakeTerminalEvent(.run_dl, ldl_data.test_path_2);
+		run_test := MakeTerminalEvent(.run_dl_once, ldl_data.test_path_2);
 		array_add(*perm.all_data.all_terminal_events, run_test);
 	}
 	case 3; {
@@ -12617,10 +12617,19 @@ Test_LoadDL :: (
 		AssertEquals(1, perm.all_data.all_mspace_data[0].all_music_lane_rows.count);
 		AssertEquals(6, perm.all_data.all_mspace_data[0].all_music_pts.count);
 
-		//Test running per frame
-		DownUpThisFrame(#char "Q", .{ctrl_pressed=true}, game_input);
+
+		//Test start per frame
+		run_test := MakeTerminalEvent(.start_dl_per_frame, ldl_data.fixed_test_path);
+		array_add(*perm.all_data.all_terminal_events, run_test);		
 	}
 	case 4; {
+		AssertEquals(true, global_dynamic_libraries[0].is_running_dl_per_frame);
+		AssertEquals(true, global_dynamic_libraries[0].ExternalPerFrame_proc_address != null);
+
+		//Test running per frame input
+		DownUpThisFrame(#char "Q", .{ctrl_pressed=true}, game_input);
+	}
+	case 5; {
 		count_equal := AssertEquals(7, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
 			AssertEquals(5, perm.all_data.all_mspace_data[0].all_music_pts[6].x_start);
@@ -12631,15 +12640,24 @@ Test_LoadDL :: (
 		//Test running per frame data updated
 		DownUpThisFrame(#char "Q", .{ctrl_pressed=true}, game_input);
 	}
-	case 5; {
+	case 6; {
 		count_equal := AssertEquals(8, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
 			AssertEquals(6, perm.all_data.all_mspace_data[0].all_music_pts[7].x_start);
 			AssertEquals(7, perm.all_data.all_mspace_data[0].all_music_pts[7].x_end);
 			AssertFloat64Equals(1, perm.all_data.all_mspace_data[0].all_music_pts[7].music_pt_float);
 		}
+
+
+		//Test stop per frame
+		run_test := MakeTerminalEvent(.stop_dl_per_frame, ldl_data.fixed_test_path);
+		array_add(*perm.all_data.all_terminal_events, run_test);	
 	}
-	case 6; {
+	case 7; {
+		AssertEquals(false, global_dynamic_libraries[0].is_running_dl_per_frame);
+		AssertEquals(true, global_dynamic_libraries[0].ExternalPerFrame_proc_address != null);
+
+
 		count_equal := AssertEquals(2, global_dynamic_libraries.count);
 		if count_equal {
 			RemoveDynamicLibrary(*global_dynamic_libraries[1]);

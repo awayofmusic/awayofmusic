@@ -26,6 +26,10 @@ ExternalRunOnce :: (shared_lib : *SharedLibraryData) {
 	//which contains IDs and other information.
 	Remap_Context();
 
+	if shared_lib.my_per_dl_data == null {
+		shared_lib.my_per_dl_data = New(MyExternData);
+	}
+
 	//This will clear all the data in this mspace which allows 
 	//us to recreate everything every time we run this code.
 	ClearMusicSpace(*shared_lib.all_mspace_data.*[0]);
@@ -118,9 +122,7 @@ MyExternData :: struct {
 ExternalPerFrame :: (sld : *SharedLibraryData) {
 	Remap_Context();
 	
-	if sld.my_per_dl_data == null {
-		sld.my_per_dl_data = New(MyExternData);
-	}
+	//Need to run ExternalRunOnce to initialize this data. Or we could initialize it here as well.
 	my_data := cast(*MyExternData) sld.my_per_dl_data;
  	if IsKeyboardPress(#char "Q", .{ctrl_pressed=true}, .DOWN_THIS_FRAME, sld.game_input) {
 		CreateMusicPtInMemory(my_data.my_mp, 0, my_data.my_mp+5, my_data.my_mp+6, *sld.all_mspace_data.*[0].all_music_pts);

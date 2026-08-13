@@ -792,10 +792,11 @@ LoadDynamicLibrary :: (dl : *DynamicLibrary) -> success : bool, msg : string {
 
 	//TODO Can separate this out if we want to get multiple proc addresses for different functions eventually.
 	//TODO Should we change the name of first one to ExternalRunOnce?
-	dl.ExternalRunOnce_proc_address = GetProcAddress(dl.module_handle, "ExternalRunOnce");
-	dl.ExternalPerFrame_proc_address = GetProcAddress(dl.module_handle, "ExternalPerFrame");
+	dl.ExternalRunOnce_proc_address = GetProcAddress(dl.module_handle, DL_FUNCTION_RUN_ONCE);
+	dl.ExternalPerFrame_proc_address = GetProcAddress(dl.module_handle, DL_FUNCTION_PER_FRAME);
 	if dl.ExternalRunOnce_proc_address == null && dl.ExternalPerFrame_proc_address == null {
-		return false, tprint("No ExternalRunOnce or ExternalPerFrame function found in : %.\n", dl.abs_path_name);
+		return false, tprint("No % or % function found in : %.\n", 
+			DL_FUNCTION_RUN_ONCE, DL_FUNCTION_PER_FRAME, dl.abs_path_name);
 	}
 
 	return true, tprint("Library loaded : %.\n", dl.input_path_name);
@@ -1119,10 +1120,11 @@ LoadDynamicLibrary :: (dl : *DynamicLibrary) -> success : bool, msg : string {
 
 
 	//TODO Can separate this out if we want to get multiple proc addresses for different functions eventually.
-	dl.ExternalRunOnce_proc_address = Posix.dlsym(dl.module_handle, "ExternalRunOnce");
-	dl.ExternalPerFrame_proc_address = Posix.dlsym(dl.module_handle, "ExternalPerFrame");
+	dl.ExternalRunOnce_proc_address = Posix.dlsym(dl.module_handle, DL_FUNCTION_RUN_ONCE);
+	dl.ExternalPerFrame_proc_address = Posix.dlsym(dl.module_handle, DL_FUNCTION_PER_FRAME);
 	if dl.ExternalRunOnce_proc_address == null && dl.ExternalPerFrame_proc_address == null {
-		return false, tprint("No ExternalRunOnce or ExternalPerFrame function found in : %.\n", dl.abs_path_name);
+		return false, tprint("No % or % function found in : %.\n", 
+			DL_FUNCTION_RUN_ONCE, DL_FUNCTION_PER_FRAME, dl.abs_path_name);
 	}
 
 	return true, tprint("Library loaded : %.\n", dl.input_path_name);
@@ -1249,12 +1251,6 @@ LoadDLSuccess :: inline (dl : DynamicLibrary) -> bool {
 	return success;
 }
 
-//TODO Should we leave this here since we only use it here right now or put it with the other cross-platform code?
-#if OS == .WINDOWS {
-dl_suffix : string : "dll";
-} else #if OS == .MACOS {
-dl_suffix : string : "dylib";
-}
 //TODO Should this return the actual dynamic library?
 /*DOC : Generally only this function should be called to fetch a dynamic library. This will either create the library
 or reload it and so ReloadDynamicLibrary and CreateDynamicLibrary should be only called directly from here.
@@ -1765,6 +1761,8 @@ global_dynamic_libraries : [..] DynamicLibrary;
 // ResetDynamicLibraries :: () {
 // 	array_reset_keeping_memory(*global_dynamic_libraries);
 // }
+DL_FUNCTION_PER_FRAME :: "ExternalPerFrame";
+DL_FUNCTION_RUN_ONCE :: "ExternalRunOnce";
 /*We have currently separated this from ExternalRunOnceFile where we use this as the platform layer dynamic library
 which remains in-game agnostic so we only store void pointer and path names. Then we associate with
 */
@@ -1793,7 +1791,10 @@ DynamicLibrary :: struct {
 	//TODO Can separate these out if we want to allow multiple GetProcAddress eventually to allow 
 	//different functions in different places or that have different purposes.
 	//NOTE : These are referenced as function types in ExternalRunOnceFile which is what we use in game.
+	is_running_once_dl : bool;
 	ExternalRunOnce_proc_address : *void;
+
+	is_running_dl_per_frame : bool;
 	ExternalPerFrame_proc_address : *void;
 	// ExternalRunOnce : Type_ExternalRunOnce;
 

@@ -16,6 +16,9 @@ MyMidiData :: struct {
 	note_is_on : bool = false;	
 }
 
+//NOTE : THIS FILE ASSUMES THAT YOU HAVE OPENED A NEW MIDI PORT and it corresponds to the midi_port_number below.
+//On Mac, this can be done directly through the operating system.
+//On Windows, loopMIDI can be used : https://www.tobias-erichsen.de/software/loopmidi.html
 #program_export
 ExternalRunOnce :: (shared_lib : *SharedLibraryData) {
 	Remap_Context();

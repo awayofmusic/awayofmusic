@@ -60,6 +60,7 @@ ExternalPerFrame :: (sld : *SharedLibraryData) {
 		//and then have a separate external dynamic library function for user input. 
 		//But that seems complicated for only the case of overlapping with internal things.
 		//Specific hovering or chosen entity checks can still be done here if needed by checking hovering and collisions internal code.
+		// is_choosing_entity : bool = sld.all_chosen_entities.count > 0;
 		hovering_other_entity : bool = sld.frame_hover_entities.count > 0;
 		if !hovering_other_entity && IsInRectangle(sld.game_input.mouse_cam, cam_rect) {
 			UpdateWaveFrequency(888, *my_data.synth.simple_waves[0], sld.audio_data);

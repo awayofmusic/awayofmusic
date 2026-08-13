@@ -66,6 +66,15 @@ SharedLibraryData :: struct {
 	all_chord_space_points : *[..] ChordSpacePoints3D;
 
 
+	//Terminal Data
+	all_terminal_events : *[..] TerminalEvent;
+
+	//If this is used and updated properly, then it should be in sync with the internal runtime settings
+	//We need to call this internally since can change any internal data.
+	//This flag should be set to true when updating is needed. It is set back to false after updating is complete.
+	update_runtime_settings_from_dl : bool;
+	to_update_runtime_settings : RuntimeSettingsData;
+
 	//Can use these to check if certain entities are chosen or mouse hovering for general input (eg mouse, keyboard, midi...)
 	all_chosen_entities : [] ChosenEntity;
 	frame_hover_entities : [] HoverEntity;
@@ -120,6 +129,108 @@ Megabyte :: (bytes : s64) -> s64 #expand {
 Gigabyte :: (bytes : s64) -> s64 #expand {
     return 1024 * Megabyte(bytes);
 }
+
+/*Start of terminal data
+*/
+TerminalEvent :: struct {
+	command_string : string;
+}
+MakeTerminalEvent :: (
+	command_type : TerminalCommandType,
+	input_command_params : .. string)
+-> TerminalEvent 
+{
+	//TODO We can pull this String_Builder out to reuse it if this is slow.
+	sb: String_Builder;
+	sb.allocator = temp;
+
+	print_to_builder(*sb, "%", terminal_command_type_names[command_type]);
+	for input_command_params {
+		print_to_builder(*sb, " %", it);
+	}
+
+	terminal_event : TerminalEvent;
+   terminal_event.command_string = builder_to_string(*sb);
+   //TODO Should we check the size of the command string here is less than terminal_command_string.total_allocated_bytes
+	return terminal_event;
+}
+
+terminal_command_type_count : int : 
+	#run type_info(TerminalCommandType).names.count;
+terminal_command_type_names : [] string : #run enum_names(TerminalCommandType);
+terminal_command_type_enums : [] TerminalCommandType : #run enum_values_as_enum(TerminalCommandType);
+TerminalCommandType :: enum {
+	//New commands
+	load_dl; //load dynamic library that runs with run_dl
+
+	once_dl; //shorthand for run_dl_once
+	run_dl_once;
+
+	start_dl; //shorthand for start_dl_per_frame
+	start_dl_per_frame;
+
+	stop_dl; //shorthand for stop_dl_per_frame
+	stop_dl_per_frame;
+
+	list_dls;
+
+	create_file;
+	save_file;
+
+	open_op; //open op_space
+	close_op; //close op_space
+	create_op; //create a new empty text op_space
+	load_op; //load file and open op_space
+
+	move_op;
+
+	goto;
+
+	tuning_systems;
+
+	//Terminal commands
+	clear;
+
+	//Setting commands
+	load_input_mappings;
+	generate_input_mappings;
+	load_runtime_settings;
+	generate_runtime_settings;
+	generate_startup_settings;
+	//DOC : This is not user facing, so just internally so we can 
+	//change the setting file for tests if we need to.
+	//Can likely remove it altogether if we use setting dynamic libraries eventually
+	set_runtime_settings_file;
+	set_input_mappings_file;
+
+	//Old commands (can remove if we don't use or reuse)
+	sys;
+	jai;
+
+	//Set the audio play pointer (can reuse something like this with mouse)
+	mp;
+
+	//Midi convenience commands
+	midi;
+
+
+	//TODO Need to do delete_op in order to do this properly BECAUSE if there is only 1 file open in 1 op space
+	//then we would have to close that op_space as well OR we could just close it and then when its opened
+	//we open the file selector again.
+	//TODO Could have an option where we just delete the file locally if that helps.
+	//TODO We can't do this because we would need to remove the text op space as well
+	// TODO If we only have 2 commands then we can open empty text op space and then use file explorer to open file.
+	// For now we don't allow empty text op space but maybe we could without any files we don't do any cursor typing or rendering code.
+	//WE COULD ALSO allow deleting a file externally with this but keep the file internally and it would have to be saved
+	//again on the system. 
+	//OR We don't allow the deleting of files internally and if its deleted externally 
+	//we already deal with that case in SaveTextFile where we ask where to save. This way we only open op spaces with a text file
+	//and we can never delete a file and then we just prevent there from being < 1 tabs open.
+	// delete_file;
+}
+/*End of terminal data
+*/
+
 
 /*Synth Data creation start 
 */

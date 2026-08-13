@@ -5,8 +5,10 @@ SHARED_FOLDER_NAME :: "shared";
 #if OS == .WINDOWS {
 //TODO Should this be win_thegame?
 EXE_NAME :: "windows_thegame";
+dl_suffix : string : "dll";
 } else #if OS == .MACOS {
 EXE_NAME :: "macos_thegame";
+dl_suffix : string : "dylib";
 }
 BUILD_DL_NAME :: "build_dl_thegame.jai";
 FILES_DIR_NAME :: "guides";
@@ -16,6 +18,9 @@ C_TEST_DIR_NAME :: "c_test";
 SETTINGS_DIR_NAME :: "settings";
 TEST_SETTINGS_DIR_NAME :: "test_settings";
 CODE_DLS_DIR_NAME :: "code_dls";
+STARTUP_FILE_NAME :: "startup/startup_dl";
+STARTUP_DL_NAME :: #run sprint("%.%", STARTUP_FILE_NAME, dl_suffix);
+STARTUP_JAI_NAME :: #run sprint("%.%", STARTUP_FILE_NAME, "jai");
 G_STARTUP_SETTINGS_NAME :: #run sprint("%/generated_startup_settings", SETTINGS_DIR_NAME);
 G_RUNTIME_SETTINGS_NAME :: #run sprint("%/generated_runtime_settings", SETTINGS_DIR_NAME);
 G_INPUT_MAPPINGS_NAME :: #run sprint("%/generated_input_mappings", SETTINGS_DIR_NAME);

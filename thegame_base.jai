@@ -58,6 +58,10 @@ assert(game_memory.PermanentStorageSize >= size_of(GameState) &&
 	NOTE : WE COULD ALSO remove the text files afterwards although we would have to free the string data for names and such
 	in that case so maybe can think of a way to allocate that data like reusing strings or with an allocator maybe.
 	IF we use dynamic libraries then none of this is a an issues since we could remove this and just use dls instead.
+
+	TODO THIS CAN BE REMOVED ONCE JAI IS PUBLIC NOW THAT WE SET IT UP WITH DYNAMIC LIBRARY startup_dl below
+	which is simpler to update and also more efficient and more robust as to when and how it is updated
+	LIKELY STILL NEED TO SET DEFAULT FOR INPUT MAPPINGS HERE SINCE ITS AN ARRAY
 	*/
 	SetupGameInputMappings(game_input, *perm.all_data.all_text_files, INPUT_MAPPINGS_REL_PATH);
 	//DOC : If this is invalid on startup then we just keep the default settings and do nothing since nothing is open yet.
@@ -71,6 +75,21 @@ assert(game_memory.PermanentStorageSize >= size_of(GameState) &&
 
 	// BuildCodeLevelsTable(perm);
 	ASM_INSTRUCTION_MANUAL = GenerateAsmInstructionManual();
+
+
+	//startup_dl terminal events
+	//TODO This is not tested for now since all the terminal events themselves should be tested but maybe we can later
+	//once we remove all the other runtime settings and input mappings file and code
+	//TODO Once we remove the old ones then we can likely remove this startup setting and just always load it by default
+	//LIKELY STILL NEED TO SET DEFAULT FOR INPUT MAPPINGS HERE SINCE ITS AN ARRAY and double check for runtime settings when we remove that
+	if GLOBAL_STARTUP_SETTINGS.load_startup_dl {
+		//TODO We could compile the startup_dl here as well
+		array_add(*perm.all_data.all_terminal_events, MakeTerminalEvent(.jai, STARTUP_JAI_NAME));
+		array_add(*perm.all_data.all_terminal_events, MakeTerminalEvent(.load_dl, STARTUP_DL_NAME));
+		array_add(*perm.all_data.all_terminal_events, MakeTerminalEvent(.run_dl_once, STARTUP_DL_NAME));
+		array_add(*perm.all_data.all_terminal_events, MakeTerminalEvent(.start_dl_per_frame, STARTUP_DL_NAME));
+	}
+
 
 	//TODO Could set this from a file when we allow updating input mappings.
 	//Then we just need to pull in 1 file since that will be updated and initially set to defaults.
@@ -2776,6 +2795,9 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 				//for settings files but then that behavior is inconsistent since save does not always save. 
 				//Keeping them separate for now allows a choice
 
+				//TODO WE CAN REMOVE ALL THIS ONCE WE USE startup_dl only since then we can just set it up as neede
+				//and also use hot reload if needed as well.
+
 				save_file : bool = false;
 				//TODO Eventualy we could allow setting an input mappings file that can
 				//be updated automatically, but having only this one is clear for now.
@@ -4636,20 +4658,75 @@ DONE);
 					print_to_builder(*sb, msg);
 				}
 			}
-			case TerminalCommandType.run_dl; {
-				if command_tokens.count == 2 && command_tokens[1].token == "-help" {
-					print_to_builder(*sb, 
+			case TerminalCommandType.once_dl; #through;
+			case TerminalCommandType.run_dl_once; {
+				help_msg :: #run sprint(
 #string DONE
-run_dl file_name
-Run a loaded dynamic library.
-DONE);
+run_dl_once file_name
+Run % once from loaded dynamic library file_name.
+DONE,
+DL_FUNCTION_RUN_ONCE);
+				if IsTerminalCmdHelp(cmd_switches) {
+					print_to_builder(*sb, help_msg);
 				} else {
 					dlib_name : string = command_tokens[1].token;
+					found_dl : bool = false;
 					for global_dynamic_libraries if it.input_path_name == dlib_name {
-						//TODO Should we run the dl here. Maybe it's fine, then we have to split the code up to run the dl
-						//from below OR we just run it here anyways.
-						array_add(*perm.all_data.all_run_external_update_events, it.abs_path_name);
-						print_to_builder(*sb, "Found and running dl : %.\n", dlib_name);
+						for * global_dynamic_libraries if it.input_path_name == dlib_name && it.ExternalRunOnce_proc_address != null {
+							it.is_running_once_dl = true;
+							print_to_builder(*sb, "Running once % : %.\n", DL_FUNCTION_RUN_ONCE, dlib_name);
+							found_dl = true;
+							break;
+						}
+						if !found_dl {
+							print_to_builder(*sb, "% not found in file %.\n", DL_FUNCTION_RUN_ONCE, dlib_name);
+						}
+					}
+				}
+			}
+			case TerminalCommandType.start_dl; #through;
+			case TerminalCommandType.start_dl_per_frame; {
+				help_msg :: #run sprint(
+#string DONE
+start_dl_per_frame file_name
+Started running % every frame from loaded dynamic library file_name.
+DONE,
+DL_FUNCTION_PER_FRAME);
+				if IsTerminalCmdHelp(cmd_switches) {
+					print_to_builder(*sb, help_msg);
+				} else {
+					dlib_name : string = command_tokens[1].token;
+					found_dl : bool = false;
+					for * global_dynamic_libraries if it.input_path_name == dlib_name && it.ExternalPerFrame_proc_address != null {
+						it.is_running_dl_per_frame = true;
+						print_to_builder(*sb, "Start running % : %.\n", DL_FUNCTION_PER_FRAME, dlib_name);
+						found_dl = true;
+						break;
+					}
+					if !found_dl {
+						print_to_builder(*sb, "% not found in file %.\n", DL_FUNCTION_PER_FRAME, dlib_name);
+					}
+				}
+			}
+			case TerminalCommandType.stop_dl; #through;
+			case TerminalCommandType.stop_dl_per_frame; {
+				help_msg :: #run sprint(
+#string DONE
+stop_dl_per_frame file_name
+Stopped running % every frame from loaded dynamic library file_name.
+DONE,
+DL_FUNCTION_PER_FRAME);
+				if IsTerminalCmdHelp(cmd_switches) {
+					print_to_builder(*sb, help_msg);
+				} else {
+					dlib_name : string = command_tokens[1].token;
+					for * global_dynamic_libraries if it.input_path_name == dlib_name {
+						if it.is_running_dl_per_frame {
+							it.is_running_dl_per_frame = false;
+							print_to_builder(*sb, "Stopped running % : %.\n", DL_FUNCTION_PER_FRAME, dlib_name);
+						} else {
+							print_to_builder(*sb, "Not running % from file %.\n", DL_FUNCTION_PER_FRAME, dlib_name);
+						}
 						break;
 					}
 				}
@@ -4778,7 +4855,7 @@ DONE;
 				reset(*sb);
 			}
 			//DOC : the set command here is just for testing and should not be user facing
-			//Can likely remove it altogether if we use setting dynamic libraries eventually
+			//TODO Can likely remove it altogether if we use setting dynamic libraries eventually
 			case TerminalCommandType.set_runtime_settings_file; #through;
 			case TerminalCommandType.load_runtime_settings; {
 				help_msg :: #run sprint(
@@ -5655,35 +5732,27 @@ if !exec_info.continue_execution_next_frame {
 }	
 
 
-/*TODO Eventually this can be run directly in terminal so we can choose the order
+/*This will run the last run once dl function that was loaded.
+TODO Could allow specific dynamic libraries to be set from the terminal for example with this shortcut
+HOWEVER it is generally recommended to just use input with the per frame dl instead
 */
-// if keyboard.only_alt_down && keyboard.e_button.down_this_frame 
-   // perm.all_data.input_check.is_writing_code
 if IsInputMapPress(.RUN_EXTERNAL_UPDATE, .DOWN_THIS_FRAME, game_input) {
-	//TODO Can grab the currently selected op_space and see if it has a dll here once we connect
-	//dlls to text files and put them here.
-	//TODO Could allow specific dynamic libraries to be set from the terminal for example
-	//TODO I think eventually we can allow some kind of script to run external updates on startup
-	//and also we can split between running with a command or just having a dynamic library function
-	//that can run every frame instead
-	if global_dynamic_libraries.count > 0 {
-		array_add(*perm.all_data.all_run_external_update_events, global_dynamic_libraries[0].abs_path_name);
+	for < * global_dynamic_libraries if it.ExternalRunOnce_proc_address != null {
+		it.is_running_once_dl = true;
+		break;
 	}
 }
-//TODO FROM HERE WE COULD JUST CALL THIS FROM run_dl command NOW 
-//since hotkey running can be more easily done through per frame dl now
-//ACTUALLY NO because if we want accurate audio data, we need to call this after audio processing per frame
-//otherwise we will have 1 frame off for audio data.
-for abs_path_name : perm.all_data.all_run_external_update_events
-{
-	dl, found_euf := ArrayFindFirstByNameId(global_dynamic_libraries, abs_path_name, "abs_path_name");
-	if !found_euf {
-		print("% external update file not found.\n", dl.abs_path_name);
-		continue;
-	} else if dl.ExternalRunOnce_proc_address == null {
-		print("Null found for ExternalRunOnce proc in file : %.\n", dl.abs_path_name);
+/*This needs ot run before dl running per frame functions since this is assumed to be able to be used as
+either a run once at a time function OR a data initialization function.
+*/
+for * dl : global_dynamic_libraries if dl.is_running_once_dl {
+	//Always turn this off since we are only running once regardless of if we find an error or not.
+	dl.is_running_once_dl = false;
+	if dl.ExternalRunOnce_proc_address == null {
+		log_error("% not found for % trying to run. Stopped running.\n", DL_FUNCTION_RUN_ONCE, dl.abs_path_name);
 		continue;
 	}
+
 	//TODO We happens if we have an invalid function pointer here, I guess we can't really know and crash.
 	//So we should set ExternalRunOnce to null whenever that is possible to avoid issues.
 
@@ -5697,38 +5766,31 @@ for abs_path_name : perm.all_data.all_run_external_update_events
 	ExternalRunOnce := cast(Type_ExternalRunOnce) dl.ExternalRunOnce_proc_address;
 	ExternalRunOnce(*perm.all_data.shared_lib_data);
 
-	perm.all_data.my_shared_data = perm.all_data.shared_lib_data.my_shared_data;
-	dl.my_per_dl_data = perm.all_data.shared_lib_data.my_per_dl_data;
-
-	//NOTE : ids are now passed in through the context
-	// perm.all_data.shared_lib_data.all_next_ids = *ALL_NEXT_IDS;
-
-	// print("test foo = %\n", perm.all_data.shared_lib_data.test_foo(1));
+	PostUpdateExternal(dl, renderer_data, perm);
 }
-array_reset_keeping_memory(*perm.all_data.all_run_external_update_events);
 
 /*REMINDER : This needs to happen before audio buffer loading so that if we load audio into the buffer
 it gets all loaded accurately on the same frame.
 
-TODO Likely should put this after audio processing but before buffer loading then so we can have the updated
+TODO FROM HERE PUT this after audio processing but before buffer loading then so we can have the updated
 audio positions and also the updated audio mspace id.
-
-TODO FROM HERE we should likely have this so it does not start running automatically and starts running
-whenever we call run_dl_per_frame. This could then be done in a startup_dl to simplifiy things
-Can then also have stop_dl_per_frame.
-add a bool in the dynamic library that say is_running_dl_per_frame
-THEN maybe add the startup_dl that runs on startup automatically to set everything up
-AND THEN do music_pts/tano in dl with adding audio timing as well.
+AND THEN do music_pts/tano in dl with adding audio timing as well and maybe some audio timing dl tests.
 */
-for * dl : global_dynamic_libraries if dl.ExternalPerFrame_proc_address != null {
+for * dl : global_dynamic_libraries if dl.is_running_dl_per_frame {
+	if dl.ExternalPerFrame_proc_address == null {
+		log_error("% not found for % trying to run. Stopped running.\n", DL_FUNCTION_PER_FRAME, dl.abs_path_name);
+		dl.is_running_dl_per_frame = false;
+		continue;
+	}
+
 	//TODO We could have these arrays be in 1 struct in AllData so we can just copy it over directly
 	AllDataToSharedLibraryData(*perm.all_data.shared_lib_data, dl, renderer_data, audio_data, game_input, 
 		*frame_hover_entities, perm.all_data);
+
 	ExternalPerFrame := cast(Type_ExternalRunOnce) dl.ExternalPerFrame_proc_address;
 	ExternalPerFrame(*perm.all_data.shared_lib_data);
 
-	perm.all_data.my_shared_data = perm.all_data.shared_lib_data.my_shared_data;
-	dl.my_per_dl_data = perm.all_data.shared_lib_data.my_per_dl_data;
+	PostUpdateExternal(dl, renderer_data, perm);
 }
 
 

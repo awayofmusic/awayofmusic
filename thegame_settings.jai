@@ -22,6 +22,8 @@ StartupSettingsData :: struct {
 
 	startup_window_pos_x_screen_fraction : float = 0.15;
 	startup_window_pos_y_screen_fraction : float = 0.075;
+
+	load_startup_dl : bool = false;
 }
 StartupSettingsReturn :: struct {
 	new_settings : StartupSettingsData;
@@ -519,13 +521,6 @@ assert(game_input.game_input_mappings.data != null && game_input.game_input_mapp
 	}
 
 	return true, "";
-}
-CopyDefaultInputMappings :: inline () -> [] InputMapping {
-	copy_im : [] InputMapping = array_copy(DEFAULT_INPUT_MAPPINGS);
-	for DEFAULT_INPUT_MAPPINGS {
-		copy_im[it_index].keyboard_maps = array_copy(it.keyboard_maps);
-	}	
-	return copy_im;
 }
 /*DOC : This is to setup the game input mappings on startup. We grab the parsed input mappings file and if that
 fails then we grab the defaults and log the error. If we update the game input mappings, in game, then
