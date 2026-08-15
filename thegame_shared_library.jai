@@ -28,6 +28,11 @@ SharedLibraryData :: struct {
 	audio_data : *AudioData;
 	game_input : *GameInput;
 
+	//Audio timing data
+	//These are pointers so audio timing can be adjusted manually. Not sure if that completely works though
+	audio_timing : *AudioTiming;
+	game_audio_play : *GameAudioPlay;
+
 	//TODO Should we group everything in all_data together here?
 	global_rules : GlobalRules;
 

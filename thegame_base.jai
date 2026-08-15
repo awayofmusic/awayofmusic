@@ -5729,69 +5729,8 @@ if perm.all_data.all_music_instructions.count > 0 {
 if !exec_info.continue_execution_next_frame {
 	array_reset_keeping_memory(*perm.all_data.all_process_instruction_events);
 }
-}	
-
-
-/*This will run the last run once dl function that was loaded.
-TODO Could allow specific dynamic libraries to be set from the terminal for example with this shortcut
-HOWEVER it is generally recommended to just use input with the per frame dl instead
-*/
-if IsInputMapPress(.RUN_EXTERNAL_UPDATE, .DOWN_THIS_FRAME, game_input) {
-	for < * global_dynamic_libraries if it.ExternalRunOnce_proc_address != null {
-		it.is_running_once_dl = true;
-		break;
-	}
-}
-/*This needs ot run before dl running per frame functions since this is assumed to be able to be used as
-either a run once at a time function OR a data initialization function.
-*/
-for * dl : global_dynamic_libraries if dl.is_running_once_dl {
-	//Always turn this off since we are only running once regardless of if we find an error or not.
-	dl.is_running_once_dl = false;
-	if dl.ExternalRunOnce_proc_address == null {
-		log_error("% not found for % trying to run. Stopped running.\n", DL_FUNCTION_RUN_ONCE, dl.abs_path_name);
-		continue;
-	}
-
-	//TODO We happens if we have an invalid function pointer here, I guess we can't really know and crash.
-	//So we should set ExternalRunOnce to null whenever that is possible to avoid issues.
-
-	// We could reload as a terminal command but we do in here for now so it is clearer.
-	// Although we compile the file as a terminal command for now but we could also do it here.
-	AllDataToSharedLibraryData(*perm.all_data.shared_lib_data, dl, renderer_data, audio_data, game_input, 
-		*frame_hover_entities, perm.all_data);
-
-	//TODO We could cast this beforehand to reuse but I will leave it like this for now so we only
-	//keep 1 pointer and dont have to reset it all the time.
-	ExternalRunOnce := cast(Type_ExternalRunOnce) dl.ExternalRunOnce_proc_address;
-	ExternalRunOnce(*perm.all_data.shared_lib_data);
-
-	PostUpdateExternal(dl, renderer_data, perm);
 }
 
-/*REMINDER : This needs to happen before audio buffer loading so that if we load audio into the buffer
-it gets all loaded accurately on the same frame.
-
-TODO FROM HERE PUT this after audio processing but before buffer loading then so we can have the updated
-audio positions and also the updated audio mspace id.
-AND THEN do music_pts/tano in dl with adding audio timing as well and maybe some audio timing dl tests.
-*/
-for * dl : global_dynamic_libraries if dl.is_running_dl_per_frame {
-	if dl.ExternalPerFrame_proc_address == null {
-		log_error("% not found for % trying to run. Stopped running.\n", DL_FUNCTION_PER_FRAME, dl.abs_path_name);
-		dl.is_running_dl_per_frame = false;
-		continue;
-	}
-
-	//TODO We could have these arrays be in 1 struct in AllData so we can just copy it over directly
-	AllDataToSharedLibraryData(*perm.all_data.shared_lib_data, dl, renderer_data, audio_data, game_input, 
-		*frame_hover_entities, perm.all_data);
-
-	ExternalPerFrame := cast(Type_ExternalRunOnce) dl.ExternalPerFrame_proc_address;
-	ExternalPerFrame(*perm.all_data.shared_lib_data);
-
-	PostUpdateExternal(dl, renderer_data, perm);
-}
 
 
 /* AUDIO STARTS HERE
@@ -6182,9 +6121,84 @@ if perm.all_data.all_start_playing_music_pts.count > 0 {
          }
 		}
 	}
-	array_reset_keeping_memory(*perm.all_data.all_start_playing_music_pts);
 }
+
+/*Dynamic library code
+This runs after all the other input and internal code but before rendering to the system audio and render buffer.
+This way we are in sync with audio timing in the dls here so we can have frame accurate audio timing in the dls through
+AudioData (system audio cursor), AudioTiming (general time) and GameAudioPlay (relative time and x_memory time and play state) 
+depending on what you need. Maybe we can collapse AudioTiming and GameAudioPlay eventually if needed.
+
+TODO We could put this before the audio processing above BUT The only advantage there is that we can then see some of the audio
+data that was loaded before the dl. Not sure if that matters or maybe is confusing in general?
+*/
+/*This will run the last run once dl function that was loaded.
+TODO Could allow specific dynamic libraries to be set from the terminal for example with this shortcut
+HOWEVER it is generally recommended to just use input with the per frame dl instead
+*/
+if IsInputMapPress(.RUN_EXTERNAL_UPDATE, .DOWN_THIS_FRAME, game_input) {
+	for < * global_dynamic_libraries if it.ExternalRunOnce_proc_address != null {
+		it.is_running_once_dl = true;
+		break;
+	}
+}
+/*This needs ot run before dl running per frame functions since this is assumed to be able to be used as
+either a run once at a time function OR a data initialization function.
+*/
+for * dl : global_dynamic_libraries if dl.is_running_once_dl {
+	//Always turn this off since we are only running once regardless of if we find an error or not.
+	dl.is_running_once_dl = false;
+	if dl.ExternalRunOnce_proc_address == null {
+		log_error("% not found for % trying to run. Stopped running.\n", DL_FUNCTION_RUN_ONCE, dl.abs_path_name);
+		continue;
+	}
+
+	//TODO We happens if we have an invalid function pointer here, I guess we can't really know and crash.
+	//So we should set ExternalRunOnce to null whenever that is possible to avoid issues.
+
+	// We could reload as a terminal command but we do in here for now so it is clearer.
+	// Although we compile the file as a terminal command for now but we could also do it here.
+	AllDataToSharedLibraryData(*perm.all_data.shared_lib_data, dl, renderer_data, audio_data, game_input, 
+		*frame_hover_entities, perm.all_data);
+
+	//TODO We could cast this beforehand to reuse but I will leave it like this for now so we only
+	//keep 1 pointer and dont have to reset it all the time.
+	ExternalRunOnce := cast(Type_ExternalRunOnce) dl.ExternalRunOnce_proc_address;
+	ExternalRunOnce(*perm.all_data.shared_lib_data);
+
+	PostUpdateExternal(dl, renderer_data, perm);
+}
+/*REMINDER : This needs to happen before audio buffer loading so that if we load audio into the buffer
+it gets all loaded accurately on the same frame for dynamic libraries
+*/
+for * dl : global_dynamic_libraries if dl.is_running_dl_per_frame {
+	if dl.ExternalPerFrame_proc_address == null {
+		log_error("% not found for % trying to run. Stopped running.\n", DL_FUNCTION_PER_FRAME, dl.abs_path_name);
+		dl.is_running_dl_per_frame = false;
+		continue;
+	}
+
+	//TODO We could have these arrays be in 1 struct in AllData so we can just copy it over directly
+	AllDataToSharedLibraryData(*perm.all_data.shared_lib_data, dl, renderer_data, audio_data, game_input, 
+		*frame_hover_entities, perm.all_data);
+
+	ExternalPerFrame := cast(Type_ExternalRunOnce) dl.ExternalPerFrame_proc_address;
+	ExternalPerFrame(*perm.all_data.shared_lib_data);
+
+	PostUpdateExternal(dl, renderer_data, perm);
+}
+
+/*I am putting this after dynamic library processing in case we want to process these through the dls as well.
+Or we can mute the mspaces as well and then only process this through the dls in any way.
+*/
+array_reset_keeping_memory(*perm.all_data.all_start_playing_music_pts);
+
 /*This is for internal audio and synthesis.
+I can put this before the dynamic library function but am leaving after since this gives a simplified way
+of loading up simple synths by just setting some waves and then having it get process here internally automatically.
+TODO If we add more complex internal synths later (eg sub synth, fm synth, new synths...) then those can also
+be placed here for simplified synth processing so we don't always have to generate samples directly in the dl
+and the audio will be all per frame accurate with the rendering this way.
 */
 // #if 1 {
 for * synth : perm.all_data.all_simple_synths if synth.simple_waves.count > 0 {

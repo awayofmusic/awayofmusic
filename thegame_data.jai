@@ -3195,6 +3195,10 @@ AllDataToSharedLibraryData :: inline (
 	sl.renderer_data = renderer_data;
 	sl.audio_data = audio_data;
 	sl.game_input = game_input;
+
+	sl.audio_timing = *all_data.audio_timing;
+	sl.game_audio_play = *all_data.game_audio_play;
+
 	sl.all_tuning_systems = *all_data.all_tuning_systems;
 	sl.all_tuning_pitches = *all_data.all_tuning_pitches;
 
@@ -9115,64 +9119,6 @@ MapMusicPtsToSpace2D :: inline (
 	}
 
 	return return_music_to_space_pts;
-}
-
-//TODO Should we put this in "thegame_audio.jai"?
-//Right now it's data so maybe once we move all the data round
-//TODO GameAudioPlay and PlayAudioEvent should be done
-//on a per music_lane basis
-GameAudioPlay :: struct {
-	play_state : AudioPlayState;
-
-	abs_start_time : float64;
-
-	rel_initial_time : float64;
-	rel_play_time : float64;
-	rel_play_beat : float64; //TODO Do we really need this?
-
-	float_x_memory : float64;
-	current_x_memory : int;
-
-	//TODO this should be last_played_unit
-	//once we use rhythm_units for memory_index
-	last_memory_unit_played : int;
-
-	music_pt_play_index : int;
-
-	//TODO Should this be memory_units_per_beat?
-	//We could calculate that with bps anyways but maybe it's a better default.
-	//Then we could put a thick line for each of these to show the beat.
-	memory_units_per_second : float64;
-}
-
-AudioPlayState :: enum {
-	STOP;
-	PLAY;
-	PAUSE;
-}
-
-//TODO FROM HERE USE THIS INSTEAD WHILE PLAYING AND OTHER UPDATE AND ONLY UPDATE BELOW
-//WHEN WE RESET
-IncrementRelAudioTime :: inline (
-	g : *GameAudioPlay,
-	at : AudioTiming) 
-{
-	g.rel_play_time += at.time_delta;
-}
-
-UpdateAudioMemoryUnitPos :: (
-	g : *GameAudioPlay,
-	at : AudioTiming)
-{
-	g.float_x_memory = g.rel_play_time * g.memory_units_per_second;
-	g.current_x_memory = cast(int) g.float_x_memory;
-
-	//TODO Do we even need this?
-	g.rel_play_beat = g.rel_play_time * at.bps;
-	
-	//Old rel_play_time calculation for remembering
-	// g.rel_play_time = 
-	// 	at.current_time - g.abs_start_time + g.rel_initial_time;
 }
 
 /*TODO Could eventually replace this with AllAudioAction

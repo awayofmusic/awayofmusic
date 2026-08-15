@@ -66,17 +66,22 @@ S3CamStartType :: enum {
 	USER_SET;
 	POINT_FOCUS;
 }
+SpiralType :: enum {
+	PROPER;
+	CONCENTRIC_CIRCLE;
+	BOOK;
+}
 DrawVLType :: enum {
 	NONE;
 	VL_LINE;
 	VL_ARROW;
 }
-AsmShapeType :: enum {
-	RECTANGLE;
-}
 AsmOpSpaceType :: enum {
 	space_2d;
 	space_3d;
+}
+AsmShapeType :: enum {
+	RECTANGLE;
 }
 CustomAudioType :: enum {
 	TUNING_SYSTEM;
@@ -103,15 +108,6 @@ ChordSpaceFilterAggregate :: enum {
 	INTERSECTION;
 	UNION;
 }
-SpiralType :: enum {
-	PROPER;
-	CONCENTRIC_CIRCLE;
-	BOOK;
-}
-LinearPitchSpaceView :: enum {
-	RATIO_PROPORTIONAL;
-	FORCE_EQUAL;
-}
 RowSystemType :: enum {
 	none;
 	internal_message;
@@ -120,6 +116,15 @@ RowSystemType :: enum {
 	midi_velocity;
 	midi_pitch;
 }
+GetOrCreateMSpaceType :: enum {
+	GET_BY_NAME;
+	GET_BY_ID;
+	GET_BY_INDEX;
+}
+LinearPitchSpaceView :: enum {
+	RATIO_PROPORTIONAL;
+	FORCE_EQUAL;
+}
 SimpleSynthMessageType :: enum {
 	VOLUME;
 	WAVE_TYPE;
@@ -127,11 +132,6 @@ SimpleSynthMessageType :: enum {
 	RELEASE_SECONDS;
 	ATTACK_CURVE;
 	RELEASE_CURVE;
-}
-GetOrCreateMSpaceType :: enum {
-	GET_BY_NAME;
-	GET_BY_ID;
-	GET_BY_INDEX;
 }
 OscWaveType :: enum {
 	SINE;
@@ -269,13 +269,6 @@ AsmGeom2D :: struct {
 	collision_dim : Vector2;
 	show_collision : bool;
 }
-AsmText2D :: struct {
-	op_space_id : int;
-	text : string;
-	op_pos : Vector2;
-	color : Vector4;
-	render_order : int;
-}
 AsmShapeData :: struct {
 	ret_shape_id : int;
 	dspace_id : int;
@@ -290,6 +283,13 @@ AsmShapeData :: struct {
 	type : AsmShapeType;
 	rect_pos : Vector2;
 	rect_dim : Vector2;
+}
+AsmText2D :: struct {
+	op_space_id : int;
+	text : string;
+	op_pos : Vector2;
+	color : Vector4;
+	render_order : int;
 }
 AsmCreateSpiral :: struct {
 	ret_dspace_id : int;

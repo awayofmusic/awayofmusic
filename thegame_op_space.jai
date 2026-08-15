@@ -3433,7 +3433,7 @@ UpdatePixelsPerSquareEverywhere :: inline (
 	for renderer_data.all_render_groups {
 		it.pixels_per_square = new_pixels_per_square;
 		UpdateHalfMonitorSquares(it);
-	}			
+	}
 	ResizeAllOpSpaces(perm);
 }
 

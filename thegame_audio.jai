@@ -1062,6 +1062,65 @@ BeatHitThisFrame :: inline (beat_index : int, beat_count : int, audio_timing : A
 	return beat_hit;
 }
 
+//TODO GameAudioPlay and PlayAudioEvent should be done on a per music_lane basis OR MAYBE NOT ANYMORE
+//TODO Should this still be separate from AudioTiming. I think originally I wanted this
+//to be per lane but now its global so maybe I can collapse this and AudioTiming and remove any
+//unused or duplicate timing values that way once we know everything is working.
+GameAudioPlay :: struct {
+	play_state : AudioPlayState;
+
+	abs_start_time : float64;
+
+	rel_initial_time : float64;
+	rel_play_time : float64;
+	rel_play_beat : float64; //TODO Do we really need this?
+
+	float_x_memory : float64;
+	current_x_memory : int;
+
+	//TODO this should be last_played_unit
+	//once we use rhythm_units for memory_index
+	last_memory_unit_played : int;
+
+	music_pt_play_index : int;
+
+	//TODO Should this be memory_units_per_beat?
+	//We could calculate that with bps anyways but maybe it's a better default.
+	//Then we could put a thick line for each of these to show the beat.
+	memory_units_per_second : float64;
+}
+
+AudioPlayState :: enum {
+	STOP;
+	PLAY;
+	PAUSE;
+}
+
+//TODO FROM HERE USE THIS INSTEAD WHILE PLAYING AND OTHER UPDATE AND ONLY UPDATE BELOW WHEN WE RESET
+//TODO This is just a += and I think we only do it in one play so maybe we can just set the +=
+//but maybe leaving the function name makes it clearer and we can keep it only happening 1 place by name that way.
+IncrementRelAudioTime :: inline (
+	g : *GameAudioPlay,
+	at : AudioTiming) 
+{
+	g.rel_play_time += at.time_delta;
+}
+
+UpdateAudioMemoryUnitPos :: (
+	g : *GameAudioPlay,
+	at : AudioTiming)
+{
+	g.float_x_memory = g.rel_play_time * g.memory_units_per_second;
+	g.current_x_memory = cast(int) g.float_x_memory;
+
+	//TODO Do we even need this?
+	g.rel_play_beat = g.rel_play_time * at.bps;
+	
+	//Old rel_play_time calculation for remembering
+	// g.rel_play_time = 
+	// 	at.current_time - g.abs_start_time + g.rel_initial_time;
+}
+
 //END OF AUDIO TIMING
 
 /*
@@ -1115,6 +1174,7 @@ AudioData :: struct {
 		who knows if well want an infinite song or if someone wants to leave the game on forever  
 		TODO Can make this a u64 to get that extra bit.
 	*/
+	//WARNING : Update play_cursor and play_time at your own risk as these are system-based variables for audio timing.
 	play_cursor : int;
 	play_time : float64;
 	beats_per_minute : float64;
@@ -1123,6 +1183,7 @@ AudioData :: struct {
     SamplesToFill : int;
     SamplesPerPeriod : float64;
     SamplesPerPeriod32 : float;
+    //TODO This should be tested for 48kHz and 96kHz (maybe also 44.1kHz if needed)
     SampleRate : int = 48000;
     seconds_per_sample : float;
     seconds_per_sample_f64 : float64;
