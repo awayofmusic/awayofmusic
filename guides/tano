@@ -57,22 +57,32 @@ main :: () {
 	rd.row_system_type = RowSystemType.internal_pitch;
 	rd.row_system_id = synth.ret_synth_id;
 	#asm{ create_row rd; }
+	//rd.row_cam_y = 2.0;
 	#asm{ create_row rd; }
+	//rd.row_cam_y = 0.0;
 	#asm{ create_row rd; }
 
 	/*The trivial default case of tano(0,0) is a piano in 12-et.
 	Both integer and float values and arrays 
 	can be set to the tano using the ~= operator.
 	*/
-	tano(0,0) ~= 0;
-	tano(0,1) ~= int.[0,4];
-	tano(0,1) ~= 7.5;
-	tano(0,2) ~= float.[0.2, 4.2, 7.2, 11.2];
+	tano(0,0) ~= 9;
+	tano(0,1) ~= 5;
+	tano(0,2) ~= 7;
+	tano(0,3) ~= 0;
+
+	tano(0,5) ~= tano(0,4..2);
+	tano(0,7) ~= tano(0,0..2);
+
+	tano(1,1) ~= int.[0,9];
+	tano(1,8) ~= 12 - tano(1,1);
+	//tano(0,1) ~= 7.5;
+	//tano(0,2) ~= float.[0.2, 4.2, 7.2, 11.2];
 
 	//tano(0,x_start..x_end)
-	tano(0,3..5) ~= int.[1,2,3];
+	//tano(0,3..5) ~= int.[1,2,3];
 	//tano(0,x_start:x_length)
-	tano(0,5:3) ~= int.[0,7];
+	//tano(0,5:3) ~= int.[0,7];
 
 	//tano struct type is built into the programming language
 	t : tano = tano(0, 0..4);

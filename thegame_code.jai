@@ -13809,6 +13809,7 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		//TODO Should we make these float64 instead so we don't lose information?
 		crd.octave_height = cast(float) asm_data.octave_height;
 		crd.row_height = cast(float) asm_data.row_height;
+		crd.row_base_pt = cast(float) asm_data.row_base_pt;
 		crd.muted_row = AsmBoolToBool(asm_data.muted_row);
 		crd.row_system_type = asm_data.row_system_type;
 		crd.row_system_id = asm_data.row_system_id;

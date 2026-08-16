@@ -8549,16 +8549,6 @@ CreateMusicPtByIType :: inline (
 	return mp;
 }
 
-CreateMusicPtInMemory :: inline (
-	music_pt : MusicPoint,
-	all_music_pts : *[..] MusicPoint)
--> *MusicPoint
-{
-	mp : *MusicPoint = array_add(all_music_pts);
-	mp.* = music_pt;
-	return mp;
-}
-
 //Leaving old method just in case but can remove if we never use.
 //New way is more efficient since we access memory directly and more flexible 
 //since we can return a pointer if needed.

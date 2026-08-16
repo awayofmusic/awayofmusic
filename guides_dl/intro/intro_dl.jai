@@ -82,7 +82,7 @@ ExternalRunOnce :: (shared_lib : *SharedLibraryData) {
 		*shared_lib.all_mspace_data.*[0].all_music_pts);	
 	// tano(0,2..4) ~= int.[0,3,7];
 	CreateManyMusicPtsInMemory(float64.[0,3,7], 0, 2, 4, 
-		*shared_lib.all_mspace_data.*[0].all_music_pts);	
+		*shared_lib.all_mspace_data.*[0].all_music_pts);
 	
 	//Opening other op spaces can be found in guides_dl/circle.
 

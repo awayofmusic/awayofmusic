@@ -12116,7 +12116,7 @@ DONE,,unit_test_alloc);
 	AssertEquals(size_of(AsmCreateRowData), row_data_info.runtime_size);
 	AssertEquals("AsmCreateRowData", row_data_info.name);
 	AssertEquals(TypeInfoTag.STRUCT, row_data_info.type_enum);
-	count_equals = AssertEquals(8, row_data_info.struct_members.count);
+	count_equals = AssertEquals(9, row_data_info.struct_members.count);
 	if !count_equals return;	
 	octave_info := row_data_info.struct_members[0];
 	AssertEquals(cd.float_type_info.runtime_size, octave_info.t_info.runtime_size);
@@ -12128,37 +12128,42 @@ DONE,,unit_test_alloc);
 	AssertEquals("row_height", row_height_info.name);
 	AssertEquals(TypeInfoTag.FLOAT, row_height_info.t_info.type_enum);
 	AssertEquals(8, row_height_info.offset_in_bytes);
-	sound_on_info := row_data_info.struct_members[2];
+	row_base_pt := row_data_info.struct_members[2];
+	AssertEquals(cd.float_type_info.runtime_size, row_base_pt.t_info.runtime_size);
+	AssertEquals("row_base_pt", row_base_pt.name);
+	AssertEquals(TypeInfoTag.FLOAT, row_base_pt.t_info.type_enum);
+	AssertEquals(16, row_base_pt.offset_in_bytes);
+	sound_on_info := row_data_info.struct_members[3];
 	AssertEquals(cd.float_type_info.runtime_size, sound_on_info.t_info.runtime_size);
 	AssertEquals("muted_row", sound_on_info.name);
 	AssertEquals(TypeInfoTag.BOOL, sound_on_info.t_info.type_enum);
-	AssertEquals(16, sound_on_info.offset_in_bytes);
-	row_system_type_info := row_data_info.struct_members[3];
+	AssertEquals(24, sound_on_info.offset_in_bytes);
+	row_system_type_info := row_data_info.struct_members[4];
 	AssertEquals(cd.float_type_info.runtime_size, row_system_type_info.t_info.runtime_size);
 	AssertEquals("row_system_type", row_system_type_info.name);
 	AssertEquals(TypeInfoTag.ENUM, row_system_type_info.t_info.type_enum);
-	AssertEquals(24, row_system_type_info.offset_in_bytes);
-	row_system_id_info := row_data_info.struct_members[4];
+	AssertEquals(32, row_system_type_info.offset_in_bytes);
+	row_system_id_info := row_data_info.struct_members[5];
 	AssertEquals(cd.int_type_info.runtime_size, row_system_id_info.t_info.runtime_size);
 	AssertEquals("row_system_id", row_system_id_info.name);
 	AssertEquals(TypeInfoTag.INTEGER, row_system_id_info.t_info.type_enum);
-	AssertEquals(32, row_system_id_info.offset_in_bytes);
-	row_sub_system_id_info := row_data_info.struct_members[5];
+	AssertEquals(40, row_system_id_info.offset_in_bytes);
+	row_sub_system_id_info := row_data_info.struct_members[6];
 	AssertEquals(cd.int_type_info.runtime_size, row_sub_system_id_info.t_info.runtime_size);
 	AssertEquals("row_sub_system_id", row_sub_system_id_info.name);
 	AssertEquals(TypeInfoTag.INTEGER, row_sub_system_id_info.t_info.type_enum);
-	AssertEquals(40, row_sub_system_id_info.offset_in_bytes);
-	section_count_info := row_data_info.struct_members[6];
+	AssertEquals(48, row_sub_system_id_info.offset_in_bytes);
+	section_count_info := row_data_info.struct_members[7];
 	AssertEquals(cd.all_type_info_array[0].runtime_size, section_count_info.t_info.runtime_size);
 	AssertEquals("row_sections", section_count_info.name);
 	AssertEquals(TypeInfoTag.ARRAY, section_count_info.t_info.type_enum);
-	AssertEquals(48, section_count_info.offset_in_bytes);
+	AssertEquals(56, section_count_info.offset_in_bytes);
 	asm_midi_info, found_asm_midi_info := GetTypeInfoStructByName("AsmRowMidiData", cd.all_type_info_struct);
-	asm_midi_member_info := row_data_info.struct_members[7];
+	asm_midi_member_info := row_data_info.struct_members[8];
 	AssertEquals(asm_midi_info.runtime_size, asm_midi_member_info.t_info.runtime_size);
 	AssertEquals("row_midi_data", asm_midi_member_info.name);
 	AssertEquals(TypeInfoTag.STRUCT, asm_midi_member_info.t_info.type_enum);
-	AssertEquals(64, asm_midi_member_info.offset_in_bytes);
+	AssertEquals(72, asm_midi_member_info.offset_in_bytes);
 
 	create_space_info, found_create_space_info := GetTypeInfoStructByName("AsmOpSpaceData", cd.all_type_info_struct);
 	AssertEquals(true, found_create_space_info);
@@ -12379,16 +12384,16 @@ DONE,,unit_test_alloc);
 		MakeMI(.mset, rd_var.op, Imm(0), Imm(row_data_info.runtime_size)),
 		MakeMI(.mov, rd_var.op, FImm(12.0), Imm(cd.float_type_info.runtime_size)),
 		MakeMI(.mov, AddOperandOffset(8, rd_var.op), FImm(12.0), Imm(cd.float_type_info.runtime_size)),
-		MakeMI(.mov, AddOperandOffset(16, rd_var.op), Imm(cast(int) false), Imm(cd.bool_type_info.runtime_size)),
-		MakeMI(.mov, AddOperandOffset(24, rd_var.op), ImmEnum(RowSystemType.internal_pitch), Imm(row_audio_info.runtime_size)),
+		MakeMI(.mov, AddOperandOffset(24, rd_var.op), Imm(cast(int) false), Imm(cd.bool_type_info.runtime_size)),
+		MakeMI(.mov, AddOperandOffset(32, rd_var.op), ImmEnum(RowSystemType.internal_pitch), Imm(row_audio_info.runtime_size)),
 		//row_sections fixed array added to stack
 		MakeMI(.mov, RamMem(.sbp,stack_p), rs_var.op, Imm(rs_var.t_info.runtime_size)),
 		//TODO REDUNDANT INSTRUCTION NEED TO CHECK WHY AND OPTIMIZE OUT
 		MakeMI(.mov, RamMem(.sbp,stack_p), RamMem(.sbp,stack_p), Imm(rs_var.t_info.runtime_size)),
 		//row_sections.count
-		MakeMI(.mov, AddOperandOffset(48, rd_var.op), Imm(1), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mov, AddOperandOffset(56, rd_var.op), Imm(1), Imm(cd.int_type_info.runtime_size)),
 		//row_sections.data
-		MakeMI(.add, AddOperandOffset(56, rd_var.op), RegMem(.sbp), Imm(stack_p)),
+		MakeMI(.add, AddOperandOffset(64, rd_var.op), RegMem(.sbp), Imm(stack_p)),
 
 		MakeMI(.create_row, rd_var.op),
 

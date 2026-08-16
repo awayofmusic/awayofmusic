@@ -2093,7 +2093,8 @@ SaveTextFile :: (text_file : *TextFile) -> success : bool, msg : string {
 		if update_file_name {
 			UpdateTextFileName(new_file_name, text_file);
 		}
-		modtime, resource_file_size, read_time_success := file_modtime_and_size(text_file.file_name);		text_file.file_write_time = modtime;
+		modtime, resource_file_size, read_time_success := file_modtime_and_size(text_file.file_name);		
+		text_file.file_write_time = modtime;
 		text_file.file_string.not_saved_text_edit = false;
 		return true, tprint("% saved.\n", text_file.file_name);
  	}

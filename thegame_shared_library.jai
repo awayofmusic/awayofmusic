@@ -678,11 +678,11 @@ ClearMusicSpace :: (
 	ClearMusicSpace(mspace);
 	return true, "";
 }
-ClearMusicSpace :: (mspace_data : *MusicSpaceData) {
+ClearMusicSpace :: (mspace_data : *MusicSpaceData, reset_camera : bool = false) {
 	#insert #run SetResizableArrays(MusicSpaceData, 
 		"array_reset_keeping_memory(*mspace_data.%);\n");
 
-	ResetCamera2D(*mspace_data.mspace_cam);
+	if reset_camera ResetCamera2D(*mspace_data.mspace_cam);
 }
 
 OP_SPACE_DEFAULT_SIZE :: Vector2F.{40,30};
@@ -793,6 +793,8 @@ MusicPoint :: struct {
 	//TODO leaving this here so we don't break old code for now
 	/*TODO I THINK WE CAN TRY REMOVING THIS NOW AND SEE HOW IT WORKS WITH JUST music_pt_float
 	I will leave for now, but we can try that at some point and I don't think we use it anywhere
+	IGNORE THIS VARIABLE TI WILL BE REMOVED ONCE WE MAKE SURE ITS WORKING EVERYWHERE WITHOUT IT
+	use music_pt_float everywhere instead for now as that is what is used for audio and rendering
 	*/
 	music_pt_pos : int;
 
@@ -1032,6 +1034,8 @@ MusicPoint :: struct {
 	music_pt_pos : u32 probably don't need more.
 	And we could have an SoA for efficiency and then
 	easily do SIMD for some operations ADD, MOVE, SUB...
+
+	IGNORE THIS AS IT WILL BE REMOVED SINCE MUSIC PTS DONT NEED IDS AS THEY DONT NEED TO BE UNIQUE
 	*/
 	id : int;
 	//TODO could use this instead of a direct music_pt_id
@@ -1054,6 +1058,7 @@ MusicPoint :: struct {
 		So then maybe invariant_id should be internal and not visible to the player.
 	*/
 	//TODO Can likely remove this since we MAY only need for op_space but also maybe not at all
+	//TODO THIS IS AN OLD VARIABLE AND WILL ALSO BE REMOVED
 	invariant_id : int;
 }
 //TODO Could make an equals operator overload here if that's better
@@ -1186,6 +1191,15 @@ CreateMusicPtInMemory :: inline (
 	SetMemoryMusicPoint(mp, music_pt_pos, row_index, x_start, x_end);
 	return mp;
 }
+CreateMusicPtInMemory :: inline (
+	music_pt : MusicPoint,
+	all_music_pts : *[..] MusicPoint)
+-> *MusicPoint
+{
+	mp : *MusicPoint = array_add(all_music_pts);
+	mp.* = music_pt;
+	return mp;
+}
 CreateManyMusicPtsInMemory :: inline (
 	input_music_pt_poses : [] $T,
 	row_index : int,
@@ -1202,6 +1216,7 @@ CreateManyMusicPtsInMemory :: inline (
 	}
 	return result_music_pts;
 }
+
 
 //TODO Should swap value and row_index i think for consistency since we do that everywhere else.
 ValueInMusicPt :: inline (value : $T, row_index : int, mp : MusicPoint) -> bool {
@@ -2034,6 +2049,7 @@ LinearPitchSpace :: struct {
 AsmCreateRowData :: struct {
 	octave_height : float64;
 	row_height : float64;
+	row_base_pt : float64;
 	muted_row : AsmBool;
 	//TODO Should we make this it's own struct?
 	row_system_type : RowSystemType;
@@ -2115,9 +2131,11 @@ CreateMusicRow :: inline (
 	row.row_midi_data = create_row_data.row_midi_data;
 	row.row_system_type = create_row_data.row_system_type;
 	row.system_id = create_row_data.row_system_id;
+	row.sub_system_id = create_row_data.row_sub_system_id;
 	// row.sound_on = create_row_data.sound_on;
 	row.is_muted_row = create_row_data.muted_row;
 	// row.num_of_points = GetRowNumOfPoints(create_row_data.tuning_system_count, create_row_data);
+	row.row_cam.y = create_row_data.row_base_pt;
 	}
 
 	last_section_x : int = 0;
@@ -2424,7 +2442,10 @@ CreateRowData :: struct {
 	tuning_system_type : TuningSystemType;
 	tuning_system_count : int;
 
+	//TODO Can we remove base_note since we use row_cam instead now?
 	base_note : int;
+	//TODO Need to add this to AsmCreateRowData and test it
+	row_base_pt : float;
 
 	//TODO Can we remove this if we are using tuning system only now? I think so yes but maybe
 	//need to remove some old code before it'll compile out.
