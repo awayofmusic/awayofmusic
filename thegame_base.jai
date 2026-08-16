@@ -5331,8 +5331,12 @@ DONE);
 			term_data.next_cmd_history_index =
 				PosMod(term_data.next_cmd_history_index+1, term_data.terminal_cmd_history.count);
 			term_data.cmd_history_count = min(term_data.cmd_history_count+1, term_data.terminal_cmd_history.count);
-			term_data.history_select_offset = 0;
 		}
+		//Resetting here seems to always reset whenever we run a command whether its from the history or not.
+		//This used to be IN the above if statement and would not get reset if we kept running history command there.
+		//Leaving these notes as a reminder in case there is another issue.
+		term_data.history_select_offset = 0;
+
 		//Make the current command history empty
 		//REMINDER This needs to be reset no matter what so that we don't keep the last command in last history if it's the same as the last one
 		CopyToCurrentCmdHistory("", term_data);

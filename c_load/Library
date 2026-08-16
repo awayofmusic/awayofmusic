@@ -23,23 +23,23 @@ CreateTuningType :: enum {
 	LINEAR_FROM_START;
 	LINEAR_TO_NEXT;
 }
-AsmDeleteSimpleSynthData :: struct {
-	synth_id : int;
-}
 AsmClearMSpaceData :: struct {
 	mspace_id : int;
 }
 AsmDeleteMSpaceData :: struct {
 	mspace_id : int;
 }
-AsmRowMidiData :: struct {
-	midi_channel : int;
-	midi_velocity : int;
-	midi_control_change : int;
+AsmDeleteSimpleSynthData :: struct {
+	synth_id : int;
 }
 AsmClearOpData :: struct {
 	op_space_id : int;
 	clear_not_filter_3D : bool;
+}
+AsmRowMidiData :: struct {
+	midi_channel : int;
+	midi_velocity : int;
+	midi_control_change : int;
 }
 AsmGetTuningSystemData :: struct {
 	ret_tuning_system_id : int;
@@ -61,6 +61,33 @@ AsmGetOrCreateSimpleSynthData :: struct {
 	ret_synth_id : int;
 	synth_name : string;
 }
+DrawVLType :: enum {
+	NONE;
+	VL_LINE;
+	VL_ARROW;
+}
+S3CamStartType :: enum {
+	MIN_ZY;
+	USER_SET;
+	POINT_FOCUS;
+}
+ChordSpaceFilterAggregate :: enum {
+	INTERSECTION;
+	UNION;
+}
+SpiralType :: enum {
+	PROPER;
+	CONCENTRIC_CIRCLE;
+	BOOK;
+}
+AsmOpSpaceType :: enum {
+	space_2d;
+	space_3d;
+}
+CustomAudioType :: enum {
+	TUNING_SYSTEM;
+	PITCH_SET_AS_FREQUENCY;
+}
 ChordSpaceFilterType :: enum {
 	DEFAULT;
 	ALL;
@@ -78,35 +105,8 @@ ChordSpaceFilterType :: enum {
 	CHROMATIC_SUM;
 	EQUALS_AND_ONE_VL_SUM;
 }
-ChordSpaceFilterAggregate :: enum {
-	INTERSECTION;
-	UNION;
-}
-SpiralType :: enum {
-	PROPER;
-	CONCENTRIC_CIRCLE;
-	BOOK;
-}
-S3CamStartType :: enum {
-	MIN_ZY;
-	USER_SET;
-	POINT_FOCUS;
-}
-AsmOpSpaceType :: enum {
-	space_2d;
-	space_3d;
-}
 AsmShapeType :: enum {
 	RECTANGLE;
-}
-CustomAudioType :: enum {
-	TUNING_SYSTEM;
-	PITCH_SET_AS_FREQUENCY;
-}
-DrawVLType :: enum {
-	NONE;
-	VL_LINE;
-	VL_ARROW;
 }
 RowSystemType :: enum {
 	none;
@@ -270,6 +270,13 @@ AsmGeom2D :: struct {
 	collision_dim : Vector2;
 	show_collision : bool;
 }
+AsmText2D :: struct {
+	op_space_id : int;
+	text : string;
+	op_pos : Vector2;
+	color : Vector4;
+	render_order : int;
+}
 AsmShapeData :: struct {
 	ret_shape_id : int;
 	dspace_id : int;
@@ -284,13 +291,6 @@ AsmShapeData :: struct {
 	type : AsmShapeType;
 	rect_pos : Vector2;
 	rect_dim : Vector2;
-}
-AsmText2D :: struct {
-	op_space_id : int;
-	text : string;
-	op_pos : Vector2;
-	color : Vector4;
-	render_order : int;
 }
 AsmCreateSpiral :: struct {
 	ret_dspace_id : int;
