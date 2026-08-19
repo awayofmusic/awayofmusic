@@ -23,14 +23,14 @@ CreateTuningType :: enum {
 	LINEAR_FROM_START;
 	LINEAR_TO_NEXT;
 }
-AsmDeleteSimpleSynthData :: struct {
-	synth_id : int;
-}
 AsmClearMSpaceData :: struct {
 	mspace_id : int;
 }
 AsmDeleteMSpaceData :: struct {
 	mspace_id : int;
+}
+AsmDeleteSimpleSynthData :: struct {
+	synth_id : int;
 }
 AsmRowMidiData :: struct {
 	midi_channel : int;
@@ -61,15 +61,26 @@ AsmGetOrCreateSimpleSynthData :: struct {
 	ret_synth_id : int;
 	synth_name : string;
 }
+S3CamStartType :: enum {
+	MIN_ZY;
+	USER_SET;
+	POINT_FOCUS;
+}
+AsmShapeType :: enum {
+	RECTANGLE;
+}
+CustomAudioType :: enum {
+	TUNING_SYSTEM;
+	PITCH_SET_AS_FREQUENCY;
+}
 DrawVLType :: enum {
 	NONE;
 	VL_LINE;
 	VL_ARROW;
 }
-S3CamStartType :: enum {
-	MIN_ZY;
-	USER_SET;
-	POINT_FOCUS;
+AsmOpSpaceType :: enum {
+	space_2d;
+	space_3d;
 }
 ChordSpaceFilterType :: enum {
 	DEFAULT;
@@ -98,10 +109,6 @@ SpiralType :: enum {
 	CONCENTRIC_CIRCLE;
 	BOOK;
 }
-CustomAudioType :: enum {
-	TUNING_SYSTEM;
-	PITCH_SET_AS_FREQUENCY;
-}
 RowSystemType :: enum {
 	none;
 	internal_message;
@@ -110,12 +117,9 @@ RowSystemType :: enum {
 	midi_velocity;
 	midi_pitch;
 }
-AsmOpSpaceType :: enum {
-	space_2d;
-	space_3d;
-}
-AsmShapeType :: enum {
-	RECTANGLE;
+LinearPitchSpaceView :: enum {
+	RATIO_PROPORTIONAL;
+	FORCE_EQUAL;
 }
 SimpleSynthMessageType :: enum {
 	VOLUME;
@@ -129,10 +133,6 @@ GetOrCreateMSpaceType :: enum {
 	GET_BY_NAME;
 	GET_BY_ID;
 	GET_BY_INDEX;
-}
-LinearPitchSpaceView :: enum {
-	RATIO_PROPORTIONAL;
-	FORCE_EQUAL;
 }
 OscWaveType :: enum {
 	SINE;

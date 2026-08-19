@@ -1578,9 +1578,23 @@ JaiProcessWindowInput :: (new_input : *GameInput) {
 				//adjusting the scroll wheel themselves, then we would have to change it as well.
 				//Could just set it to be +/- 1 or 2 (test out later) depending on if wheel delta is 1 or > 1 or something.
 				//Can do it logarithmically (so 1 == 1 and 1-10 == 2 and 10+ == 3)
-				//The acceleration makes it tricky to judge but at least we can dampen it and maybe allow people to adjust it.
-				new_input.mouse_wheel = event.wheel_delta;
-				print("mouse_wheel=%\n", new_input.mouse_wheel);
+				//The acceleration makes it tricky to judge but at least we can dampen it. 
+				//TODO WE COULD make this adjustable through startup settings or runtime settings.
+				new_input.mouse_wheel = 0;
+				if event.wheel_delta >= 10 {
+					new_input.mouse_wheel = 3;
+				} else if event.wheel_delta <= -10 {
+					new_input.mouse_wheel = -3;
+				} else if event.wheel_delta > 1 {
+					new_input.mouse_wheel = 2;
+				} else if event.wheel_delta < -1 {
+					new_input.mouse_wheel = -2;
+				} else if event.wheel_delta == 1 {
+					new_input.mouse_wheel = 1;
+				} else if event.wheel_delta == -1 {
+					new_input.mouse_wheel = -1;
+				}
+				// print("mouse_wheel=%\n", new_input.mouse_wheel);
 				}
 			}
 			case .QUIT; {
