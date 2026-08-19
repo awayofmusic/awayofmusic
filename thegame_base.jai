@@ -272,9 +272,15 @@ it should be registered as on top of whatever it is after moving on the same fra
 
 REMINDER : The pixels_per_square in global zooming needs to be updated before this so that any movement below that considers
 pixels per square will still be correct.
+
+IMPORTANT : UNFORTUNATELY jai-Input on MACOS does not return the modifier flags (ctrl, alt and shift) correctly with mouse
+presses. SO we ignore flags and just hardcode the ctrl+mouse_button_right here for now so we have the same code on mac and windows.
+If this bug gets fixed in jai-Input then we can use the GLOBAL_MOVE_INSTANTLY input mapping normally.
+It does work on windows but to keep the same code on all system we will leave it like this for now.
 */
 // if IsKeyboardPress(.MOUSE_BUTTON_LEFT, .{ctrl_pressed=true,shift_pressed=true}, .DOWN_THIS_FRAME, game_input) {
-if IsInputMapPress(.GLOBAL_MOVE_INSTANTLY, .DOWN_THIS_FRAME, game_input) {
+if IsInputDown(.CTRL, game_input) && IsKeyboardPressAnyFlag(.MOUSE_BUTTON_RIGHT, .DOWN_THIS_FRAME, game_input) {
+// if IsInputMapPress(.GLOBAL_MOVE_INSTANTLY, .DOWN_THIS_FRAME, game_input) {
 	new_world_cam_pos : Vector2F = CameraSpaceToWorldSpace(mouse_cam, mspace_for_input.mspace_cam);
 	MoveFixedCameraOpSpaces(new_world_cam_pos, mspace_for_input.mspace_cam.world_pos, perm.all_data);
 	mspace_for_input.mspace_cam.world_pos = new_world_cam_pos;
@@ -1368,7 +1374,9 @@ if frame_hover_entities.count > 0 {
 			} 
 			//TODO Should this just be mouse button left? OR should we make it an input mapping?
 			//The ctrl makes it feel more intentional overall but having an input map with this as default could be ok i think
-			else if IsKeyboardPress(.MOUSE_BUTTON_LEFT, .{ctrl_pressed=true}, .DOWN_THIS_FRAME, game_input) {
+			//IMPORTANT : Cannot use input mappings here due to bug in jai-Input on macos. Details at GLOBAL_MOVE_INSTANTLY.
+			// else if IsKeyboardPress(.MOUSE_BUTTON_LEFT, .{ctrl_pressed=true}, .DOWN_THIS_FRAME, game_input) {
+			else if IsInputDown(.CTRL, game_input) && IsKeyboardPressAnyFlag(.MOUSE_BUTTON_LEFT, .DOWN_THIS_FRAME, game_input) {
 				// DefaultSortNeumes(mspace_for_input.all_music_pts);
 				// top_row : MusicLaneRow = mspace_for_input.all_music_lane_rows[0];
 				//TODO REMINDER the world_base_start.x is at the center of the min value so we need to adjust by 0.5 the memory unit width
@@ -4102,7 +4110,12 @@ else if op_space.op_space_external_type == OpSpaceExternalType.space_2d {
 	move_vec, moved_this_frame := DefaultInputMove2D(game_input, op_space.render_groups.scissor_group.pixels_per_square);
 	if moved_this_frame {
 		op_space.op_2D_cam.world_pos += move_vec;
-	} else if mouse_in_op_space && IsInputMapPress(.OP_SPACE_MOVE_INSTANTLY, .DOWN_THIS_FRAME, game_input) {
+	// } else if mouse_in_op_space &&  {
+	} else if mouse_in_op_space
+		//IMPORTANT : Cannot use input mappings here due to bug in jai-Input on macos. Details at GLOBAL_MOVE_INSTANTLY.
+		// && IsInputMapPress(.OP_SPACE_MOVE_INSTANTLY, .DOWN_THIS_FRAME, game_input)
+		&& IsInputDown(.ALT, game_input) && IsKeyboardPressAnyFlag(.MOUSE_BUTTON_RIGHT, .DOWN_THIS_FRAME, game_input) 
+	{
 		op_mouse : Vector2F = WorldSpaceToOpSpace(world_mouse, op_space, op_space.op_2D_cam.world_pos);
 		op_space.op_2D_cam.world_pos = op_mouse;
 		// print("op_mouse=%\n", op_mouse);

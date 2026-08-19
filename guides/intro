@@ -43,6 +43,8 @@ If we click off the op space, then we are in the mspace (music space).
 "ctrl+shift+]" is global zoom in.
 "ctrl+shift+[" is global zoom out.
 
+"ctrl+mouse_left_click" can be used to set the row audio play position.
+
 "load_op name file_path" in the terminal will load a text op space called name
 and open a text tab file to the given file_path.
 "load_op name" in the terminal will allow file selection with the explorer.

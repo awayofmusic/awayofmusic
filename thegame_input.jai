@@ -531,6 +531,19 @@ IsKeyboardPress :: inline (
 	//to see if something is down
 	return false;
 }
+IsKeyboardPressAnyFlag :: inline (
+	key_code : Jai_Input.Key_Code, 
+	press_type : KeyPressType, 
+	//TODO Could just pass in FrameInputEvents
+	game_input : GameInput)
+-> bool 
+{
+	for game_input.frame_input_events if IsKeyboardEventAnyFlag(key_code, press_type, it) {
+		return true;
+	}
+
+	return false;
+}
 IsKeyboardEvent :: inline (key_code : Jai_Input.Key_Code, press_type : KeyPressType, event : FrameInputEvent) -> bool {
 	return IsKeyboardEvent(key_code, .{}, press_type, event);
 }
