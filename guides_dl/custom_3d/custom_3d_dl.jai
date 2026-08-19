@@ -91,7 +91,7 @@ ExternalRunOnce :: (sld : *SharedLibraryData) {
 	sp_3D.group_id = custom_3D.group_id;
 	sp_3D.scale_value = 0.8;
 	//Not setting this will use the default multi-color
-	sp_3D.color = Vector4F.{0,1,0,1};
+	// sp_3D.color = Vector4F.{0,1,0,1};
 	//pitch_set will be played on mouse hover based on the geometry tuning system
 	sp_3D.pitch_set = array_copy(float64.[0,8,14],, op_3D.spec_3D_alloc);
 	//shape_text will appear on mouse hover based on the geometry tuning system
