@@ -23,14 +23,14 @@ CreateTuningType :: enum {
 	LINEAR_FROM_START;
 	LINEAR_TO_NEXT;
 }
+AsmDeleteSimpleSynthData :: struct {
+	synth_id : int;
+}
 AsmClearMSpaceData :: struct {
 	mspace_id : int;
 }
 AsmDeleteMSpaceData :: struct {
 	mspace_id : int;
-}
-AsmDeleteSimpleSynthData :: struct {
-	synth_id : int;
 }
 AsmRowMidiData :: struct {
 	midi_channel : int;
@@ -61,13 +61,6 @@ AsmGetOrCreateSimpleSynthData :: struct {
 	ret_synth_id : int;
 	synth_name : string;
 }
-AsmShapeType :: enum {
-	RECTANGLE;
-}
-CustomAudioType :: enum {
-	TUNING_SYSTEM;
-	PITCH_SET_AS_FREQUENCY;
-}
 DrawVLType :: enum {
 	NONE;
 	VL_LINE;
@@ -78,9 +71,16 @@ S3CamStartType :: enum {
 	USER_SET;
 	POINT_FOCUS;
 }
+AsmShapeType :: enum {
+	RECTANGLE;
+}
 AsmOpSpaceType :: enum {
 	space_2d;
 	space_3d;
+}
+CustomAudioType :: enum {
+	TUNING_SYSTEM;
+	PITCH_SET_AS_FREQUENCY;
 }
 ChordSpaceFilterType :: enum {
 	DEFAULT;
@@ -121,6 +121,11 @@ LinearPitchSpaceView :: enum {
 	RATIO_PROPORTIONAL;
 	FORCE_EQUAL;
 }
+GetOrCreateMSpaceType :: enum {
+	GET_BY_NAME;
+	GET_BY_ID;
+	GET_BY_INDEX;
+}
 SimpleSynthMessageType :: enum {
 	VOLUME;
 	WAVE_TYPE;
@@ -128,11 +133,6 @@ SimpleSynthMessageType :: enum {
 	RELEASE_SECONDS;
 	ATTACK_CURVE;
 	RELEASE_CURVE;
-}
-GetOrCreateMSpaceType :: enum {
-	GET_BY_NAME;
-	GET_BY_ID;
-	GET_BY_INDEX;
 }
 OscWaveType :: enum {
 	SINE;
@@ -261,21 +261,6 @@ AsmCreateRowData :: struct {
 	row_sections : [] RowSectionData;
 	row_midi_data : AsmRowMidiData;
 }
-AsmShapeData :: struct {
-	ret_shape_id : int;
-	dspace_id : int;
-	op_space_id : int;
-	dspace_shape_group : int;
-	render_order : int;
-	color : Vector4;
-	fun_region : [] float64;
-	pitch_set : [] float64;
-	shape_text : string;
-	not_selectable : bool;
-	type : AsmShapeType;
-	rect_pos : Vector2;
-	rect_dim : Vector2;
-}
 AsmGeom2D :: struct {
 	ret_dspace_id : int;
 	op_space_id : int;
@@ -292,6 +277,21 @@ AsmText2D :: struct {
 	op_pos : Vector2;
 	color : Vector4;
 	render_order : int;
+}
+AsmShapeData :: struct {
+	ret_shape_id : int;
+	dspace_id : int;
+	op_space_id : int;
+	dspace_shape_group : int;
+	render_order : int;
+	color : Vector4;
+	fun_region : [] float64;
+	pitch_set : [] float64;
+	shape_text : string;
+	not_selectable : bool;
+	type : AsmShapeType;
+	rect_pos : Vector2;
+	rect_dim : Vector2;
 }
 AsmCreateSpiral :: struct {
 	ret_dspace_id : int;

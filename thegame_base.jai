@@ -4482,7 +4482,7 @@ DONE;
 
 					if !op_space_already_exists {
 						#if 1 {
-						text_file : TextFile;
+						text_file : *TextFile;
 						found_text_file : bool;
 						file_name : string;
 						if command_tokens.count == 2 {
@@ -4492,6 +4492,7 @@ DONE;
 								print_to_builder(*sb, fe_result.error_msg);
 							} else {
 								text_file, found_text_file = GetOrLoadTextFileByAbsolutePath(file_name, *perm.all_data.all_text_files);
+								if !found_text_file print_to_builder(*sb, "% not found\n", file_name);
 							}
 						} else if command_tokens.count == 3 {
 							file_name = command_tokens[2].token;
@@ -5422,7 +5423,6 @@ for compile_event : perm.all_data.all_compile_code_events {
 		text_op.text_comp_data = CompileCode(compile_settings_copy, text_file.file_string.text_string,,text_op.text_comp_alloc);
 
 		if text_op.text_comp_data.comp_errors.all_compiler_errors.count == 0 {
-			log("Compilation successful.\n");
 			//TODO We could grab this from the all_function_declarations["main"] instead
 			text_op.exec_info.main_instr_index = text_op.text_comp_data.main_function_instr_index;
 			//We can update break_points even if we are not in DEBUG mode so it is ready once we switch.
@@ -5450,7 +5450,10 @@ for compile_event : perm.all_data.all_compile_code_events {
 			//We reset this by default when writing a message thats not added now
 			//so we only don't reset it if we know there will be highlights
 			// array_reset_keeping_memory(*text_op.console_highlights);
-			SetTextOpConsoleMessage("Compilation successful.", text_op);
+			comp_msg :: "Compilation successful.";
+			log("%\n", comp_msg);
+			SetTextOpConsoleMessage(comp_msg, text_op);
+			SetTextStatus(comp_msg, text_op);
 
 			text_op.l_bottom_pane_type = TextPaneType.DISASSEMBLY;
 		} 

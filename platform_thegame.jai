@@ -1971,6 +1971,8 @@ GetOrLoadTextFileByAbsolutePath :: inline (
 	*/
 	absolute_file_name, absolute_path_success := get_absolute_path(file_name);
 	if !absolute_path_success return null, false, false;
+	//Need this check for windows apparently since the above does not fail
+	if !file_exists(absolute_file_name) return null, false, false;
 	} else {
 	absolute_file_name : string = file_name;
 	}
