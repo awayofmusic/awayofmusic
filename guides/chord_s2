@@ -17,6 +17,8 @@ This space was created/discovered by Dimitri Tymoczko.
 Details for 3+ dimensions of this space can be found in guides/chord_s3.
 */
 main :: () {
+	//To open this op space from the internal terminal run :
+	//open_op cs2
 	csd : AsmOpSpaceData;
 	csd.op_space_type = AsmOpSpaceType.space_2d;
 	csd.op_space_name = "cs2";

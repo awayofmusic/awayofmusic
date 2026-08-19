@@ -14966,7 +14966,7 @@ main :: () {
 	//and then do spiral and circles with new data and then move to rows
 	shape : AsmShapeData;
 	shape.op_space_id = cs2.op_space_id;
-	shape.dspace_id = ag.dspace_id;
+	shape.dspace_id = ag.ret_dspace_id;
 	shape.pitch_set = float64.[0,8,14];
 	shape.shape_text = "24-[0,8,14]";
 	shape.color = Vector4.{0,1,0,1};

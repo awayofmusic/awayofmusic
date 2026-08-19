@@ -1,0 +1,67 @@
+#load "c_load/Library";
+
+/*
+Custom 3d geometries can be used to group properties with associated shapes.
+*/
+main :: () {
+	/*To open this op space from the internal terminal run :
+	open_op cu3
+	*/
+	csd : AsmOpSpaceData;
+	csd.op_space_type = AsmOpSpaceType.space_3d;
+	csd.op_space_name = "cu3";
+	#asm{ get_or_create_op_space csd; }
+	clear : AsmClearOpData;
+	clear.op_space_id = csd.ret_op_space_id;
+	#asm{ clear_op_space clear; }
+
+	ts : AsmGetTuningSystemData;
+	//All tuning systems can be found in thegame_shared_library.jai
+	ts.short_name = "et24";
+	#asm{ get_tuning_system ts; };
+
+	cs3 : AsmSpace3Data;
+	cs3.op_space_id = csd.ret_op_space_id;
+	cs3.tuning_system_id = 0;
+	cs3.higher_dim = 3;
+	cs3.s3_cam_start_type = S3CamStartType.USER_SET;
+	// cs3.cam_start_pos = Vector3.{0.,0.,0.};
+	cs3.osc_wave_type = OscWaveType.SINE;
+	cs3.set_3d_perspective = false;
+	cs3.depth = 24.0;
+	cs3.n = 1.0; 
+	cs3.f = 240.0;
+	csf_array : [1] AsmCSFilter;
+	csf_array[0].filter_type = ChordSpaceFilterType.NONE;
+	//csf_array[0].filter_type = ChordSpaceFilterType.CHROMATIC;
+	cs3.asm_cs_filters = csf_array;
+	#asm{ create_cs3 cs3; }
+
+	//group_id 0 is the default 3d group id. 
+	//Associating shapes to group_id 0 will have the same properties as the chord_s3 geometry if created.
+	//Therefore all custom 3d geometries should have group_id >= 1.
+	ag : AsmGeom3D;
+	ag.group_id = 1;
+	ag.op_space_id = csd.ret_op_space_id;
+	ag.tuning_system_id = ts.ret_tuning_system_id;
+	ag.osc_wave_type = OscWaveType.SAW;
+	#asm{ create_custom_3D ag; }
+
+	shape : AsmShape3D;
+	shape.op_space_id = csd.ret_op_space_id;
+	shape.group_id = ag.group_id;
+	shape.rel_pos = Vector3.{0,20,30};
+	shape.pitch_set = float.[0,8,14];
+	shape.shape_text = "24-[0,8,14]";
+	shape.scale_value = 0.8;
+	//Note setting the color will use the default multi-color
+	//shape.color = Vector4.{0,1,0,1};
+	#asm{ create_shape_3D shape; }
+
+	txt : AsmText3D;
+	txt.op_space_id = csd.ret_op_space_id;
+	txt.group_id = ag.group_id;
+	txt.text = "24eq";
+	txt.op_pos = Vector3.{0,23,30};
+	#asm{ create_text_3D txt; }
+}

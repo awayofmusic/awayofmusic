@@ -41,6 +41,8 @@ This will be added by request but currently requires a private compiler to do so
 For more information, please ask on discord.
 */
 main :: () {
+	//To open this op space from the internal terminal run :
+	//open_op cs3
 	csd : AsmOpSpaceData;
 	csd.op_space_type = AsmOpSpaceType.space_3d;
 	csd.op_space_name = "cs3";

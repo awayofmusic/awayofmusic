@@ -7819,7 +7819,7 @@ AsmText3D :: struct {
 } @LibraryAsmGen
 
 AsmGeom2D :: struct {
-	dspace_id : int; //returned
+	ret_dspace_id : int; //returned
 	op_space_id : int;
 	custom_audio_type : CustomAudioType;
 	tuning_system_id : int;

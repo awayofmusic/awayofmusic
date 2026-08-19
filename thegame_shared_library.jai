@@ -4051,6 +4051,7 @@ SpaceText :: struct {
 	using shape : SpaceShape;
 	//REMINDER SET text.data = text_chars.data
 	text : string;
+	//If we raise this to 64 or 128, then we can just use it as 128 char lines
 	text_chars : [32] u8;
 	op_pos : Vector2F;
 }
@@ -4352,6 +4353,8 @@ ChordSpaceFilterType :: enum {
 	//TODO Use multiple filters instead of this
 	CHROMATIC_SUM; //For 3D
 	EQUALS_AND_ONE_VL_SUM; //For 4D
+
+	NONE;
 } @LibraryAsmGen
 
 ChordSpaceFilterAggregate :: enum {
@@ -4398,6 +4401,9 @@ FilterChordSpacePoints :: inline (
 		if cs_filter.filter_type == {
 		case ChordSpaceFilterType.ALL; {
 			point_in_filter = true;
+		}
+		case ChordSpaceFilterType.NONE; {
+			point_in_filter = false;
 		}
 		case ChordSpaceFilterType.SUM; {
 			//TODO We can convert fr_pos to pitch set here if that makes more sense or have sum pitch set and just sum

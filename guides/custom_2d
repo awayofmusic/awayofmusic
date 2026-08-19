@@ -1,0 +1,53 @@
+#load "c_load/Library";
+
+/*
+Custom 2d geometries can be used to group properties with associated shapes.
+*/
+main :: () {
+	/*To open this op space from the internal terminal run :
+	open_op cu2
+	*/
+	csd : AsmOpSpaceData;
+	csd.op_space_type = AsmOpSpaceType.space_2d;
+	csd.op_space_name = "cu2";
+	#asm{ get_or_create_op_space csd; }
+	clear : AsmClearOpData;
+	clear.op_space_id = csd.ret_op_space_id;
+	#asm{ clear_op_space clear; }
+
+	ts : AsmGetTuningSystemData;
+	//All tuning systems can be found in thegame_shared_library.jai
+	ts.short_name = "et24";
+	#asm{ get_tuning_system ts; };
+
+	/*The ret_dspace_id in AsmGeom2D can be used to share the properties of 
+	this custom geometry with any 2d shape or test.
+	*/
+	ag : AsmGeom2D;
+	ag.op_space_id = csd.ret_op_space_id;
+	ag.custom_audio_type = CustomAudioType.TUNING_SYSTEM;
+	ag.tuning_system_id = ts.ret_tuning_system_id;
+	ag.osc_wave_type = OscWaveType.SAW;
+	ag.collision_pos = Vector2.{10,0};
+	ag.collision_dim = Vector2.{3,3};
+	ag.show_collision = true;
+	#asm{ create_custom_geometry ag; }
+
+	shape : AsmShapeData;
+	shape.op_space_id = csd.ret_op_space_id;
+	shape.dspace_id = ag.ret_dspace_id;
+	shape.pitch_set = float64.[0,8,14];
+	shape.shape_text = "24-[0,8,14]";
+	shape.color = Vector4.{0,1,0,1};
+	shape.type = AsmShapeType.RECTANGLE;
+	shape.rect_pos = Vector2.{10,0};
+	shape.rect_dim = Vector2.{0.5,0.5};
+	#asm{ create_shape shape; }
+
+	txt : AsmText2D;
+	txt.op_space_id = csd.ret_op_space_id;
+	txt.text = "24eq";
+	txt.op_pos = Vector2.{10,1};
+	txt.color = Vector4.{0.95,0.95,0.95,1};
+	#asm{ create_text txt; }
+}

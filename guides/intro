@@ -71,7 +71,8 @@ main :: () {
 	#asm{ update_simple_synth update_synth; }
 
 	ts : AsmGetTuningSystemData;
-	//"et19" and "et24" are available. More will be available.
+	//"et19" and "et24" are also available. 
+	//All tuning systems can be found in thegame_shared_library.jai
 	ts.short_name = "et12";
 	#asm{ get_tuning_system ts; };
 	rs : RowSectionData;

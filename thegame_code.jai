@@ -14724,11 +14724,11 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		}
 
 		//TODO These could be set per op space now since we have them uniquely by dspace_id and op_space_id
-		asm_data.dspace_id = context.ALL_NEXT_IDS.DSPACE_ID;
+		asm_data.ret_dspace_id = context.ALL_NEXT_IDS.DSPACE_ID;
 		context.ALL_NEXT_IDS.DSPACE_ID += 1;
 
 		custom_g : *CustomGeometry = array_add(*op_spec_data.ass.all_custom_geometries);
-		custom_g.dspace_id = asm_data.dspace_id;
+		custom_g.dspace_id = asm_data.ret_dspace_id;
 		custom_g.tuning_system_id = asm_data.tuning_system_id;
 		custom_g.custom_audio_type = asm_data.custom_audio_type;
 		custom_g.synth.wave_type = asm_data.osc_wave_type;
