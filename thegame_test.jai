@@ -13243,7 +13243,10 @@ Test_MSpaceAudio :: (
 		play_pos_x : float = GetPlayPosWorldX(row_0, 2.1, perm.all_data.global_rules.memory_unit_width);
 		play_pos_y : float = 0.5 * (row_0.row_world_base_start.y + row_0.row_height);
 		game_input.mouse_cam = WorldSpaceToCameraSpace(Vector2F.{play_pos_x,play_pos_y}, default_base_cam);
-		DownUpThisFrame(.MOUSE_BUTTON_LEFT, .{ctrl_pressed=true}, game_input);
+		//TODO USE THIS again ONCE THE jai-Input bug gets fixed. Details at GLOBAL_MOVE_INSTANTLY code in thegame_base.
+		// DownUpThisFrame(.MOUSE_BUTTON_LEFT, .{ctrl_pressed=true}, game_input);
+		DownUpThisFrame(.CTRL, game_input);
+		DownUpThisFrame(.MOUSE_BUTTON_LEFT, game_input);
 	}
 	case 1; {
 		AssertEquals(perm.all_data.all_mspace_data[0].mspace_id, perm.all_data.audio_mspace_id);
@@ -13276,7 +13279,9 @@ Test_MSpaceAudio :: (
 		play_pos_x : float = GetPlayPosWorldX(row_0, 1.9, perm.all_data.global_rules.memory_unit_width);
 		play_pos_y : float = 0.5 * (row_0.row_world_base_start.y + row_0.row_height);
 		game_input.mouse_cam = WorldSpaceToCameraSpace(Vector2F.{play_pos_x,play_pos_y}, default_base_cam);
-		DownUpThisFrame(.MOUSE_BUTTON_LEFT, .{ctrl_pressed=true}, game_input);
+		// DownUpThisFrame(.MOUSE_BUTTON_LEFT, .{ctrl_pressed=true}, game_input);
+		DownUpThisFrame(.CTRL, game_input);
+		DownUpThisFrame(.MOUSE_BUTTON_LEFT, game_input);
 	}
 	case 5; {
 		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.render_mspace_id);
@@ -13314,7 +13319,9 @@ Test_MSpaceAudio :: (
 		play_pos_x : float = GetPlayPosWorldX(row_0, 2.1, perm.all_data.global_rules.memory_unit_width);
 		play_pos_y : float = 0.5 * (row_0.row_world_base_start.y + row_0.row_height);
 		game_input.mouse_cam = WorldSpaceToCameraSpace(Vector2F.{play_pos_x,play_pos_y}, default_base_cam);
-		DownUpThisFrame(.MOUSE_BUTTON_LEFT, .{ctrl_pressed=true}, game_input);
+		// DownUpThisFrame(.MOUSE_BUTTON_LEFT, .{ctrl_pressed=true}, game_input);
+		DownUpThisFrame(.CTRL, game_input);
+		DownUpThisFrame(.MOUSE_BUTTON_LEFT, game_input);
 	}
 	case 9; {
 		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.render_mspace_id);
@@ -13345,7 +13352,9 @@ Test_MSpaceAudio :: (
 		play_pos_x : float = GetPlayPosWorldX(row_0, 1.9, perm.all_data.global_rules.memory_unit_width);
 		play_pos_y : float = 0.5 * (row_0.row_world_base_start.y + row_0.row_height);
 		game_input.mouse_cam = WorldSpaceToCameraSpace(Vector2F.{play_pos_x,play_pos_y}, default_base_cam);
-		DownUpThisFrame(.MOUSE_BUTTON_LEFT, .{ctrl_pressed=true}, game_input);
+		// DownUpThisFrame(.MOUSE_BUTTON_LEFT, .{ctrl_pressed=true}, game_input);
+		DownUpThisFrame(.CTRL, game_input);
+		DownUpThisFrame(.MOUSE_BUTTON_LEFT, game_input);
 	}
 	case 12; {
 		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.render_mspace_id);
@@ -13377,7 +13386,9 @@ Test_MSpaceAudio :: (
 		play_pos_x : float = GetPlayPosWorldX(row_0, 0.5, perm.all_data.global_rules.memory_unit_width);
 		play_pos_y : float = 0.5 * (row_0.row_world_base_start.y + row_0.row_height);
 		game_input.mouse_cam = WorldSpaceToCameraSpace(Vector2F.{play_pos_x,play_pos_y}, default_base_cam);
-		DownUpThisFrame(.MOUSE_BUTTON_LEFT, .{ctrl_pressed=true}, game_input);
+		// DownUpThisFrame(.MOUSE_BUTTON_LEFT, .{ctrl_pressed=true}, game_input);
+		DownUpThisFrame(.CTRL, game_input);
+		DownUpThisFrame(.MOUSE_BUTTON_LEFT, game_input);
 	}
 	case 15; {
 		AssertEquals(perm.all_data.all_mspace_data[0].mspace_id, perm.all_data.render_mspace_id);
@@ -13399,7 +13410,9 @@ Test_MSpaceAudio :: (
 		play_pos_x : float = GetPlayPosWorldX(row_0, 0.5, perm.all_data.global_rules.memory_unit_width);
 		play_pos_y : float = 0.5 * (row_0.row_world_base_start.y + row_0.row_height);
 		game_input.mouse_cam = WorldSpaceToCameraSpace(Vector2F.{play_pos_x,play_pos_y}, default_base_cam);
-		DownUpThisFrame(.MOUSE_BUTTON_LEFT, .{ctrl_pressed=true}, game_input);
+		// DownUpThisFrame(.MOUSE_BUTTON_LEFT, .{ctrl_pressed=true}, game_input);
+		DownUpThisFrame(.CTRL, game_input);
+		DownUpThisFrame(.MOUSE_BUTTON_LEFT, game_input);
 	}
 	case 17; {
 		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.render_mspace_id);
@@ -13424,7 +13437,9 @@ Test_MSpaceAudio :: (
 		play_pos_x : float = GetPlayPosWorldX(row_0, 5.5, perm.all_data.global_rules.memory_unit_width);
 		play_pos_y : float = 0.5 * (row_0.row_world_base_start.y + row_0.row_height);
 		game_input.mouse_cam = WorldSpaceToCameraSpace(Vector2F.{play_pos_x,play_pos_y}, default_base_cam);
-		DownUpThisFrame(.MOUSE_BUTTON_LEFT, .{ctrl_pressed=true}, game_input);
+		// DownUpThisFrame(.MOUSE_BUTTON_LEFT, .{ctrl_pressed=true}, game_input);
+		DownUpThisFrame(.CTRL, game_input);
+		DownUpThisFrame(.MOUSE_BUTTON_LEFT, game_input);
 	}
 	case 19; {
 		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.render_mspace_id);
@@ -13750,7 +13765,10 @@ DONE);
 
 		AssertEquals(0.0, render_mspace.mspace_cam.world_pos.x);
 		//TEST instantaneous global move then test instantaneous op space move
-		DownUpInputMap(.GLOBAL_MOVE_INSTANTLY, game_input);
+		//TODO USE THIS again ONCE THE jai-Input bug gets fixed. Details at GLOBAL_MOVE_INSTANTLY code in thegame_base.
+		// DownUpInputMap(.GLOBAL_MOVE_INSTANTLY, game_input);
+		DownUpThisFrame(.CTRL, game_input);
+		DownUpThisFrame(.MOUSE_BUTTON_RIGHT, game_input);
 		cam_pos := op_2D.world_offset;
 		cam_pos.x += op_2D.world_size.x + 1;
 		game_input.mouse_cam = WorldSpaceToCameraSpace(cam_pos, default_base_cam);;
@@ -13769,7 +13787,9 @@ DONE);
 		AssertEquals(op_2D.world_size.x + 1, render_mspace.mspace_cam.world_pos.x);
 
 		//TEST instantaneous op space move
-		DownUpInputMap(.GLOBAL_MOVE_INSTANTLY, game_input);
+		// DownUpInputMap(.GLOBAL_MOVE_INSTANTLY, game_input);
+		DownUpThisFrame(.CTRL, game_input);
+		DownUpThisFrame(.MOUSE_BUTTON_RIGHT, game_input);
 		game_input.mouse_cam = WorldSpaceToCameraSpace(Vector2F.{0,0}, default_base_cam);
 	}
 	case 12; {
@@ -13788,7 +13808,10 @@ DONE);
 		AssertEquals(0.0, op_2D.op_2D_cam.world_pos.y);
 
 		//TEST instantaneous op space move
-		DownUpInputMap(.OP_SPACE_MOVE_INSTANTLY, game_input);
+		//TODO USE THIS again ONCE THE jai-Input bug gets fixed. Details at GLOBAL_MOVE_INSTANTLY code in thegame_base.
+		// DownUpInputMap(.OP_SPACE_MOVE_INSTANTLY, game_input);
+		DownUpThisFrame(.ALT, game_input);
+		DownUpThisFrame(.MOUSE_BUTTON_RIGHT, game_input);
 		cam_pos := op_2D.world_offset;
 		cam_pos.y += 1;
 		game_input.mouse_cam = WorldSpaceToCameraSpace(cam_pos, default_base_cam);
@@ -13809,7 +13832,9 @@ DONE);
 		AssertEquals(1.0, op_2D.op_2D_cam.world_pos.y);
 
 		//TEST instantaneous op space move
-		DownUpInputMap(.OP_SPACE_MOVE_INSTANTLY, game_input);
+		// DownUpInputMap(.OP_SPACE_MOVE_INSTANTLY, game_input);
+		DownUpThisFrame(.ALT, game_input);
+		DownUpThisFrame(.MOUSE_BUTTON_RIGHT, game_input);
 		cam_pos := op_2D.world_offset;
 		cam_pos.y -= 1;
 		game_input.mouse_cam = WorldSpaceToCameraSpace(cam_pos, default_base_cam);
@@ -13832,7 +13857,9 @@ DONE);
 		//TEST zoom and then move instantly on the same frame should affect the actual movement
 		DownUpThisFrame(.ALT, game_input);
 		game_input.mouse_wheel = 2;
-		DownUpInputMap(.OP_SPACE_MOVE_INSTANTLY, game_input);
+		// DownUpInputMap(.OP_SPACE_MOVE_INSTANTLY, game_input);
+		DownUpThisFrame(.ALT, game_input);
+		DownUpThisFrame(.MOUSE_BUTTON_RIGHT, game_input);
 		cam_pos := op_2D.world_offset + Vector2F.{1,1};
 		game_input.mouse_cam = WorldSpaceToCameraSpace(cam_pos, default_base_cam);
 	}
@@ -13858,7 +13885,9 @@ DONE);
 		//TEST zoom and then move instantly should affect the actual movement
 		DownUpThisFrame(.ALT, game_input);
 		game_input.mouse_wheel = -2;
-		DownUpInputMap(.OP_SPACE_MOVE_INSTANTLY, game_input);
+		// DownUpInputMap(.OP_SPACE_MOVE_INSTANTLY, game_input);
+		DownUpThisFrame(.ALT, game_input);
+		DownUpThisFrame(.MOUSE_BUTTON_RIGHT, game_input);
 		cam_pos := op_2D.world_offset + Vector2F.{-1/default_zoom_speed,-1/default_zoom_speed};
 		game_input.mouse_cam = WorldSpaceToCameraSpace(cam_pos, default_base_cam);
 	}
@@ -13880,7 +13909,9 @@ DONE);
 		//should not affect the movement since we update pixels per square directly
 		DownUpThisFrame(.CTRL, game_input);
 		game_input.mouse_wheel = 2;
-		DownUpInputMap(.GLOBAL_MOVE_INSTANTLY, game_input);
+		// DownUpInputMap(.GLOBAL_MOVE_INSTANTLY, game_input);
+		DownUpThisFrame(.CTRL, game_input);
+		DownUpThisFrame(.MOUSE_BUTTON_RIGHT, game_input);
 		cam_pos := op_2D.world_offset - op_2D.world_size - Vector2F.{1,1};
 		game_input.mouse_cam = WorldSpaceToCameraSpace(cam_pos, default_base_cam);
 	}
@@ -13902,7 +13933,9 @@ DONE);
 		//TEST global zoom and move instantly same frame
 		DownUpThisFrame(.CTRL, game_input);
 		game_input.mouse_wheel = -2;
-		DownUpInputMap(.GLOBAL_MOVE_INSTANTLY, game_input);
+		// DownUpInputMap(.GLOBAL_MOVE_INSTANTLY, game_input);
+		DownUpThisFrame(.CTRL, game_input);
+		DownUpThisFrame(.MOUSE_BUTTON_RIGHT, game_input);
 		game_input.mouse_cam = WorldSpaceToCameraSpace(Vector2F.{0,0}, default_base_cam);
 	}
 	case 18; {
@@ -14214,7 +14247,9 @@ DONE);
 
 		//TEST reset back to center with unchosen op space
 		game_input.mouse_cam = WorldSpaceToCameraSpace(Vector2F.{0,0}, default_base_cam);
-		DownUpInputMap(.GLOBAL_MOVE_INSTANTLY, game_input);
+		// DownUpInputMap(.GLOBAL_MOVE_INSTANTLY, game_input);
+		DownUpThisFrame(.CTRL, game_input);
+		DownUpThisFrame(.MOUSE_BUTTON_RIGHT, game_input);
 	}
 	case 35; {
 		AssertEquals(0, perm.all_data.all_chosen_entities.count);
