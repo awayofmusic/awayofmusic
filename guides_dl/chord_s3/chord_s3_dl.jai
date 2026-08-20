@@ -6,6 +6,9 @@
 #import "shared_names";
 #import "thegame_array_poly";
 
+/*Details can be found in chord_s3 to keep them in 1 place.
+I can move those details here if that is preferable.
+*/
 #program_export
 ExternalRunOnce :: (sld : *SharedLibraryData) {
 	Remap_Context();

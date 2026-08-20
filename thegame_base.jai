@@ -6179,7 +6179,7 @@ for * dl : global_dynamic_libraries if dl.is_running_once_dl {
 	// We could reload as a terminal command but we do in here for now so it is clearer.
 	// Although we compile the file as a terminal command for now but we could also do it here.
 	AllDataToSharedLibraryData(*perm.all_data.shared_lib_data, dl, renderer_data, audio_data, game_input, 
-		*frame_hover_entities, perm.all_data);
+		*frame_hover_entities, perm);
 
 	//TODO We could cast this beforehand to reuse but I will leave it like this for now so we only
 	//keep 1 pointer and dont have to reset it all the time.
@@ -6200,7 +6200,7 @@ for * dl : global_dynamic_libraries if dl.is_running_dl_per_frame {
 
 	//TODO We could have these arrays be in 1 struct in AllData so we can just copy it over directly
 	AllDataToSharedLibraryData(*perm.all_data.shared_lib_data, dl, renderer_data, audio_data, game_input, 
-		*frame_hover_entities, perm.all_data);
+		*frame_hover_entities, perm);
 
 	ExternalPerFrame := cast(Type_ExternalRunOnce) dl.ExternalPerFrame_proc_address;
 	ExternalPerFrame(*perm.all_data.shared_lib_data);

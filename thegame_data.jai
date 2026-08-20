@@ -3184,49 +3184,54 @@ AllDataToSharedLibraryData :: inline (
 	game_input : *GameInput, 
 	//TODO Could make a SharedFrameData here if we have more data that is reset every frame.
 	frame_hover_entities : *[..] HoverEntity,
-	all_data : *AllData) 
+	//TODO Update this to persist because we need text editor data
+	//but if we move text editor data into all_data then we can make
+	//this be AllData again.
+	perm : *Persist)
 {
 	//TODO Could set one of these per dynamic library for convenience
-	sl.my_shared_data = all_data.my_shared_data;
+	sl.my_shared_data = perm.all_data.my_shared_data;
 	sl.my_per_dl_data = dl.my_per_dl_data;
-	// sl.extern_alloc = all_data.extern_alloc;
+	// sl.extern_alloc = perm.all_data.extern_alloc;
 
-	sl.global_rules = all_data.global_rules;
+	sl.global_rules = perm.all_data.global_rules;
 	sl.renderer_data = renderer_data;
 	sl.audio_data = audio_data;
 	sl.game_input = game_input;
 
-	sl.audio_timing = *all_data.audio_timing;
-	sl.game_audio_play = *all_data.game_audio_play;
+	sl.audio_timing = *perm.all_data.audio_timing;
+	sl.game_audio_play = *perm.all_data.game_audio_play;
 
-	sl.all_tuning_systems = *all_data.all_tuning_systems;
-	sl.all_tuning_pitches = *all_data.all_tuning_pitches;
+	sl.text_editor_data = perm.text_editor_data;
 
-	sl.render_mspace_id = all_data.render_mspace_id;
-	sl.all_mspace_data = *all_data.all_mspace_data;
-	sl.free_mspace_data_pool = *all_data.free_mspace_data_pool;
+	sl.all_tuning_systems = *perm.all_data.all_tuning_systems;
+	sl.all_tuning_pitches = *perm.all_data.all_tuning_pitches;
+
+	sl.render_mspace_id = perm.all_data.render_mspace_id;
+	sl.all_mspace_data = *perm.all_data.all_mspace_data;
+	sl.free_mspace_data_pool = *perm.all_data.free_mspace_data_pool;
 	//TODO Need to move dl processing to after audio processing but before audio buffering before we can add this
 	//Also add GameAudioPlay when we do that so we can access
-	// sl.audio_mspace_id = all_data.audio_mspace_id;
+	// sl.audio_mspace_id = perm.all_data.audio_mspace_id;
 
-	sl.all_linear_to_tuning_system = *all_data.all_linear_to_tuning_system;
-	sl.all_linear_pitch_spaces = *all_data.all_linear_pitch_spaces;
-	sl.all_space_points = *all_data.all_space_points;
+	sl.all_linear_to_tuning_system = *perm.all_data.all_linear_to_tuning_system;
+	sl.all_linear_pitch_spaces = *perm.all_data.all_linear_pitch_spaces;
+	sl.all_space_points = *perm.all_data.all_space_points;
 
-	sl.all_simple_synths = *all_data.all_simple_synths;
-	sl.free_simple_synth_pool = *all_data.free_simple_synth_pool;
+	sl.all_simple_synths = *perm.all_data.all_simple_synths;
+	sl.free_simple_synth_pool = *perm.all_data.free_simple_synth_pool;
 
-	sl.all_open_op_spaces = all_data.all_open_op_spaces;
-	sl.all_closed_op_spaces = *all_data.all_closed_op_spaces;
-	sl.all_op_space_spec_data = *all_data.all_op_space_spec_data;
-	sl.all_op_spec_data_3D = *all_data.all_op_spec_data_3D;
+	sl.all_open_op_spaces = perm.all_data.all_open_op_spaces;
+	sl.all_closed_op_spaces = *perm.all_data.all_closed_op_spaces;
+	sl.all_op_space_spec_data = *perm.all_data.all_op_space_spec_data;
+	sl.all_op_spec_data_3D = *perm.all_data.all_op_spec_data_3D;
 
-	sl.all_cs2_points_2D = *all_data.all_cs2_points_2D;
-	sl.all_chord_space_points = *all_data.all_chord_space_points;
+	sl.all_cs2_points_2D = *perm.all_data.all_cs2_points_2D;
+	sl.all_chord_space_points = *perm.all_data.all_chord_space_points;
 
-	sl.all_terminal_events = *all_data.all_terminal_events;
+	sl.all_terminal_events = *perm.all_data.all_terminal_events;
 
-	sl.all_chosen_entities = all_data.all_chosen_entities;
+	sl.all_chosen_entities = perm.all_data.all_chosen_entities;
 	sl.frame_hover_entities = frame_hover_entities.*;
 }
 PostUpdateExternal :: inline (
@@ -3662,24 +3667,7 @@ MySimpleAllocProc :: (mode: Allocator_Mode, requested_size: s64, old_size: s64, 
 		return null;
 	}
 }
-//TODO Should likely put this in TextOpSpaceData since we will allow
-//changing the font size and color per op space I think.
-TextEditorData :: struct {
-	//TODO If we want these to be per op_space then we need one for each RenderGroup.
-	//We have font_id so we could just associate one of these per font
-	//if we want different fonts for different spaces for example.
-	code_font_1_char_width_pixel : s64;
-	//I prefer pre-computing this so it's the same everywhere without 
-	//the possibility of a floating point difference error
-	code_font_1_char_width_world : float;
-	char_height : int;
-	font_color : Vector4F;
-	//TODO Eventually we will pass this in through the settings either directly or
-	//we can set it from the settings to here so people can update text editor data and have
-	//different text editor data for each text op space
-	undo_split_string : string;
-	undo_split_chars : [16] u8;
-}
+
 //DOC : We only have 1 font right now, if we add more then we can add an index here for that specific font
 //but if we add more then we have to set that for PushText for example and in the text op space or at least
 //for ui eventually i guess.
@@ -5782,24 +5770,6 @@ RotatedRelPosInChordS3 :: inline (
 	rotate_pos : Vector3F = (chord_s3.mouse_rotate * chord_s3.temp_mouse_rotate *
 		(rel_pos - chord_s3.center_of_rotation)) + chord_s3.center_of_rotation;
 	return rotate_pos;	
-}
-
-//TODO We could just pass in char width and height so this is reusable without the text editor data
-Text3DBackgroundRect :: inline (
-	text : string, 
-	text_pos : Vector2F,
-	pixels_per_square : float, 
-	ted : TextEditorData) 
--> Rectangle2 
-{
-	rect_dim := Vector2F.{text.count*ted.code_font_1_char_width_world,
-		ted.char_height / pixels_per_square};
-	text_adjusted_pos : Vector2F = text_pos + Vector2F.{0.5*rect_dim.x,-0.15*rect_dim.y};
-	//0.45 seemed more centered for 1 char but I think its good enough like this
-	// text_adjusted_pos : Vector2F = text_formatted_pos + Vector2F.{0.45*rect_dim.x,-0.15*rect_dim.y};
-	rect_formatted : Rectangle2 = RectCenterDim(text_adjusted_pos, rect_dim);
-	// rect_formatted = RectCenterDim(text_formatted_pos + Vector2F.{0.3,-0.15}, Vector2F.{1,1});
-	return rect_formatted;
 }
 
 #if 0 {

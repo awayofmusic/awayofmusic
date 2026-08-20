@@ -42,4 +42,7 @@ ExternalRunOnce :: (sld : *SharedLibraryData) {
 
 #program_export
 ExternalPerFrame :: (sld : *SharedLibraryData) {
+	//This line is necessary at the beggining of each dl to pass in the context from the main program 
+	//which contains IDs and other information.
+	Remap_Context();
 }

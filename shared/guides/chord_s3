@@ -50,6 +50,8 @@ main :: () {
 	#asm{ clear_op_space clear; }
 
 	//"WASD" and "IJKL" can be used to move around the 3d space.
+	//"ctrl+mouse_button_left" will rotate each cube about a central point.
+	//holding "alt+c" allows free camera movement with the mouse
 	cs3 : AsmSpace3Data;
 	cs3.op_space_id = csd.ret_op_space_id;
 	cs3.tuning_system_id = 0;

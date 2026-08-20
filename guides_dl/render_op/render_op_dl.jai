@@ -7,7 +7,9 @@
 #import "thegame_renderer_out_data";
 #import "thegame_array_poly";
 
-
+/*Generalized code in a 2d op space.
+Rendering, audio and input code are included here as examples.
+*/
 op_space_name : string = "render_op";
 #program_export
 ExternalRunOnce :: (sld : *SharedLibraryData) {

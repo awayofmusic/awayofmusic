@@ -36,6 +36,8 @@ SharedLibraryData :: struct {
 	//TODO Should we group everything in all_data together here?
 	global_rules : GlobalRules;
 
+	text_editor_data : TextEditorData;
+
 	//Tuning system data
 	all_tuning_systems : *[..] TuningSystem;
 	all_tuning_pitches : *[..] TuningPitch;	
@@ -133,6 +135,42 @@ Megabyte :: (bytes : s64) -> s64 #expand {
 }
 Gigabyte :: (bytes : s64) -> s64 #expand {
     return 1024 * Megabyte(bytes);
+}
+
+//TODO Should likely put this in TextOpSpaceData since we will allow
+//changing the font size and color per op space I think.
+TextEditorData :: struct {
+	//TODO If we want these to be per op_space then we need one for each RenderGroup.
+	//We have font_id so we could just associate one of these per font
+	//if we want different fonts for different spaces for example.
+	code_font_1_char_width_pixel : s64;
+	//I prefer pre-computing this so it's the same everywhere without 
+	//the possibility of a floating point difference error
+	code_font_1_char_width_world : float;
+	char_height : int;
+	font_color : Vector4F;
+	//TODO Eventually we will pass this in through the settings either directly or
+	//we can set it from the settings to here so people can update text editor data and have
+	//different text editor data for each text op space
+	undo_split_string : string;
+	undo_split_chars : [16] u8;
+}
+//TODO We could just pass in char width and height so this is reusable without the text editor data
+Text3DBackgroundRect :: inline (
+	text : string, 
+	text_pos : Vector2F,
+	pixels_per_square : float, 
+	ted : TextEditorData) 
+-> Rectangle2 
+{
+	rect_dim := Vector2F.{text.count*ted.code_font_1_char_width_world,
+		ted.char_height / pixels_per_square};
+	text_adjusted_pos : Vector2F = text_pos + Vector2F.{0.5*rect_dim.x,-0.15*rect_dim.y};
+	//0.45 seemed more centered for 1 char but I think its good enough like this
+	// text_adjusted_pos : Vector2F = text_formatted_pos + Vector2F.{0.45*rect_dim.x,-0.15*rect_dim.y};
+	rect_formatted : Rectangle2 = RectCenterDim(text_adjusted_pos, rect_dim);
+	// rect_formatted = RectCenterDim(text_formatted_pos + Vector2F.{0.3,-0.15}, Vector2F.{1,1});
+	return rect_formatted;
 }
 
 /*Start of terminal data
