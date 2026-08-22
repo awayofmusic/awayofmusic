@@ -2960,6 +2960,10 @@ AllData :: struct #type_info_no_size_complaint {
 	//is likely fine anyways so we can compile > 1 thing at once.
 	//TODO We don't need this anymore since we have comp_data
 	//I will reference that array for now but really we don't need it anymore.
+	//TODO ACTUALLY THIS IS CURRENTLY THE CURRENTLY EXECUTING INSTRUCTIONS
+	//SO those run here since we only allow 1 set of instructions to execute at once
+	//to avoid concurrency issues for now.
+	//Maybe should rename this exec_music_instructions for clarity?
 	all_music_instructions : [..] MusicInstruction;
 	exec_info : ExecutionInfo;
 

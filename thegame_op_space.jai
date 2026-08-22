@@ -336,6 +336,14 @@ RemoveAllWatchSubRows :: inline (text_op : *TextOpSpaceData) {
 		text_op.highlighted_name_index = text_op.watch_data_rows.count-1;
 	}
 }
+StopExecutionNow :: inline (text_op : *TextOpSpaceData, all_data : *AllData) {
+	if text_op.exec_info.exec_state == .IS_DEBUG_STOP {
+		RemoveAllWatchSubRows(text_op);
+	}
+	text_op.exec_info.exec_state = ExecutionState.NOT_RUNNING;
+	array_reset_keeping_memory(*all_data.all_process_instruction_events);
+	array_reset_keeping_memory(*all_data.all_music_instructions);
+}
 //NOTE : We reset and then grab data since the watch_name_string
 //is stored at the beginning of the pool we grab it again there.
 //The expression depends on watch_name string so it makes sense to store it in the same place.

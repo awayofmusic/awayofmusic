@@ -2673,28 +2673,22 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 				  AllOrEquals(text_op.exec_info.exec_state, .[.IS_DEBUG_STOP, .IS_EXEC_RUNNING]) &&
 				  IsInputMapPress(.TEXT_STOP, .DOWN_THIS_FRAME, game_input)
 		{
-			//TODO Eventually we can do this while running as well if we run a certain number of instructions
-			//every frame, then we can do this also when not DEBUG_STOP
-			//TODO SHOULD WE MAKE THIS A FUNCTION LIKE StopExecutionNow
-			//TODO Let me do this in the next commit here since we are working on spiral atm
-			// if text_op.exec_info.exec_state == .IS_DEBUG_STOP {
-			// 	RemoveAllWatchSubRows(text_op);
-			// }
-			text_op.exec_info.exec_state = ExecutionState.NOT_RUNNING;
-			array_reset_keeping_memory(*perm.all_data.all_process_instruction_events);
-			array_reset_keeping_memory(*perm.all_data.all_music_instructions);
+			StopExecutionNow(text_op, perm.all_data);
+
 			msg := tprint("Stopped %", text_file.file_short_name);
 			SetTextOpConsoleMessage(msg, text_op);
 			SetTextStatus(msg, text_op);
 		}
-		else if text_op.exec_info.exec_state == .IS_DEBUG_STOP && text_op.exec_info.exec_mode == .DEBUG &&
-					//TODO Should we allow this on execution or only on debug stop?
-				  // AllOrEquals(text_op.exec_info.exec_state, .[.IS_DEBUG_STOP, .IS_EXEC_RUNNING]) &&
+		else if text_op.exec_info.exec_mode == .DEBUG &&
+				  AllOrEquals(text_op.exec_info.exec_state, .[.IS_DEBUG_STOP, .IS_EXEC_RUNNING]) &&
 				  IsInputMapPress(.TEXT_RESTART, .DOWN_THIS_FRAME, game_input)
 	   {
-	   	//TODO Should we remove all watch sub rows here as well? I think maybe yes.
-			text_op.exec_info.exec_state = ExecutionState.NOT_RUNNING;
+			StopExecutionNow(text_op, perm.all_data);
 			array_add(*perm.all_data.all_process_instruction_events, .{text_op.op_space_id});
+
+			msg := tprint("Restarted %", text_file.file_short_name);
+			SetTextOpConsoleMessage(msg, text_op);
+			SetTextStatus(msg, text_op);
 	   }
 	   else if IsInputMapPress(.TEXT_SHOW_STATUS_BAR, .DOWN_THIS_FRAME, game_input) {
 	   	text_op.show_text_status_bar = !text_op.show_text_status_bar;
@@ -5723,6 +5717,9 @@ if perm.all_data.all_music_instructions.count > 0 {
 			//TODO Is there a better / more systematic way to do these state changes?
 			// stopped_running : bool = exec_info.exec_state == ExecutionState.NOT_RUNNING;
 			// stopped_debugging : bool = was_debugging && stopped_running;
+			//TODO We could use stop execution now here but I am leaving it like this as it feels like
+			//this is more likely to catch a bug on successful execution than to just clear everything
+			//although clearing everything may be more resilient to avoid bugs as well... not sure really...
 			//NOTE : We were debugging and now were not running. I think this is good way to do it
 			if previous_state == .IS_DEBUG_STOP {
 				RemoveAllWatchSubRows(text_op);
