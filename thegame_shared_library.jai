@@ -4979,6 +4979,7 @@ AsmCreateSpiral :: struct {
 	// point_color : Vector4F = LIGHT_BROWN;
 	osc_wave_type : OscWaveType;
 
+	set_spiral_base : AsmBool;
 	base_chord : AsmArray(float64);
 	base_index : int;
 } @LibraryAsmGen

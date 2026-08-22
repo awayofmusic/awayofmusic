@@ -2309,6 +2309,7 @@ Test_AsmSpiral :: (
 	asm_spiral.show_values = ToAsmBool(true);
 	asm_spiral.point_dim = Vector2F64.{0.5,0.5};
 	asm_spiral.osc_wave_type = OscWaveType.SAW;
+	asm_spiral.set_spiral_base = ToAsmBool(true);
 
 	//Add some base points to memory
 	// asm_spiral.set_base_points = cast(int) true; //asm bool
@@ -15142,6 +15143,7 @@ main :: () {
 	sp.show_values = true;
 	sp.point_dim = Vector2.{0.5,0.5};
 	sp.osc_wave_type = OscWaveType.SAW;
+	sp.set_spiral_base = true;
 	sp.base_chord = float64.[0,4,7];
 	sp.base_index = 0;
 	#asm{ create_spiral sp; }

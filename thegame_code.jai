@@ -14168,9 +14168,11 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		//We can also use it to add custom points or even to change the spiral entirely allowing for a possibly
 		//morphing spiral although that may be slow... unless we just run 1 instruction per frame though it is possible
 		#if 1 {
-		success = SetSpiralBase(base_chord, asm_data.base_index, spiral, op_spec_data);
-		//Sanity check here since we need to check these errors before spiral creation
-		assert(success, "Invalid SetSpiralBase not checked before creation.\n");
+		if AsmBoolToBool(asm_data.set_spiral_base) {
+			success = SetSpiralBase(base_chord, asm_data.base_index, spiral, op_spec_data);
+			//Sanity check here since we need to check these errors before spiral creation
+			assert(success, "Invalid SetSpiralBase not checked before creation.\n");
+		}
 		} else {
 		if cast(bool) asm_data.set_base_points {
 			base_chord : [] float64 = NewArray(spiral.chord_count, float64,,context.allocator);
@@ -14226,6 +14228,9 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 			//TODO Should this be an error or just a warning? Other things could go wrong so maybe an error is best.
 			return CPUErr(sprint("Spiral % not found.\n", asm_data.dspace_id,,context.allocator));
 		}
+
+		//Early out if we don't have any info in case we just drew a spiral without setting base points
+		if spiral.base_chord.count == 0 || spiral.chord_count == 0 || spiral.tuning_count == 0 return NO_CPU_ERROR;
 
 		map_values, map_err := GetAsmArray(asm_data.map_values, ad.ram_memory);
 		if map_err.is_error return map_err;

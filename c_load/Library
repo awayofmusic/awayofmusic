@@ -61,10 +61,6 @@ AsmGetOrCreateSimpleSynthData :: struct {
 	ret_synth_id : int;
 	synth_name : string;
 }
-AsmMapSpiralType :: enum {
-	CHORD;
-	INDEX;
-}
 DrawVLType :: enum {
 	NONE;
 	VL_LINE;
@@ -75,17 +71,25 @@ S3CamStartType :: enum {
 	USER_SET;
 	POINT_FOCUS;
 }
+AsmShapeType :: enum {
+	RECTANGLE;
+}
+ChordSpaceFilterAggregate :: enum {
+	INTERSECTION;
+	UNION;
+}
 SpiralType :: enum {
 	PROPER;
 	CONCENTRIC_CIRCLE;
 	BOOK;
 }
+AsmMapSpiralType :: enum {
+	CHORD;
+	INDEX;
+}
 AsmOpSpaceType :: enum {
 	space_2d;
 	space_3d;
-}
-AsmShapeType :: enum {
-	RECTANGLE;
 }
 CustomAudioType :: enum {
 	TUNING_SYSTEM;
@@ -109,10 +113,6 @@ ChordSpaceFilterType :: enum {
 	EQUALS_AND_ONE_VL_SUM;
 	NONE;
 }
-ChordSpaceFilterAggregate :: enum {
-	INTERSECTION;
-	UNION;
-}
 RowSystemType :: enum {
 	none;
 	internal_message;
@@ -120,11 +120,6 @@ RowSystemType :: enum {
 	midi_control_change;
 	midi_velocity;
 	midi_pitch;
-}
-GetOrCreateMSpaceType :: enum {
-	GET_BY_NAME;
-	GET_BY_ID;
-	GET_BY_INDEX;
 }
 LinearPitchSpaceView :: enum {
 	RATIO_PROPORTIONAL;
@@ -137,6 +132,11 @@ SimpleSynthMessageType :: enum {
 	RELEASE_SECONDS;
 	ATTACK_CURVE;
 	RELEASE_CURVE;
+}
+GetOrCreateMSpaceType :: enum {
+	GET_BY_NAME;
+	GET_BY_ID;
+	GET_BY_INDEX;
 }
 OscWaveType :: enum {
 	SINE;
@@ -348,6 +348,7 @@ AsmCreateSpiral :: struct {
 	show_values : bool;
 	point_dim : Vector2;
 	osc_wave_type : OscWaveType;
+	set_spiral_base : bool;
 	base_chord : [] float64;
 	base_index : int;
 }

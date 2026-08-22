@@ -34,6 +34,9 @@ main :: () {
 	c_spiral.world_pos = Vector2.{0,0};
 	c_spiral.tuning_system_id = 0;
 	c_spiral.pitch_zero_freq = 130.8128;
+	//Setting set_spiral_base to false will not draw the spiral base and will ignore all the base chord/point data
+	//It can be used to draw a spiral without the base points
+	c_spiral.set_spiral_base = true; 
 	c_spiral.base_index = 0;
 	c_spiral.base_chord = float64.[0,4,7];
 	c_spiral.tuning_count = 12;
