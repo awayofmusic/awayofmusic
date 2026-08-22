@@ -317,6 +317,25 @@ RemoveWatchSubRows :: inline (row_index : int, text_op : *TextOpSpaceData, watch
 		RemoveWatchRowRange(sub_start_index, count, text_op);
 	}
 }
+RemoveAllWatchSubRows :: inline (text_op : *TextOpSpaceData) {
+	top_wi : int = 0;
+	//NOTE : The last row is always kept since we want 1 row for input
+	while top_wi < text_op.watch_data_rows.count-1 {
+		//TODO Should we do this with RemoveManyWatch? Is it even worth it? probably yes
+		#if 1 {
+		RemoveWatchSubRows(top_wi, text_op, 0);
+		} else {
+		while text_op.watch_data_rows[top_wi+1].watch_indent != 0 {
+			RemoveWatchData(top_wi+1, text_op);
+		}
+		}
+		top_wi += 1;
+	}
+	//Put the highlighted_name_index in bounds if it is out of bounds after removing the rows when the debugger stops.
+	if text_op.highlighted_name_index >= text_op.watch_data_rows.count {
+		text_op.highlighted_name_index = text_op.watch_data_rows.count-1;
+	}
+}
 //NOTE : We reset and then grab data since the watch_name_string
 //is stored at the beginning of the pool we grab it again there.
 //The expression depends on watch_name string so it makes sense to store it in the same place.

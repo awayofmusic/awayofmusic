@@ -4954,6 +4954,461 @@ SpiralSpace :: struct {
 	synth : SimpleSynth;
 }
 
+AsmCreateSpiral :: struct {
+	//return values
+	ret_dspace_id : int;
+
+	op_space_id : int;
+	spiral_type : SpiralType;
+	world_pos : Vector2F64;
+	tuning_system_id : int;
+	pitch_zero_freq : float64;
+	//TODO Should we rename these?
+	tuning_count : int;
+	chord_count : int;
+	rotate : float64 = PI64/2;
+	is_clockwise : AsmBool = #run ToAsmBool(true);
+	radius_size : float64; // Use to adjust spiral_delta size going out
+	sr_factor : float64; // Use to adjust inner radius size (although it does effect overall spiral size as well)
+	is_in_out : AsmBool = #run ToAsmBool(true);
+	sound_float : AsmBool;
+	is_loop : AsmBool = #run ToAsmBool(true);
+	show_values : AsmBool = #run ToAsmBool(true);
+	point_dim : Vector2F64;
+	//TODO Do this with a Vector4F64
+	// point_color : Vector4F = LIGHT_BROWN;
+	osc_wave_type : OscWaveType;
+
+	base_chord : AsmArray(float64);
+	base_index : int;
+} @LibraryAsmGen
+AsmMapSpiral :: struct {
+	op_space_id : int;
+	dspace_id : int;
+	dspace_shape_group : int;
+	//This will get grouped by the SpiralSpace.chord_count
+	//TODO Reorder this in case we use an array in the game code data
+	map_chords : AsmArray(float64);
+	//TODO It might be better to just have the player draw these lines
+	//themselves with a general draw line function and associate it to
+	//dspace and op_space themselves instead of automatically like this.
+	//That would avoid the looping problem.
+	draw_vl_lines : AsmBool; //bool to draw_vl_lines between each chord.
+} @LibraryAsmGen
+MapSpiralData :: struct {
+	op_space_id : int;
+	dspace_id : int;
+	dspace_shape_group : int;
+
+	//This will get grouped by the SpiralSpace.chord_count
+	//TODO Reorder this in case we use an array in the game code data
+	chord_data : int;
+	chord_count : int;
+
+	//TODO It might be better to just have the player draw these lines
+	//themselves with a general draw line function and associate it to
+	//dspace and op_space themselves instead of automatically like this.
+	//That would avoid the looping problem.
+	draw_vl_lines : int; //bool to draw_vl_lines between each chord.
+	//TODO Can add this to finish a loop or leave it up to the user to add.
+	// loop_vls_lines : int;
+}
+
+/*NOTE : Could generalize this for all 2d voice_leadings in general
+maybe except for chord_s2. But still from 1 dspace to another is very interesting.
+Like a 2D spiral space voice leading to a chord_s2 voice leading.
+Or a circle space to a linear space kind of thing.
+*/
+SpiralVoiceLeading :: struct {
+	dspace_id : int;
+	// start_spiral_index : float64;
+	// end_spiral_index : float64;
+	start_pos : Vector2F;
+	end_pos : Vector2F;
+}
+
+/*NOTE : This is a convenience function both for consistent reuse AND
+also for code abstraction in case we change the way spirals are made by default.
+BUT we can still create them with InitSpiralSpace for example.
+
+We return SpiralSpace because then we can just pass in values directly
+to the function and not have to worry about it as a pointer.
+*/
+CreateSpiralInSpace :: inline (
+	sp : SpiralSpace,
+	op_spec_data : *OpSpaceSpecData) 
+-> *SpiralSpace
+{
+	spiral : *SpiralSpace = array_add(*op_spec_data.all_op_spirals);
+	spiral.* = sp;
+	spiral.op_space_id = op_spec_data.op_space_id;
+	InitSpiralSpace(spiral);
+
+	coll : *CollisionEntity = array_add(*op_spec_data.all_op_collision_entities);
+	coll.entity_id = spiral.dspace_id;
+	coll.entity_type = EntityType.SPIRAL;
+	coll.op_space_id = op_spec_data.op_space_id;
+	coll.shape = CollisionShape.CIRCLE;
+	coll.circle.pos = spiral.world_center_pos;
+	coll.circle.radius = spiral.total_radius;
+
+	return spiral;
+}
+
+InitSpiralSpace :: inline (sp : *SpiralSpace) {
+	sp.dspace_id = context.ALL_NEXT_IDS.DSPACE_ID;
+	context.ALL_NEXT_IDS.DSPACE_ID += 1;
+	if sp.spiral_type == SpiralType.PROPER sp.radius_size *= 1.75 / 2;
+	if sp.is_in_out {
+		sp.in_out_factor = 1.0;
+		sp.start_radius = sp.sr_factor*sp.radius_size;
+		//TODO Maybe we should just use in_out_factor in the code
+		//instead of having the negative mapped in 2 places?
+		sp.spiral_delta = sp.radius_size / sp.tuning_count;
+	} else {
+		sp.in_out_factor = -1.0;
+		//sr_factor is for center (like in in_out below) and then chord_count for spiral
+		sp.start_radius = (sp.sr_factor+sp.chord_count)*sp.radius_size;
+		/*NOTE : Computing this here makes it convenient particular for computing
+		spiral pos but also we have to remember to multiple all radius values
+		if we need to make some kind of collision adjustment.
+		*/
+		sp.spiral_delta = -sp.radius_size / sp.tuning_count;
+	}
+	sp.total_radius = (sp.sr_factor+sp.chord_count)*sp.radius_size + sp.point_dim.y;
+}
+
+ValidateSpiral :: inline (
+	base_chord : [] float64,
+	sp : SpiralSpace)
+-> success : bool, error_msg : string
+{
+	if base_chord.count != sp.chord_count {
+		return false, "Error : base_chord.count != sp.chord_count";
+	}
+	//Otherwise there is no spiral. Can return this as an error eventually.
+	if sp.chord_count * sp.tuning_count <= 0 {
+		return false, "Error : sp.chord_count * sp.tuning_count <= 0";
+	}	
+	return true, "";
+}
+SetSpiralBase :: inline (
+	base_chord : [] float64,
+	base_index : int,
+	sp : *SpiralSpace,
+	op_spec_data : *OpSpaceSpecData)
+-> success : bool, error_msg : string
+{
+	success, error_msg := ValidateSpiral(base_chord, sp.*);
+	if !success return success, error_msg;
+
+	//TODO To set multiple base points we just create more and then just need to update the
+	//base_space_point_id and base_index to whatever we want.
+	//NOTE : We then just need to grab the space_point that has this dspace_id and int_pos.x == base_index
+	// sp.has_base_points = true;
+	// sp.base_space_point_id = context.ALL_NEXT_IDS.POINT_ID;
+	sp.base_index = base_index;
+
+	sorted_base_chord := array_copy(base_chord,,temp);
+	quick_sort(sorted_base_chord, (f1,f2) => f1 - f2);
+	//DOC : To ensure that we have positive values in range for now as the base chord
+	//especially in case valid negative values are passed in
+	for * sorted_base_chord {
+		if it.* < 0 {
+			it.* = fmod_cycling(it.*, cast(float64)sp.tuning_count);
+		}
+	}
+
+	sp.base_chord = array_copy(sorted_base_chord,, op_spec_data.spec_2D_alloc);
+
+	//TODO Should this be temp or context.allocator?
+	point_chord := array_copy(sorted_base_chord,, temp);
+	roots_of_unity := RootsOfUnity(sp.tuning_count, sp.is_clockwise, sp.rotate, Vector2F,, temp);
+	//TODO We could add a value here to increase size of spiral so we
+	//could use it more as an instrument. Could add a value but then
+	//we would laso have to adjust the radius and number of points everywhere.
+	//Also would have to consider how we map music pts to this geometry then.
+	for 0..(sp.chord_count*sp.tuning_count)-1 {
+		it_mod : int = it % sp.chord_count;
+		if it_mod == base_index {
+			// point : *SpacePoint = array_add(all_space_points);
+			// point.id = context.ALL_NEXT_IDS.POINT_ID;
+			// context.ALL_NEXT_IDS.POINT_ID += 1;
+			// point.dspace_id = sp.dspace_id;
+			// point.world_pos = IndexToSpiralPos(it, sp, roots_of_unity);
+			// point.rect_mesh = RectCenterDim(point.world_pos, sp.point_dim);
+			// point.color = sp.point_color;
+			// // point.int_pos.x = it;
+			// point.int_pos.x = 7; //This is 7 for the rendering order
+			// //Storing these here for covenience on printing 1-2 values even though spiral point can be n-dimensional
+			// point.fun_region_float[0] = point_chord[0];
+			// if point_chord.count > 1 {
+			// 	point.fun_region_float[1] = point_chord[1];
+			// }
+			world_pos : Vector2F = IndexToSpiralPos(it, sp, roots_of_unity);
+
+			//ADDING SPACE RECTS DIRECTLY and then we can remove SpacePoint above once this is working.
+			rect : *SpaceRect = array_add(*op_spec_data.ass.all_space_rects);
+			rect.shape_id = context.ALL_NEXT_IDS.NEXT_SHAPE_ID;
+			context.ALL_NEXT_IDS.NEXT_SHAPE_ID += 1;
+			rect.op_space_id = op_spec_data.op_space_id;
+			rect.dspace_id = sp.dspace_id;
+			rect.dspace_shape_group = sp.base_shape_group;
+			rect.render_order = sp.base_render_order;
+			rect.color = sp.point_color;
+			rect.rect = RectCenterDim(world_pos, sp.point_dim);
+			rect.pitch_set = array_copy(point_chord,, op_spec_data.spec_2D_alloc);
+			rect.shape_text = sprint("%", point_chord,, op_spec_data.spec_2D_alloc);
+
+			space_text : *SpaceText = array_add(*op_spec_data.ass.all_space_text);
+			space_text.op_space_id = op_spec_data.op_space_id;
+			space_text.dspace_id = sp.dspace_id;
+			//TODO I think we could store this render_order OR I guess this i the default text op render order
+			//Maybe we could store that somewhere as default instead.
+			space_text.render_order = 10003;
+			//TODO Maybe this should be a different group in case we want to erase it later.
+			space_text.dspace_shape_group = sp.base_shape_group;
+			space_text.color = WHITE_V;
+			// space_text.color = LOW_WHITE_V;
+			//TODO Calculate this here if we remove SpacePoint
+			space_text.op_pos = world_pos - Vector2F.{0,sp.point_dim.y};
+
+			//TODO Make a function SetSpaceText and reuse for chord_s2, then we can also just memcpy what fits
+			//TODO Could also print a list of values here if needed. I think tprint might do it directly
+			space_string : string = tprint("%", point_chord[0]);
+			SetSpaceText(space_string, space_text);
+			//Sanity check but we could just put an if here but max s64 is < 32 chars anyways
+			// assert(space_string.count <= space_text.text_chars.count);
+			// space_text.text.data = space_text.text_chars.data;
+			// space_text.text.count = space_string.count;
+			// memcpy(space_text.text.data, space_string.data, space_string.count);
+
+			for * point_chord {
+				// rect_value : *SpaceShapeValue = array_add(*ass.all_space_shape_values);
+				// rect_value.shape_id = rect.shape_id;
+				// rect_value.float_value = it.*;
+
+				// sp_to_value : *SpacePointToValue = array_add(all_space_point_to_value);
+				// sp_to_value.space_point_id = point.id;
+				// sp_to_value.value = it.*;
+				//TODO Remove this if we remove BOOK spiral eventually
+				if sp.spiral_type == {
+				case .BOOK; it.* = PosMod(it.* - 1, cast(float64) sp.tuning_count);
+				case; it.* += 1;
+				}			
+			}
+		}
+	}
+	return true, "";
+}
+
+CreateSpiralPointAndValues :: inline (
+	chord : [] float64,
+	sp : SpiralSpace,
+	all_space_points : *[..] SpacePoint,
+	all_space_point_to_value : *[..] SpacePointToValue,
+	color : Vector4F = LIGHT_BROWN)
+{
+	assert(chord.count == sp.chord_count);
+	space_point := CreateSpiralPoint(chord[0] * sp.chord_count,
+		chord[0], sp, all_space_points, color);
+	CreateSpiralPointValues(chord, space_point.id,
+		all_space_point_to_value);
+}
+
+/*NOTE : We make this with index so we can decide how we want to make the point.
+We can externally use all_spiral_base_values or just do it directly. This way keeps
+it flexible and consistent in case we decide to change things later.
+
+I AM NOT SURE EXACTLY HOW WE WILL USE THIS, so I am keeping it flexible and general for
+now so we can do all cases that are suggested in the book and then we can see how we use it later.
+
+This allows us to put a point anywhere and then associate any values we want to it so the spiral remains flexible.
+*/
+CreateSpiralPoint :: inline (
+	index : float64,
+	display_value : float64,
+	sp : SpiralSpace,
+	all_space_points : *[..] SpacePoint,
+	color : Vector4F = LIGHT_BROWN,
+	order : int = 8)
+-> *SpacePoint
+{
+	point : *SpacePoint = array_add(all_space_points);
+	point.id = context.ALL_NEXT_IDS.POINT_ID;
+	context.ALL_NEXT_IDS.POINT_ID += 1;
+	point.dspace_id = sp.dspace_id;
+	//TODO Could use IndexToSpiralPos but with float and euler's formula instead if we allow that... hmmmm
+	//TODO Can grab base_chord from all_spiral_base_values if we need to compute offset values.
+	// point.world_pos = ChordToSpiralPoint(float_chord, float_base, 0, sp);
+	point.world_pos = FloatIndexToSpiralPos(index, sp);
+	point.rect_mesh = RectCenterDim(point.world_pos, sp.point_dim);
+	point.color = color;
+	//Storing these here for covenience on printing 1-2 values even though spiral point can be n-dimensional
+	point.fun_region_float[0] = display_value;
+	point.int_pos.x = order;
+	return point;
+}
+
+CreateSpiralPointValues :: inline (
+	chord : [] float64,
+	space_point_id : int,
+	all_space_point_to_value : *[..] SpacePointToValue)
+{
+	for chord {
+		sp_to_value : *SpacePointToValue = array_add(all_space_point_to_value);
+		sp_to_value.space_point_id = space_point_id;
+		sp_to_value.value = it;
+	}
+}
+
+//TODO Can have a separate table that indexes these values eventually
+//and then we can remove the space_point_id. Or just have an SoA.
+//SoA or separate table index should make this good.
+SpacePointToValue :: struct {
+	// dspace_id : int;
+	space_point_id : int;
+	value : float64;
+
+	//TODO Could add an order if needed but we can just sort
+	//by value for now since we are using this for fun_region_pos
+	//for spirals for now. This generalizes for chord space dimensions
+	//as well though.
+	// order : int;
+}
+
+/*TODO This is not efficient. For example, we could have a separate loop for each type and then
+no need for if and can likely remove some calculations as well. Let's see how everything else progresses.
+IT IS convenient for different types for now since we have to compute the previous point beforehand to
+close the spiral loops.
+
+I THINK ULTIMATELY I MAY JUST WANT PROPER spiral and then we 
+can remove a lot of this and maybe put some in the regular code
+
+TODO What if we make the index a float which is what we do in ChordToSpiralPoint
+Then we could use euler's formula instead of roots_of_unity and then
+we don't have to pass that in.
+*/
+IndexToSpiralPos :: inline (index : int, sp : SpiralSpace, roots_of_unity : [] Vector2F) -> Vector2F {
+	radius_index, point_index := ComputeQuotientAndRemainder2(index, sp.tuning_count);
+
+	//TODO Can allow each method depending on some input params if we want positive or negative to be clockwise
+	//and can also can possibly allow rotation by PI/sp.tuning_count or just PI/2
+	radius : float;
+	if sp.spiral_type == {
+	case SpiralType.PROPER;
+		//TODO Maybe we should remove spiral_delta altogether and just
+		//(sp.in_out_factor * sp.radius_size / sp.tuning_count)
+		// spiral_delta : float = sp.radius_size / sp.tuning_count;
+		//This draws a proper spiral with radius changing at each step but I don't find it very clear overall
+		radius = sp.start_radius + index * sp.spiral_delta;
+	case SpiralType.CONCENTRIC_CIRCLE;
+		//TODO This does not really work with out_in, since
+		//we have to change the radius_size and sr_factor
+		//but at least it works for now in all cases with that change
+		//This draws positive clockwise
+		radius = sp.start_radius + 
+			sp.in_out_factor * sp.radius_size * radius_index;
+	case SpiralType.BOOK;
+		start_radius_index : int = 0;
+		max_radius_index : int = sp.chord_count;	
+		//Radius from top of circle with positive counter-clockwise like the book
+		current_radius_index : int = PosMod(start_radius_index - radius_index, max_radius_index);
+		// current_radius_index : int = PosMod(start_radius_index - radius_index - 1, max_radius_index);
+		radius = sp.start_radius + sp.radius_size * current_radius_index;
+	}
+
+	//TODO We could use eulers formula here to ge the vector without roots of unity instead
+	rel_pos   : Vector2F = radius * roots_of_unity[point_index];
+	world_pos : Vector2F = sp.world_center_pos + rel_pos;
+	return world_pos;
+}
+
+//TODO Maybe name this FloatIndexToSpiralPos
+//TODO Also likely do both float and float64 for convenience
+FloatIndexToSpiralPos :: inline (index : $T, sp : SpiralSpace) -> Vector2F {
+//TODO Could just make this float. It is for convenience but relative
+//pos is likely always to be 32-bit anyways
+#assert(T == float || T == float64);
+	// spiral_delta : float = sp.radius_size / sp.tuning_count;
+	c : float = 1.0;
+	if sp.is_clockwise c = -1.0;
+	theta := sp.rotate + c * TAU * (index / sp.tuning_count);
+	// theta : float = (PI/2.0) - TAU * (index / sp.tuning_count);
+	circle_pos : Vector2F = EulersFormula(cast(float) theta).vector;
+	radius : float;
+	if sp.spiral_type == SpiralType.PROPER {
+	//TODO Each of these points is slightly more out or in. Does it matter?
+	#if 1 {
+	//TODO Should we mod this one like we do the int one below?
+	radius = sp.start_radius + cast(float) index * sp.spiral_delta;
+	} else {
+	diff_int : int = cast(int) index;
+	diff_int = PosMod(diff_int, sp.tuning_count * sp.chord_count);
+	radius = sp.start_radius + diff_int * sp.spiral_delta;
+	}
+	} else {
+	tuning_int : int = cast(int) (index / sp.tuning_count);
+	tuning_int = PosMod(tuning_int, sp.chord_count);
+	radius = sp.start_radius + 
+		sp.in_out_factor * sp.radius_size * tuning_int;
+	}
+	spiral_point : Vector2F = sp.world_center_pos + radius * circle_pos;
+	return spiral_point;
+}
+
+/*I prefer this over chords. I think I am starting to see that chords
+are separate from spiral. Just focus on the index and only use the chords
+for audio. Can convert a chord to spiral index but that would just be based
+on the base note anyways whic would reduce to this case.
+Especially if the base chord is always 0 based then this linear equation
+would always be the base case.
+*/
+BaseValueToSpiralIndex :: inline (
+	base_value : float64,
+	chord_count : int, 
+	base_index : int = 0) 
+-> float64 
+{
+	spiral_index : float64 = base_value * chord_count + base_index;
+	return spiral_index;
+}
+
+ChordToSpiralIndex :: inline (
+	chord : [] $T,
+	base_chord : [] T,
+	//TODO We could just pass in base_chords and then check the deltas between the notes.
+	//I guess we would have to do that anyways outside to find the actual index.
+	//TODO Could calculate the base_index from inter_onsets later if needed OR even just pass in the inter-onsets
+	//instead so we can just compare those directly. Let's see what is more convenient during usage.
+	base_index : int)
+-> T
+{
+#assert(T == int || T == float || T == float64);
+	//TODO This is not necessary but sanity check for now.
+	assert(chord.count == base_chord.count);
+	assert(base_index < chord.count);
+
+	//TODO This allows us to adjust based on base_chord and base_index but will the base_chord always be 0
+	//and the base_index always be given externally? Eg If base_chord is always 0, then we don't need it.
+	vl_diff : T = chord.count * (chord[0] - base_chord[0]) + base_index;
+	return vl_diff;
+}
+
+ChordToSpiralPoint :: inline (
+	chord : [] $T,
+	base_chord : [] T,
+	base_index : int, //TODO This is stored in spiral so no need to add both...
+	sp : SpiralSpace)
+-> Vector2F
+{
+#assert(T == float || T == float64);
+	vl_diff := ChordToSpiralIndex(chord, base_chord, base_index);
+	spiral_point := FloatIndexToSpiralPos(vl_diff, sp);
+	return spiral_point;
+}
+
+
 //TODO FROM HERE Add an allocator here so we can set the fun_region_pos
 //and also strings and then clear them when we do a clear_op instruction
 //don't mind tests we will just have some lost data with tests with the allocator

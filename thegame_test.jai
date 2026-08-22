@@ -1022,7 +1022,6 @@ Test_AsmChordS3 :: (
 	// ts_name := "et24";
 	// ts_name := "pyth";
 	// ts_name := "natural";
-	//TODO Need to set this in AsmCreateSpiral and SpiralSpace if we want to be able to hear it eventually.
 	tuning_system := ArrayFindFirstByNameId(perm.all_data.all_tuning_systems, ts_name, "short_name");
 
 	create_op : CreateOpSpaceData;
@@ -1137,7 +1136,6 @@ Test_CustomS3 :: (
 	// ts_name := "et24";
 	// ts_name := "pyth";
 	// ts_name := "natural";
-	//TODO Need to set this in AsmCreateSpiral and SpiralSpace if we want to be able to hear it eventually.
 	tuning_system := ArrayFindFirstByNameId(perm.all_data.all_tuning_systems, ts_name, "short_name");
 
 	create_op : CreateOpSpaceData;
@@ -1292,7 +1290,6 @@ Test_ClearOp :: (
 	// ts_name := "et24";
 	// ts_name := "pyth";
 	// ts_name := "natural";
-	//TODO Need to set this in AsmCreateSpiral and SpiralSpace if we want to be able to hear it eventually.
 	tuning_system := ArrayFindFirstByNameId(perm.all_data.all_tuning_systems, ts_name, "short_name");
 
 	create_op : CreateOpSpaceData;
@@ -1380,7 +1377,6 @@ Test_AsmChordS4 :: (
 	// ts_name := "et24";
 	// ts_name := "pyth";
 	// ts_name := "natural";
-	//TODO Need to set this in AsmCreateSpiral and SpiralSpace if we want to be able to hear it eventually.
 	tuning_system := ArrayFindFirstByNameId(perm.all_data.all_tuning_systems, ts_name, "short_name");
 
 	create_op : CreateOpSpaceData;
@@ -1485,7 +1481,6 @@ Test_AsmChordS5 :: (
 	// ts_name := "et24";
 	// ts_name := "pyth";
 	// ts_name := "natural";
-	//TODO Need to set this in AsmCreateSpiral and SpiralSpace if we want to be able to hear it eventually.
 	tuning_system := ArrayFindFirstByNameId(perm.all_data.all_tuning_systems, ts_name, "short_name");
 
 	create_op : CreateOpSpaceData;
@@ -1628,7 +1623,6 @@ Test_CreateChordS2 :: (
 	// ts_name := "et24";
 	// ts_name := "pyth";
 	// ts_name := "natural";
-	//TODO Need to set this in AsmCreateSpiral and SpiralSpace if we want to be able to hear it eventually.
 	tuning_system := ArrayFindFirstByNameId(perm.all_data.all_tuning_systems, ts_name, "short_name");
 
 	lp_count : int = tuning_system.music_pt_count;
@@ -1752,7 +1746,6 @@ Test_AsmChordS2 :: (
 	ts_name := "et12";
 	// ts_name := "pyth";
 	// ts_name := "natural";
-	//TODO Need to set this in AsmCreateSpiral and SpiralSpace if we want to be able to hear it eventually.
 	tuning_system := ArrayFindFirstByNameId(perm.all_data.all_tuning_systems, ts_name, "short_name");
 
 	base_chord := float64.[0,4,7];

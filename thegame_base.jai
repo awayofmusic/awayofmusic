@@ -2675,10 +2675,15 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 		{
 			//TODO Eventually we can do this while running as well if we run a certain number of instructions
 			//every frame, then we can do this also when not DEBUG_STOP
+			//TODO SHOULD WE MAKE THIS A FUNCTION LIKE StopExecutionNow
+			//TODO Let me do this in the next commit here since we are working on spiral atm
+			// if text_op.exec_info.exec_state == .IS_DEBUG_STOP {
+			// 	RemoveAllWatchSubRows(text_op);
+			// }
 			text_op.exec_info.exec_state = ExecutionState.NOT_RUNNING;
 			array_reset_keeping_memory(*perm.all_data.all_process_instruction_events);
 			array_reset_keeping_memory(*perm.all_data.all_music_instructions);
-			msg := tprint("% Stopped", text_file.file_short_name);
+			msg := tprint("Stopped %", text_file.file_short_name);
 			SetTextOpConsoleMessage(msg, text_op);
 			SetTextStatus(msg, text_op);
 		}
@@ -2687,6 +2692,7 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 				  // AllOrEquals(text_op.exec_info.exec_state, .[.IS_DEBUG_STOP, .IS_EXEC_RUNNING]) &&
 				  IsInputMapPress(.TEXT_RESTART, .DOWN_THIS_FRAME, game_input)
 	   {
+	   	//TODO Should we remove all watch sub rows here as well? I think maybe yes.
 			text_op.exec_info.exec_state = ExecutionState.NOT_RUNNING;
 			array_add(*perm.all_data.all_process_instruction_events, .{text_op.op_space_id});
 	   }
@@ -5719,23 +5725,7 @@ if perm.all_data.all_music_instructions.count > 0 {
 			// stopped_debugging : bool = was_debugging && stopped_running;
 			//NOTE : We were debugging and now were not running. I think this is good way to do it
 			if previous_state == .IS_DEBUG_STOP {
-				top_wi : int = 0;
-				//NOTE : The last row is always kept since we want 1 row for input
-				while top_wi < text_op.watch_data_rows.count-1 {
-					//TODO Should we do this with RemoveManyWatch? Is it even worth it? probably yes
-					#if 1 {
-					RemoveWatchSubRows(top_wi, text_op, 0);
-					} else {
-					while text_op.watch_data_rows[top_wi+1].watch_indent != 0 {
-						RemoveWatchData(top_wi+1, text_op);
-					}
-					}
-					top_wi += 1;
-				}
-				//Put the highlighted_name_index in bounds if it is out of bounds after removing the rows when the debugger stops.
-				if text_op.highlighted_name_index >= text_op.watch_data_rows.count {
-					text_op.highlighted_name_index = text_op.watch_data_rows.count-1;
-				}
+				RemoveAllWatchSubRows(text_op);
 			}
 			//Reset this here so we don't have weird instruction leftover causing issues somewhere else
 			array_reset_keeping_memory(*perm.all_data.all_music_instructions);

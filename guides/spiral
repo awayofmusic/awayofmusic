@@ -1,0 +1,65 @@
+#load "c_load/Library";
+
+/*Spiral diagrams are subspaces of the chord spaces.
+The base_chord is transposed along the spiral and the dimension is represented by the chord_count.
+The number of turns the spiral takes is represented by tuning count.
+All chords on the spiral diagram are direct transpositions of the base chord.
+
+The spiral space was created/discovered by Dimitri Tymoczko.
+"The spiral diagrams represent all possible combinations of big-T
+transposition along the scale and little-t transposition along the chord, for any
+choice of chord and scale. As we have seen, these transformations are
+fundamental to a wide range of music, capturing some substantial component
+of intuitive knowledge. The diagrams can be derived either as the union of
+helices, or as subspaces of the higher-dimensional space of n-note chords."
+- Dimitry Tymoczko
+
+
+This spiral is designed in a generalized way so it can be used for any purpose.
+*/
+main :: () {
+	//To open this op space from the internal terminal run :
+	//open_op my_sp
+	csd : AsmOpSpaceData;
+	csd.op_space_type = AsmOpSpaceType.space_2d;
+	csd.op_space_name = "my_sp";
+	#asm{ get_or_create_op_space csd; }
+	clear : AsmClearOpData;
+	clear.op_space_id = csd.ret_op_space_id;
+	#asm{ clear_op_space clear; }
+
+	c_spiral : AsmCreateSpiral;
+	c_spiral.op_space_id = csd.ret_op_space_id;
+	c_spiral.spiral_type = SpiralType.PROPER;
+	c_spiral.world_pos = Vector2.{0,0};
+	c_spiral.tuning_system_id = 0;
+	c_spiral.pitch_zero_freq = 130.8128;
+	c_spiral.base_index = 0;
+	c_spiral.base_chord = float64.[0,4,7];
+	c_spiral.tuning_count = 12;
+	c_spiral.chord_count = c_spiral.base_chord.count;
+	c_spiral.rotate = 0.5 * 3.14159265;
+	c_spiral.is_clockwise = true;
+	c_spiral.radius_size = 3.0; // Use to adjust spiral_delta size going out
+	c_spiral.sr_factor = 1.5; // Use to adjust inner radius size (although it does effect overall spiral size as well)
+	c_spiral.is_in_out = true;
+	c_spiral.sound_float = false; // The whole spiral will make sound instead of just the points
+	c_spiral.is_loop = true;
+	c_spiral.show_values = true;
+	c_spiral.point_dim = Vector2.{0.6,0.6};
+	c_spiral.osc_wave_type = OscWaveType.SAW;
+	#asm{ create_spiral c_spiral; }
+
+	map_s : AsmMapSpiral;
+	map_s.op_space_id = csd.ret_op_space_id;
+	map_s.dspace_id = c_spiral.ret_dspace_id;
+	map_s.dspace_shape_group = 0;
+	map_s.map_chords = float64.[
+		0,  4,  7,
+		0+2,4+2,7+2,
+		0+5,4+5,7+5,
+		0,  4,  7
+	];
+	map_s.draw_vl_lines = true;
+	#asm{ map_spiral map_s; }
+}
