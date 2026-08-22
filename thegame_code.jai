@@ -14227,119 +14227,62 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 			return CPUErr(sprint("Spiral % not found.\n", asm_data.dspace_id,,context.allocator));
 		}
 
-		//TODO We could add an enum to allow mapping spirals by index here if needed
-		if spiral.base_chord.count > 0 {
-			//DOC : We sort and fmod the base chord on creation now so we can just use it directly everywhere.
-			// base_chord : [..] float64;
-			// base_chord.allocator = context.allocator;
-			// //TODO If we just make this SpaceRect
-			// for ad.all_space_point_to_value if it.space_point_id == spiral.base_space_point_id {
-			// 	array_add(*base_chord, it.value);
-			// }
-			// quick_sort(base_chord, (f1,f2) => f1 - f2);
-			// assert(base_chord.count == spiral.chord_count); //Sanity check
+		map_values, map_err := GetAsmArray(asm_data.map_values, ad.ram_memory);
+		if map_err.is_error return map_err;
 
-			map_chords, map_err := GetAsmArray(asm_data.map_chords, ad.ram_memory);
-			if map_err.is_error return map_err;
-			if map_chords.count % spiral.chord_count != 0 {
-				return CPUErr(sprint("map_chords.count % not a multiple of spiral.chord_count %.\n", map_chords.count, spiral.chord_count));
+		last_rect_pos : Vector2F;
+		for map_v, map_index : map_values {
+			rect : *SpaceRect = array_add(*op_spec_data.ass.all_space_rects);
+			rect.shape_id = context.ALL_NEXT_IDS.NEXT_SHAPE_ID;
+			context.ALL_NEXT_IDS.NEXT_SHAPE_ID += 1;
+			rect.op_space_id = asm_data.op_space_id;
+			rect.dspace_id = asm_data.dspace_id;
+			rect.dspace_shape_group = asm_data.dspace_shape_group;
+			rect.render_order = spiral.base_render_order + 1;
+			//TODO Pass this in through MapSpiralData
+			rect.color = FGREEN_V;
+			//TODO We could return an error for out of bounds indices, but this avoids the error and still feels natural.
+			point_index : float64 = SpiralMapToPointIndex(map_v, spiral);
+			op_pos : Vector2F = FloatIndexToSpiralPos(point_index, spiral);
+			rect.rect = RectCenterDim(op_pos, spiral.point_dim);
+
+			notes := NewArray(spiral.base_chord.count, float64, false,,temp);
+			for base_note, base_index : spiral.base_chord {
+				notes[base_index] = base_note + fmod_cycling(map_v, cast(float64) spiral.tuning_count);
 			}
+			rect.pitch_set = array_copy(notes,, op_spec_data.spec_2D_alloc);
+			rect.shape_text = sprint("%", notes,, op_spec_data.spec_2D_alloc);
 
-			//TODO We should have an allocator specific for per instruction data
-			//This way we clear at for each instruction execution without any issues.
-			notes := NewArray(spiral.chord_count, float64, false,,temp);
-			last_rect_pos : Vector2F;
-			//We checked the modulo above so we already know it is a multiple so this division is precise.
-			total_chord_count : int = map_chords.count / spiral.chord_count;
-			for chord_index : 0..total_chord_count-1 {
-				for note_index : 0..spiral.chord_count-1 {
-					next_address : int = asm_data.map_chords.data_address + size_of(float64) * (chord_index * spiral.chord_count + note_index);
-					note, err := GetMemValue(next_address, float64, ad.ram_memory);
-					if err.is_error return err;
-					//TODO Check that this ensures all the notes are positive and do the same for circles and chord spaces
-					if note < 0 {
-						notes[note_index] = fmod_cycling(note, cast(float64)spiral.tuning_count);
-					} else {
-						notes[note_index] = note;
-					}
-				}
-				quick_sort(notes, (f1,f2) => f1 - f2);
+			if AsmBoolToBool(asm_data.draw_vl_lines) && map_index > 0 {
+				line, arrow := MakeQuadArrow(last_rect_pos, op_pos, 0.1);
 
-				base_diff : float64 = spiral.base_chord[0] - spiral.base_chord[spiral.base_chord.count-1];
-				music_pt_diff : float64 = notes[0] - notes[notes.count-1];
-				equal_diffs : bool = FloatBothEqual(base_diff, music_pt_diff);
-				for 1..spiral.base_chord.count-1 {
-					base_diff = spiral.base_chord[it] - spiral.base_chord[it-1];
-					music_pt_diff = notes[it] - notes[it-1];
-					equal_diffs &&= FloatBothEqual(base_diff, music_pt_diff);
-				}
-				//TODO I think this should error out so people can see the problem with the geometry.
-				//Also debugger will stop clearly in the right place and the spiral will still be there
-				//and all the points before this one will be added.
-				if !equal_diffs {
-					return CPUErr(sprint("Spiral mapping % should be a transposition from %.", notes, spiral.base_chord));
-				}
-
-				// if equal_diffs {
-				rect : *SpaceRect = array_add(*op_spec_data.ass.all_space_rects);
-				rect.shape_id = context.ALL_NEXT_IDS.NEXT_SHAPE_ID;
+				//TODO Maybe we should do this as triangles? Let's see if we use quads often
+				//otherwise might be better to just have rects, triangles and circles
+				quad : *SpaceQuad = array_add(*op_spec_data.ass.all_space_quads);
+				quad.shape_id = context.ALL_NEXT_IDS.NEXT_SHAPE_ID;
 				context.ALL_NEXT_IDS.NEXT_SHAPE_ID += 1;
-				rect.op_space_id = asm_data.op_space_id;
-				rect.dspace_id = asm_data.dspace_id;
-				rect.dspace_shape_group = asm_data.dspace_shape_group;
-				rect.render_order = spiral.base_render_order + 1;
+				quad.op_space_id = asm_data.op_space_id;
+				quad.dspace_id = asm_data.dspace_id;
+				quad.dspace_shape_group = asm_data.dspace_shape_group;
+				quad.render_order = spiral.base_render_order + 2; //TODO should we set this to something else?
 				//TODO Pass this in through MapSpiralData
-				rect.color = FGREEN_V;
-				//TODO Remove base_index from function input here since it is stored in spiral.
-				op_pos : Vector2F = ChordToSpiralPoint(notes, spiral.base_chord, spiral.base_index, spiral);
-				rect.rect = RectCenterDim(op_pos, spiral.point_dim);
-				rect.pitch_set = array_copy(notes,, op_spec_data.spec_2D_alloc);
-				rect.shape_text = sprint("%", notes,, op_spec_data.spec_2D_alloc);
-				//TODO FROM HERE add space value and then finish create shape and generalize create shape
-				// for notes {
-				// 	rect_value : *SpaceShapeValue = array_add(*op_spec_data.ass.all_space_shape_values);
-				// 	rect_value.shape_id = rect.shape_id;
-				// 	rect_value.float_value = it;
-				// }
+				quad.color = LBLUE_V;
+				quad.quad = line;
 
-				//TODO This may be worth removing eventually and just have this be added manually by a general
-				//space_arrow asm call to draw it directly between 2 given points.
-				if AsmBoolToBool(asm_data.draw_vl_lines) && chord_index > 0 {
-					line, arrow := MakeQuadArrow(last_rect_pos, op_pos, 0.1);
-
-					//TODO Maybe we should do this as triangles? Let's see if we use quads often
-					//otherwise might be better to just have rects, triangles and circles
-					quad : *SpaceQuad = array_add(*op_spec_data.ass.all_space_quads);
-					quad.shape_id = context.ALL_NEXT_IDS.NEXT_SHAPE_ID;
-					context.ALL_NEXT_IDS.NEXT_SHAPE_ID += 1;
-					quad.op_space_id = asm_data.op_space_id;
-					quad.dspace_id = asm_data.dspace_id;
-					quad.dspace_shape_group = asm_data.dspace_shape_group;
-					quad.render_order = spiral.base_render_order + 2; //TODO should we set this to something else?
-					//TODO Pass this in through MapSpiralData
-					quad.color = LBLUE_V;
-					quad.quad = line;
-
-					tri : *SpaceTriangle = array_add(*op_spec_data.ass.all_space_triangles);
-					tri.shape_id = context.ALL_NEXT_IDS.NEXT_SHAPE_ID;
-					context.ALL_NEXT_IDS.NEXT_SHAPE_ID += 1;
-					tri.op_space_id = asm_data.op_space_id;
-					tri.dspace_id = asm_data.dspace_id;
-					tri.dspace_shape_group = asm_data.dspace_shape_group;
-					tri.render_order = spiral.base_render_order + 2; //TODO should we set this to something else?
-					//TODO Pass this in through MapSpiralData (could have an array of colors)
-					//Or 2 colors in this case, arrow color and point color
-					tri.color = LBLUE_V;
-					tri.triangle = arrow;
-				}
-
-				last_rect_pos = op_pos;
-				// } 
-				//else {
-					//TODO We could put a message somewhere saying this does not map to the spiral BUT
-					//for now we just do nothing since this position does not actually map to this spiral.
-				//}
+				tri : *SpaceTriangle = array_add(*op_spec_data.ass.all_space_triangles);
+				tri.shape_id = context.ALL_NEXT_IDS.NEXT_SHAPE_ID;
+				context.ALL_NEXT_IDS.NEXT_SHAPE_ID += 1;
+				tri.op_space_id = asm_data.op_space_id;
+				tri.dspace_id = asm_data.dspace_id;
+				tri.dspace_shape_group = asm_data.dspace_shape_group;
+				tri.render_order = spiral.base_render_order + 2; //TODO should we set this to something else?
+				//TODO Pass this in through MapSpiralData (could have an array of colors)
+				//Or 2 colors in this case, arrow color and point color
+				tri.color = LBLUE_V;
+				tri.triangle = arrow;
 			}
+
+			last_rect_pos = op_pos;
 		}
 	}
 	case OpCode.create_cs2; {

@@ -4986,14 +4986,16 @@ AsmMapSpiral :: struct {
 	op_space_id : int;
 	dspace_id : int;
 	dspace_shape_group : int;
-	//This will get grouped by the SpiralSpace.chord_count
-	//TODO Reorder this in case we use an array in the game code data
-	map_chords : AsmArray(float64);
+	map_values : AsmArray(float64);
 	//TODO It might be better to just have the player draw these lines
 	//themselves with a general draw line function and associate it to
 	//dspace and op_space themselves instead of automatically like this.
 	//That would avoid the looping problem.
 	draw_vl_lines : AsmBool; //bool to draw_vl_lines between each chord.
+} @LibraryAsmGen
+AsmMapSpiralType :: enum {
+	CHORD;
+	INDEX;
 } @LibraryAsmGen
 MapSpiralData :: struct {
 	op_space_id : int;
@@ -5373,7 +5375,11 @@ BaseValueToSpiralIndex :: inline (
 	spiral_index : float64 = base_value * chord_count + base_index;
 	return spiral_index;
 }
-
+SpiralMapToPointIndex :: inline (map_index : float64, spiral : SpiralSpace) -> float64 {
+	total_spiral_count := cast(float64) (spiral.tuning_count * spiral.chord_count);
+	mod_index : float64 = fmod_cycling(map_index * spiral.chord_count, total_spiral_count);
+	return mod_index;
+}
 ChordToSpiralIndex :: inline (
 	chord : [] $T,
 	base_chord : [] T,

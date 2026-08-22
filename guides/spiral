@@ -54,12 +54,8 @@ main :: () {
 	map_s.op_space_id = csd.ret_op_space_id;
 	map_s.dspace_id = c_spiral.ret_dspace_id;
 	map_s.dspace_shape_group = 0;
-	map_s.map_chords = float64.[
-		0,  4,  7,
-		0+2,4+2,7+2,
-		0+5,4+5,7+5,
-		0,  4,  7
-	];
+	//map_values converts directly to the pitch transposition points
+	map_s.map_values = float64.[0,2,5,0];
 	map_s.draw_vl_lines = true;
 	#asm{ map_spiral map_s; }
 }

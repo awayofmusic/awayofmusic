@@ -2317,9 +2317,8 @@ Test_AsmSpiral :: (
 	asm_spiral.base_chord.count, asm_spiral.base_chord.data_address = 
 		PushRAMArray(base_chord, *perm.all_data.ram_memory);
 
-	second_chord := NewArray(base_chord.count, float64, false);
-	for base_chord second_chord[it_index] = it+2.5;
-	PushRAMValues(second_chord, *perm.all_data.ram_memory);
+	second_chord := array_copy(float64.[0, 2.5]);
+	map_count, map_data_address := PushRAMArray(second_chord, *perm.all_data.ram_memory);
 
 	//NOTE : I prefer this way over the generated asm since we don't have to update tests every time
 	//we change this data and the compiler helps. Only if we change the name of dspace_id basically.
@@ -2330,7 +2329,7 @@ Test_AsmSpiral :: (
 	map_spiral_data := AsmMapSpiral.{
 		op_space_id=op_space.id,
 		dspace_shape_group=0,
-		map_chords=.{2*base_chord.count, asm_spiral.base_chord.data_address},
+		map_values=.{map_count, map_data_address},
 		draw_vl_lines=ToAsmBool(true)
 	};
 	map_spiral_address : int = PushRAMValue(map_spiral_data, *perm.all_data.ram_memory);
@@ -15147,17 +15146,13 @@ main :: () {
 	sp.base_index = 0;
 	#asm{ create_spiral sp; }
 
-	ms : AsmMapSpiral;
-	ms.dspace_id = sp.ret_dspace_id;
-	ms.op_space_id = sp.op_space_id;
-	ms.draw_vl_lines = true;
-	ms.map_chords = float64.[
-		0,4,7,
-		0+2,4+2,7+2,
-		0+5,4+5,7+5,
-		0,4,7
-	];
-	#asm{ map_spiral ms; }
+	map_s : AsmMapSpiral;
+	map_s.op_space_id = sp.op_space_id;
+	map_s.dspace_id = sp.ret_dspace_id;
+	map_s.dspace_shape_group = 0;
+	map_s.map_values = float64.[0,2,5,-1.5];
+	map_s.draw_vl_lines = true;
+	#asm{ map_spiral map_s; }
 
 	//TODO Can likely remove this for example code but good her efor testing
 	// ag : AsmGeom2D;
