@@ -6421,7 +6421,6 @@ for row, row_index : render_mspace.all_music_lane_rows {
 	PushSetScissor(pixel_rect, renderer_data.base_render_group, order = next_order+4);
 
 	//TODO Should we do this fetch by index or row_id
-	//TODO FROM HERE Could undo this and push the other code and then update this with other ones first if we want
 	section_to_row : [] SectionToRow = 
 		ArrayFindAllVarName(render_mspace.all_section_to_row, row.id, "row_id",, temp);
 	for section : section_to_row {

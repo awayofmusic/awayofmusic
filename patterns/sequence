@@ -1,0 +1,51 @@
+#load "c_load/Library";
+
+main :: () {
+	clear_m0 : AsmClearMSpaceData;
+	#asm{ clear_mspace clear_m0; }
+
+	synth : AsmGetOrCreateSimpleSynthData;
+	synth.synth_name = "s0";
+	#asm{ get_or_create_simple_synth synth; }
+	update_synth : AsmUpdateSimpleSynthData;
+	update_synth.synth_id = synth.ret_synth_id;
+	update_synth.update_wave_type = true;
+	update_synth.wave_type = OscWaveType.SAW;
+	update_synth.update_volume = true;
+	update_synth.volume = 0.1;
+	#asm{ update_simple_synth update_synth; }
+
+
+	ts : AsmGetTuningSystemData;
+	ts.short_name = "et12";
+	#asm{ get_tuning_system ts; };
+	rs : RowSectionData;
+	rs.tuning_system_id = ts.ret_tuning_system_id;
+	rs.x_length = 12;
+	rd : AsmCreateRowData;
+	rd.octave_height = 12.0;
+	rd.row_height = 2. * rd.octave_height;
+	rd.row_sections = RowSectionData.[rs];
+	rd.row_system_type = RowSystemType.internal_pitch;
+	rd.row_system_id = synth.ret_synth_id;
+	#asm { create_row rd; }
+	rd.row_base_pt = -23.;
+	#asm { create_row rd; }
+	
+	seq := NewArray(2,int);
+	seq[0] = +3;
+	seq[1] = +3;
+	mp : int = 9;
+	for 0..seq.count-1 {
+		//TODO Maybe can make a general function that checks for null and type and unknown identifier for a consistent easy error everywhere
+		//TODO tano(,it) does not work
+		//TODO tano(row,it) should check "row" is unknown ident and return that
+		tano(0,it) ~= mp;
+		//TODO tran0 invalid variable does not work
+		mp += tran0[it];
+	}			
+	//Sequence(0,9,tran0);
+}
+
+Sequence :: (row : int, start : int, seq : [] int) {
+}

@@ -2112,10 +2112,10 @@ SaveTextFile :: (text_file : *TextFile) -> success : bool, msg : string {
 		modtime, resource_file_size, read_time_success := file_modtime_and_size(text_file.file_name);		
 		text_file.file_write_time = modtime;
 		text_file.file_string.not_saved_text_edit = false;
-		return true, tprint("% saved.\n", text_file.file_name);
+		return true, tprint("Saved %\n", text_file.file_name);
  	}
 
-	return false, tprint("% NOT saved.\n", text_file.file_name);
+	return false, tprint("NOT saved %\n", text_file.file_name);
 }
 
 FileNameProc :: (info : *File_Visit_Info, user_data : *[..] string)

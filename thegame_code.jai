@@ -34,6 +34,8 @@ CodeLexer :: struct {
 
 	next_index : int;
 	//TODO Maybe we can rename to just tokens or l_tokens
+	//new_lexer_tokens : [..] LCodeToken;
+	//TODO Turn this into an array view so we can reuse the tokens from the files and use the resizable array above to generate the tokens.
 	lexer_tokens : [..] LCodeToken;
 
 	//TODO If we do lazy lexing, then we can make this = to all_compiler_errors and remove this
@@ -68,6 +70,13 @@ ResetCodeLexer :: inline (cl : *CodeLexer) {
 	array_reset_keeping_memory(*cl.lexer_errors.all_compiler_errors);
 	cl.lexer_errors.compiler_errors_string.text_string.count = 0;
 	array_reset_keeping_memory(*cl.bracket_stack);
+}
+SetLoadedFile :: inline (cl : *CodeLexer, loaded_file : DirectiveLoadFile) {
+	cl.input = loaded_file.file_string;
+	//TODO Im pretty sure we can just copy the array view and not the whole array.
+	//I think it's because its resizable for the lexer token generation but we could separate those in the lexer
+	//and then use new_lexer_tokens in the lexer and just lexer_tokens (or rename it) in the evaluation part of the compiler
+	array_copy(*cl.lexer_tokens, loaded_file.lex_tokens);
 }
 /*DOC : Using this for now to we can check errors the same way on first load and on subsequent loads
 TODO Once we do lazy lexing, then we can just use all_compiler_errors directly and remove all of this entirely.
@@ -4365,7 +4374,9 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 				new_row_start_op = PushStackMov(row_start_node, cd);
 				new_row_end_op = PushStackMov(row_end_node, cd);
 			} 
-			else if var_nodes[0] != null && var_nodes[0].code_ir.t_info.type_enum == .INTEGER {
+			else if var_nodes[0] != null && var_nodes[0].code_ir.t_info != null &&
+				var_nodes[0].code_ir.t_info.type_enum == .INTEGER 
+			{
 				new_row_start_op = PushStackMov(var_nodes[0], cd);
 				//NOTE : By default we push on the same end_row = start_row
 				new_row_end_op = PushStackMov(var_nodes[0], cd);
@@ -6782,6 +6793,10 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 			l_node.code_ir.op = Imm(enum_value);
 			l_node.code_ir.code_value_type = .R_VALUE;
 
+		//TODO Should we keep this here for generalize unknown ident?
+		// } else if node.code_ir.ir_type == .UNKNOWN_IDENT {
+		// 	CreateCompErr(cd, .EVALUATION, node, "Unknown identifier.");
+		// 	return false;
 		} else {
 			//We can check in here if we either have a stack var or heap memory or a function name.
 			//TODO If we did a reverse array search here then we would find the correct variable right away
@@ -8497,7 +8512,7 @@ CompileCode :: inline (cs : CompileSettings, code : string) -> *CompilationData 
 		//TODO Maybe we should store cd.load_index in the lexer
 		loaded_file : *DirectiveLoadFile = *cd.all_directive_load_files[cd.load_index];
 		ResetCodeLexer(*cd.lexer);
-		array_copy(*cd.lexer.lexer_tokens, loaded_file.lex_tokens);
+		SetLoadedFile(*cd.lexer, loaded_file);
 		defer cd.load_index += 1;//put here in case we call continue
 		if cd.lexer.lexer_tokens.count > 0 && cd.lexer.lexer_tokens[0].token_type == .DOUBLE_COLON {
 			CreateCompErr(cd, .EVALUATION, cd.lexer.lexer_tokens[0],
@@ -8569,8 +8584,9 @@ CompileCode :: inline (cs : CompileSettings, code : string) -> *CompilationData 
 	cd.lexer.next_index = 0;
 	cd.load_index = 0;
 	while second_pass := cd.load_index < cd.all_directive_load_files.count {
+		loaded_file : *DirectiveLoadFile = *cd.all_directive_load_files[cd.load_index];
 		ResetCodeLexer(*cd.lexer);
-		array_copy(*cd.lexer.lexer_tokens, cd.all_directive_load_files[cd.load_index].lex_tokens);
+		SetLoadedFile(*cd.lexer, loaded_file);
 		defer cd.load_index += 1; //put here in case we call continue
 		while cd.lexer.next_index < cd.lexer.lexer_tokens.count {
 			defer cd.lexer.next_index += 1;
@@ -9063,9 +9079,9 @@ CompileCode :: inline (cs : CompileSettings, code : string) -> *CompilationData 
 	cd.lexer.next_index = 0;
 	cd.load_index = 0;
 	while third_pass := cd.load_index < cd.all_directive_load_files.count {
-		ResetCodeLexer(*cd.lexer);
 		loaded_file : *DirectiveLoadFile = *cd.all_directive_load_files[cd.load_index];
-		array_copy(*cd.lexer.lexer_tokens, loaded_file.lex_tokens);
+		ResetCodeLexer(*cd.lexer);
+		SetLoadedFile(*cd.lexer, loaded_file);
 		defer cd.load_index += 1;//put here in case we call continue
 		while cd.lexer.next_index < cd.lexer.lexer_tokens.count {
 			//TODO Errors could returned here and reported in the tree creation and then if we find error we break.

@@ -63,6 +63,7 @@ main :: () {
 	synth.synth_name = "s0";
 	#asm{ get_or_create_simple_synth synth; }
 	update_synth : AsmUpdateSimpleSynthData;
+	update_synth.synth_id = synth.ret_synth_id;
 	update_synth.update_wave_type = true;
 	update_synth.wave_type = OscWaveType.SINE;
 	//Volume is between 0-1 and is set for each neume

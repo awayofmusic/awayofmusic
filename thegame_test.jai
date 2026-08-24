@@ -7693,7 +7693,10 @@ DONE);
 
 } @ITest
 
-Test_ForLoopWithTano :: (
+//TODO I will use this as a larger scale test to run several functions and arrays and make sure that's working
+//should still write smaller scale tests for each subset of things used like looping an array in a function
+//or *void pointer function inputs for a sorting algorithm
+Test_FullCode :: (
 	test_name : string,
 	game_memory : *GameMemory, 
 	renderer_data : *RendererData, 
@@ -7708,92 +7711,21 @@ Test_ForLoopWithTano :: (
 		perm.all_data = InitAllData();
 		ResetAllRendererData(renderer_data);
 
-		#if 0 {
-		SetupMusicAndRows(perm.all_data, CreateRowData.[
-			.{row_section_data=.[.{x_length=24}], row_system_type=.internal_pitch},
-			.{row_section_data=.[.{x_length=24}], row_system_type=.internal_pitch},
-		]);
+		//TODO Should move this to test folder and run a few functions to test that that's working
+		main_file, main_loaded := LoadTextFile("patterns/scale_circle", *perm.all_data.all_text_files);
+		if main_loaded {
+			//TODO Should we do this in LoadTextFile? I seem to forget to do it.
+			// array_add(*perm.all_data.all_text_files, main_file);
 		}
+		// library_file, library_loaded := LoadTextFile("c_load/Library", *perm.all_data.all_text_files);
+		// if library_loaded {
+		// 	// array_add(*perm.all_data.all_text_files, library_file);
+		// }
 
-		//TODO Should we just create generally in here? I guess this makes things consistent across tests.
-		text_file := CreateTestTextFile(*ALL_NEXT_IDS, *perm.all_data.all_text_files);
-		WriteFileString(text_file,
-//TODO Could do sprint if needed to put things in here
-#string DONE
-#load "c_load/Library";
-main :: () {
-	clear_m0 : AsmClearMSpaceData;
-	#asm{ clear_mspace clear_m0; }
-
-	ts_id : int = 0;
-	rs : RowSectionData;
-	rs.tuning_system_id = ts_id;
-	rs.x_length = 24;
-	rd : AsmCreateRowData;
-	rd.octave_height = 16.0;
-	rd.row_height = 1. * rd.octave_height;
-	rd.muted_row = false;
-	rd.row_sections = RowSectionData.[rs];
-	rd.row_system_type = RowSystemType.internal_pitch;
-	#asm{ 
-		create_row rd; 
-		create_row rd;
-	}
-	
-	size : int = 12;
-	mp : int;
-	x : int;
-	f_arr := NewArray(7,float64);
-	for 0..size {
-		if it < 6 {
-			mp = it;
-		} else {
-			mp = it-1;
-		}
-		if it % 2 == 0 {
-			tano(0,x) ~= 1*mp;
-			f_arr[x] = cast(float) (1*mp);
-			x += 1;
-		}
-	}
-
-	csd : AsmOpSpaceData;
-	csd.op_space_type = AsmOpSpaceType.space_2d;
-	csd.op_space_name = "s2d";
-	#asm{ get_or_create_op_space csd; }
-	clear : AsmClearOpData;
-	clear.op_space_id = csd.ret_op_space_id;
-	#asm{ clear_op_space clear; }
-
-	cs : AsmCircleData;
-	cs.op_space_id = csd.ret_op_space_id;
-	cs.radius = 9.0;
-	cs.world_center = Vector2.{0,0};
-	cs.rotate_theta = 1.570796;
-	cs.point_dim = Vector2.{0.6,0.6};
-	cs.is_clockwise = true;
-	cs.repeating_interval_ratio = 2.0;
-	cs.tuning_system_id = ts_id;
-	cs.non_repeating = false;
-	cs.start_note = 0;
-	cs.is_sound_float = false;
-	cs.inner_circle_mute = 0.;
-	cs.no_base_points = false;
-	#asm{ create_circle cs; }
-
-	mc : AsmMapCircle;
-	mc.dspace_id = cs.ret_dspace_id;
-	mc.op_space_id = csd.ret_op_space_id;
-	mc.pitches = f_arr;
-	mc.draw_vl_type = DrawVLType.VL_LINE;
-	#asm{ map_circle mc; }
-}
-DONE);
-
-		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
+		text_op := CreateTextOpSpace(.[main_file.id], perm.text_editor_data, 
 			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
 	
-		array_resize(*perm.test_data.all_sub_tests, 3);
+		array_resize(*perm.test_data.all_sub_tests, 6);
 	} 
 
 	wait_test := WaitTest(*perm.test_data);
@@ -7806,8 +7738,8 @@ DONE);
 	}
 	case 1; DownUpInputMap(.TEXT_DEBUG_TOGGLE, game_input);
 	//TODO We could set the breakpoint directly here if we have an issue. That's what we do later in this test.
-	case 2; DownUpThisFrame(.ARROW_DOWN, game_input);
-	case 3; DownUpInputMap(.DEBUG_SET_BREAKPOINT, game_input);
+	// case 2; DownUpThisFrame(.ARROW_DOWN, game_input);
+	// case 3; DownUpInputMap(.DEBUG_SET_BREAKPOINT, game_input);
 	case 4; DownUpInputMap(.TEXT_COMPILE, game_input);
 	case 5; DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
 	case 6; {

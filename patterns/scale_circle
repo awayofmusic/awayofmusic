@@ -1,0 +1,71 @@
+#load "c_load/Library";
+main :: () {
+	clear_m0 : AsmClearMSpaceData;
+	#asm{ clear_mspace clear_m0; }
+
+	ts : AsmGetTuningSystemData;
+	ts.short_name = "et12";
+	#asm{ get_tuning_system ts; };
+
+	rs : RowSectionData;
+	rs.tuning_system_id = ts.ret_tuning_system_id;
+	rs.x_length = 24;
+	rd : AsmCreateRowData;
+	rd.octave_height = 16.0;
+	rd.row_height = 1. * rd.octave_height;
+	rd.muted_row = false;
+	rd.row_sections = RowSectionData.[rs];
+	rd.row_system_type = RowSystemType.internal_pitch;
+	#asm { 
+		create_row rd; 
+		create_row rd;
+	}
+	
+	size : int = 12;
+	mp : int;
+	x : int;
+	f_arr := NewArray(7,float64);
+	for 0..size {
+		if it < 6 {
+			mp = it;
+		} else {
+			mp = it-1;
+		}
+		if it % 2 == 0 {
+			tano(0,x) ~= 1*mp;
+			f_arr[x] = cast(float) (1*mp);
+			x += 1;
+		}
+	}
+
+	csd : AsmOpSpaceData;
+	csd.op_space_type = AsmOpSpaceType.space_2d;
+	csd.op_space_name = "s2d";
+	#asm{ get_or_create_op_space csd; }
+	clear : AsmClearOpData;
+	clear.op_space_id = csd.ret_op_space_id;
+	#asm{ clear_op_space clear; }
+
+	cs : AsmCircleData;
+	cs.op_space_id = csd.ret_op_space_id;
+	cs.radius = 9.0;
+	cs.world_center = Vector2.{0,0};
+	cs.rotate_theta = 1.570796;
+	cs.point_dim = Vector2.{0.6,0.6};
+	cs.is_clockwise = true;
+	cs.repeating_interval_ratio = 2.0;
+	cs.tuning_system_id = ts.ret_tuning_system_id;
+	cs.non_repeating = false;
+	cs.start_note = 0;
+	cs.is_sound_float = false;
+	cs.inner_circle_mute = 0.;
+	cs.no_base_points = false;
+	#asm{ create_circle cs; }
+
+	mc : AsmMapCircle;
+	mc.dspace_id = cs.ret_dspace_id;
+	mc.op_space_id = csd.ret_op_space_id;
+	mc.pitches = f_arr;
+	mc.draw_vl_type = DrawVLType.VL_LINE;
+	#asm{ map_circle mc; }
+}
