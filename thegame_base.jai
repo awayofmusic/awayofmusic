@@ -5542,6 +5542,11 @@ if found_text_op {
 		array_reset_keeping_memory(*perm.all_data.all_music_instructions);
 		array_copy(*perm.all_data.all_music_instructions, text_op.text_comp_data.all_music_instructions);
 		perm.all_data.comp_data = text_op.text_comp_data;
+
+		//We reset the ram memory here before running so we can keep the memory we had before.
+		//If that is an issue then we can reset the ram memory once execution terminates.
+		//TODO Could make a function SetZeroRamMem
+		memset(perm.all_data.ram_memory.bytes.data, 0, perm.all_data.ram_memory.bytes.count);
 	}
 }
 if perm.all_data.all_music_instructions.count > 0 {
@@ -6416,8 +6421,9 @@ for row, row_index : render_mspace.all_music_lane_rows {
 	PushSetScissor(pixel_rect, renderer_data.base_render_group, order = next_order+4);
 
 	//TODO Should we do this fetch by index or row_id
+	//TODO FROM HERE Could undo this and push the other code and then update this with other ones first if we want
 	section_to_row : [] SectionToRow = 
-		ArrayFindAllVarName(render_mspace.all_section_to_row, row.id, "row_id");
+		ArrayFindAllVarName(render_mspace.all_section_to_row, row.id, "row_id",, temp);
 	for section : section_to_row {
 		//TODO I think this can be efficiently fetched by id since it should remain the same for default tuning_systems.
 		tuning_system, found_tuning_system :=

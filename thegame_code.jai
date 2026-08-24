@@ -5795,7 +5795,8 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 				case #char "*"; #through;
 				case #char "/"; #through;
 				case #char "-"; #through;
-				case #char "+"; {
+				case #char "+"; #through;
+				case #char "%"; {
 				   node.code_ir.t_info = left_type;
 				   valid_binary_op = true;
 				   is_default_op = true;

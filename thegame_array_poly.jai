@@ -215,6 +215,7 @@ ArrayFindFirstConstByNameId :: (
 //TODO Can replace with context allocator once we update jai
 //TODO should we make temp the default allocator for these?
 //TODO could make a version where allocator is passed in at compile-time
+//TODO Should remove the allocator here and just use context allocator now
 ArrayFindAllVarName :: (
 	array: [] $T, 
 	id: $S, 

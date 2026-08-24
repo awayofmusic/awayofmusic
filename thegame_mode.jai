@@ -46,6 +46,8 @@ UpdateAndRender :: (game_memory : *GameMemory,
                     audio_data : *AudioData,
                     game_input : *GameInput) 
 {	
+	//TODO FROM HERE put is_initialized code here and make sure that's working to remove bugs with uninitalized data like
+	//input mappings or anything else that might be used here or in the test function
 	game_state := cast(*GameState) game_memory.PermanentStorage;
 	perm := *game_state.persist;	
 	keyboard := game_input.Controllers[0];
