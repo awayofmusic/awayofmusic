@@ -6667,8 +6667,11 @@ RegDef :: enum {
 	//NOTE : This will not get reset on function return so then the tsp can maintain the return tano stack op neumes.
 	tsp; //tano row stack pointer
 
+	//This stays the same after a function call so we can pop everything back on
 	srp; //stack return pointer
 
+	//push_pop_start_reg_index starts here so we use .srp to store the 
+	//the last functions sbp in .ret so we can pop everything after .srp
 	sbp; //stack base pointer
 	scp; //stack current pointer
 	//TODO We may not need this if we can just use byte_offset_from_sbp
@@ -7452,7 +7455,6 @@ ResetCodeMemory :: inline (all_data : *AllData) {
 
 	all_data.all_register_memory[RegDef.hsp].int_value = all_data.ram_memory.stack_size;
 	all_data.all_register_memory[RegDef.hcp].int_value = all_data.all_register_memory[RegDef.hsp].int_value;
-
 
 	//TODO For now we don't reset anything because eventually we will
 	//just grab new data only when we are running.

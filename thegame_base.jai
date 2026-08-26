@@ -5543,6 +5543,10 @@ if found_text_op {
 		array_copy(*perm.all_data.all_music_instructions, text_op.text_comp_data.all_music_instructions);
 		perm.all_data.comp_data = text_op.text_comp_data;
 
+		//TODO We can't put this in ResetCodeMemory because we set memory in tests and then run.
+		//Maybe this should be an option in ProcessInstructionEvent reset_ram_memory
+		//so we can reset by default but then not if we want to use it for tests.
+		//In general though it seems that all our text op space tests setup their own memory anyways.
 		//We reset the ram memory here before running so we can keep the memory we had before.
 		//If that is an issue then we can reset the ram memory once execution terminates.
 		//TODO Could make a function SetZeroRamMem

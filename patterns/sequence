@@ -32,20 +32,18 @@ main :: () {
 	rd.row_base_pt = -23.;
 	#asm { create_row rd; }
 	
-	seq := NewArray(2,int);
-	seq[0] = +3;
-	seq[1] = +3;
-	mp : int = 9;
-	for 0..seq.count-1 {
-		//TODO Maybe can make a general function that checks for null and type and unknown identifier for a consistent easy error everywhere
-		//TODO tano(,it) does not work
-		//TODO tano(row,it) should check "row" is unknown ident and return that
-		tano(0,it) ~= mp;
-		//TODO tran0 invalid variable does not work
-		mp += tran0[it];
-	}			
-	//Sequence(0,9,tran0);
+	seq0 := int.[3,3];
+	Sequence(0,9,seq0);
+
+	seq1 := int.[-3,-3];
+	Sequence(1,0,seq1);
 }
 
 Sequence :: (row : int, start : int, seq : [] int) {
+	tano(row,0) ~= start;
+	mp : int = start;
+	for 0..seq.count-1 {
+		mp += seq[it];
+		tano(row,it+1) ~= mp;
+	}
 }

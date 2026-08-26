@@ -2843,6 +2843,8 @@ GetValueOpReuseReg :: inline (
 	return node.code_ir.op;
 	}
 }
+//This does not make the register unavailable which seems better overall than above and to forget about available
+//and never use registers outside a specific operation and always set extra variables on the stack as a general rule.
 GetValueOp :: inline (
 	node : *BinaryNode, cd : *CompilationData, 
 	suggested_reg := RegDef.r0) 
@@ -5294,9 +5296,9 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 					array_info := cast(*TypeInfoArray) node.left.code_ir.t_info;
 					value_type = array_info.element_type;
 				}
-
 				CreateMInstr(.mul, RegMem(.ax), node.right.code_ir.op, Imm(value_type.runtime_size), d=cd);
 				CreateMInstr(.add, node.code_ir.op, RegMem(.ax), d=cd);
+				
 				node.code_ir.ir_type = .STACK_VARIABLE; //TODO Change this name to .MEMORY_VARIABLE for heap memory
 				node.code_ir.t_info = value_type;
 				node.code_ir.node_op_type = .ADDRESS_IN_MEMORY; 
@@ -6110,10 +6112,13 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 				/*TODO We want to always store this on the stack now for consistency and with the new way
 				we would just set it to that value currently from the stack so we would not even need any extra instructions.
 				*/
+					//This way never makes the op unavailable since we won't be using it again after
+   				right_op : MusicOperand = GetValueOp(node.right, cd, .ax);
+					left_op : MusicOperand = GetValueOp(node.left, cd, .bx);
 					if node.code_ir.t_info.type_enum == .FLOAT {
-						FInstr(op_code, node.code_ir.op, node.left.code_ir.op, node.right.code_ir.op, d=cd);
+						FInstr(op_code, node.code_ir.op, left_op, right_op, d=cd);
 					} else {
-						CreateMInstr(op_code, node.code_ir.op, node.left.code_ir.op, node.right.code_ir.op, d=cd);
+						CreateMInstr(op_code, node.code_ir.op, left_op, right_op, d=cd);
 					}
 				// }
 			}
@@ -8086,10 +8091,14 @@ EvaluateAssignment :: inline (node : *BinaryNode, cd : *CompilationData) {
 				case .TIMES_EQUALS; op_code = OpCode.mul;
 				case .MOD_EQUALS; op_code = OpCode.mod;
 				}
+
+				//This way never makes the op unavailable since we won't be using it again after	
+				right_op : MusicOperand = GetValueOp(node.right, cd, .ax);
+				left_op : MusicOperand = GetValueOp(node.left, cd, .bx);
 				if right_t_info.type_enum == .INTEGER {
-					CreateMInstr(op_code, node.left.code_ir.op, node.right.code_ir.op, d=cd);
+					CreateMInstr(op_code, left_op, right_op, d=cd);
 				} else if right_t_info.type_enum == .FLOAT {
-					CreateFloatInstr(op_code, node.left.code_ir.op, node.right.code_ir.op, d=cd);
+					CreateFloatInstr(op_code, left_op, right_op, d=cd);
 				}
 				ResetStack(cd);
 			} 
@@ -13567,7 +13576,7 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		maybe tpb (probably not tbp since we reset it after the call anyways, check tests for this in case we do) 
 
 		LIKELY just leave it this way since now we reset all the other registers with srp instead
-		so that we can reset the sbp on return and then see the correct values on return.
+		so that we can reset the sbp on return and then see the correct values on return in the debugger.
 		I left the old code lying around in case we watn to reset it later more easily this is also compile outable.
 		the old PREVIOUS_SBP_OP is also next to the new one.
 		*/
@@ -13575,6 +13584,8 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		//DOC : We set this first so then we use srp from here on to retrieve old registers on the stack.
 		ad.all_register_memory[RegDef.srp].int_value = ad.all_register_memory[RegDef.sbp].int_value;
 
+		//We just put the sbp back on here so that we can see the correct function values when returning from a function.
+		//We do this again with pop_all_stack_reg but this way feels natural when using the debugger.
 		stack_reg_memory := array_view(ad.all_register_memory, push_pop_start_reg_index);	
 		reg_mem_pointer := cast(*u8) stack_reg_memory.data;
 		ram_location : int = ComputeRAMLocation(PREVIOUS_SBP_OP, ad.all_register_memory, ad.ram_memory);
