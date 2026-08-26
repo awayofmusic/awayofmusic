@@ -222,7 +222,6 @@ if global_zoom_scale != 0 {
 	// print("zoom=%\n", renderer_data.base_render_group.pixels_per_square);
 }
 
-
 /*DOC : Updating the mspace here first ensures that we only have 1 mspace selected for the whole frame.
 If we update the mspace through the terminal, then there will be delay as we wait for the mspace to change
 so that does not require speed change like with the shortcut which can happen very quickly eventually.

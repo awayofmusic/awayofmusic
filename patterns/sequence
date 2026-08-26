@@ -33,10 +33,12 @@ main :: () {
 	#asm { create_row rd; }
 	
 	seq0 := int.[3,3];
-	Sequence(0,9,seq0);
+	seq : [] int = seq0;
+	Sequence(0,9,seq);
 
 	seq1 := int.[-3,-3];
-	Sequence(1,0,seq1);
+	seq = seq1;
+	Sequence(1,0,seq);
 }
 
 Sequence :: (row : int, start : int, seq : [] int) {
