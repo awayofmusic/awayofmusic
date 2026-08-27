@@ -5200,6 +5200,98 @@ DONE,,unit_test_alloc);
 
 } @UnitTest
 
+Test_ArrayLiteralFuncAutocast :: () {
+	cs : CompileSettings;
+	cd : *CompilationData;
+	count_equal : bool;
+
+	cd = CompileCode(cs,
+#string DONE
+main :: () {
+  Foo(int.[2,15]);
+}
+Foo :: (arr : [] int) {
+	x : int;
+}
+DONE,,unit_test_alloc);
+
+	count_equal = AssertEquals(2, cd.all_function_declarations.count);
+	if !count_equal return;
+	foo_decl := cd.all_function_declarations[1];
+	AssertEquals("Foo", foo_decl.name);
+
+	count_equal = AssertEquals(2, cd.all_type_info_array.count);
+	view_info : *TypeInfoArray;
+	fixed_info : *TypeInfoArray;
+	if count_equal {
+		view_info = cd.all_type_info_array[0];
+		AssertEquals(TypeInfoTag.ARRAY, view_info.type_enum);
+		AssertEquals(16, view_info.runtime_size);
+		AssertEquals(ArrayInfoType.VIEW, view_info.array_type);
+		AssertEquals(-1, view_info.array_count);
+		AssertEquals(*cd.int_type_info, view_info.element_type);
+		AssertEquals(TypeInfoTag.INTEGER, view_info.element_type.type_enum);
+		AssertEquals(8, view_info.element_type.runtime_size);
+
+		fixed_info = cd.all_type_info_array[1];
+		AssertEquals(TypeInfoTag.ARRAY, fixed_info.type_enum);
+		AssertEquals(8*2, fixed_info.runtime_size);
+		AssertEquals(ArrayInfoType.FIXED, fixed_info.array_type);
+		AssertEquals(2, fixed_info.array_count);
+		AssertEquals(*cd.int_type_info, fixed_info.element_type);
+		AssertEquals(TypeInfoTag.INTEGER, fixed_info.element_type.type_enum);
+		AssertEquals(8, fixed_info.element_type.runtime_size);
+	}
+
+	v_index : int = 0;
+	vars_equal : bool = TestNextManyVarDecl(*v_index, cd.all_variables, .[
+		VarDecl("arr", view_info, RamMem(.sbp,0)),
+		VarDecl("x", *cd.int_type_info, RamMem(.sbp,fixed_info.runtime_size)),
+	]);
+	if !vars_equal return;
+	arr_var := cd.all_variables[0];
+	x_var := cd.all_variables[1];
+
+	//TODO Can remove instr_index and just use expected_mi.count in TestNextManyInstr
+	instr_index : int = 0;
+	//TODO CAN MAKE A FUNCTION FOR THIS SPECIFIC CHECK SINCE WE WILL LIKELY REUSE IT
+	//a : [] int = int.[0,3,7]
+	// fa_count_op := fa_var.op;
+	// fa_data_op := AddOperandOffset(8, fa_var.op);
+	arr_op0, arr_op1 := GetMemoryAddressAsOperands(arr_var.op);
+	next_stack_p : int = PRE_PROC_STACK_SIZE + fixed_info.runtime_size;
+	TestNextManyInstr(*instr_index, cd, .[
+		//push 2,15 on stack
+		MakeMI(.mov, RamMem(.sbp,0), Imm(2), Imm(8)),
+		MakeMI(.mov, RamMem(.sbp,8), Imm(15), Imm(8)),
+		MakeMI(.push_all_stack_reg, RamMem(.sbp,16)),
+		//a.count
+		MakeMI(.mov, RamMem(.sbp,next_stack_p), Imm(fixed_info.array_count), Imm(cd.int_type_info.runtime_size)),
+		//a.data
+		MakeMI(.add, RamMem(.sbp,next_stack_p+8), arr_op0, arr_op1),
+		//Reset the .sbp for the new stack
+		MakeMI(.add, RegMem(.sbp), RegMem(.sbp), Imm(next_stack_p)),
+		//Push where we need to jmp back to
+		MakeMI(.mov, PROC_RETURN_OP, Imm(8)),
+		//call foo with instruction index = 0
+		MakeMI(.call, Imm(foo_decl.start_instr_index)),
+		//Reload all values from previous satck so we get back our last sbp and scp here too.
+		MakeMI(.pop_all_stack_reg, PREVIOUS_SBP_OP),
+
+		MakeMI(.exit),
+	]);
+
+	//Foo code
+	TestNextManyInstr(*instr_index, cd, .[
+		MakeMI(.mset, x_var.op, Imm(0), Imm(8)),
+		MakeMI(.ret),
+	]);
+
+	AssertEquals(instr_index, cd.all_music_instructions.count);
+
+} @UnitTest
+
+
 /*TODO We never did test for something like
 b : [4] int = int.[0,1,2,3];
 I think this would duplicate the fixed array right now

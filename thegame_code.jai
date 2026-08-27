@@ -3015,6 +3015,11 @@ ArrayInfoType :: enum u8 {
   VIEW      :: 1;
   RESIZABLE :: 2;
 }
+IsArrayInfoType :: inline (array_type : ArrayInfoType, t_info : *TypeInfo) -> bool {
+	is_array_type : bool = t_info != null && t_info.type_enum == .ARRAY && 
+		(cast(*TypeInfoArray) t_info).array_type == array_type;
+	return is_array_type;
+}
 
 //NOTE : No name here since we can have a function pointer which would not have a name.
 TypeInfoProcedure :: struct {
@@ -3515,6 +3520,21 @@ SameFuncArgs :: inline (fd : FunctionDeclaration, argument_nodes : [] *BinaryNod
 	if fd.t_info_proc.argument_types.count != argument_nodes.count return false;
 	for fd.t_info_proc.argument_types if argument_nodes[it_index].code_ir.t_info != it {
 		return false;
+	}
+	return true;
+}
+ValidFuncArgs :: inline (proc_type : *TypeInfoProcedure, argument_nodes : [] *BinaryNode) -> bool {
+	if proc_type.argument_types.count != argument_nodes.count return false;
+	for proc_type.argument_types {
+		if IsArrayInfoType(.VIEW, it) && IsArrayInfoType(.FIXED, argument_nodes[it_index].code_ir.t_info) &&
+			(cast(*TypeInfoArray) it).element_type == (cast(*TypeInfoArray) argument_nodes[it_index].code_ir.t_info).element_type
+		{
+			//Converting from fixed array to array view with same element type is valid
+			continue;
+		}
+		else if argument_nodes[it_index].code_ir.t_info != it {
+			return false;
+		}	
 	}
 	return true;
 }
@@ -4769,8 +4789,8 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 			//store the value in the ir_data_id...
 			//If we use a hash map later for function declaration, then we can just get that directly by name
 			for fd : cd.all_function_declarations if fd.name == node.left.value.token_string {
-				same_func_args := SameFuncArgs(fd, argument_nodes);
-				if same_func_args {
+				valid_func_args := ValidFuncArgs(fd.t_info_proc, argument_nodes);
+				if valid_func_args {
 					found_function = true;
 					func_decl = fd;
 					proc_type = func_decl.t_info_proc;
@@ -4791,11 +4811,14 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 			//We have a function pointer so we need to check based on the procedure type directly.
 			is_func_pointer = true;
 			proc_type = cast(*TypeInfoProcedure) node.left.code_ir.t_info;
+			#if 0 {
 			check_type : bool = proc_type.argument_types.count == argument_nodes.count;
 			if check_type for proc_type.argument_types {
 				check_type &&= argument_nodes[it_index].code_ir.t_info == it;
 			}
-			found_function = check_type;
+			} else {
+			found_function = ValidFuncArgs(proc_type, argument_nodes);
+			}
 			/*DOC : Need to set the .fp reg here so we can still use the function pointer on the call.
 			Otherwise we lost the current stack var when we reset the sbp.
 			We do it before pushing all stack reg so we can still have it later if needed.
@@ -4840,10 +4863,10 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 		if node.left.code_ir.t_info == node.right.code_ir.t_info {
 			//Explicitly do nothing since we have the same type
 		}
-		else if cast_type == .ARRAY && value_type == .ARRAY &&
-			(cast(*TypeInfoArray) node.left.code_ir.t_info).array_type == .VIEW &&
-			(cast(*TypeInfoArray) node.right.code_ir.t_info).array_type == .FIXED
-		{
+		// else if cast_type == .ARRAY && value_type == .ARRAY &&
+		// 	(cast(*TypeInfoArray) node.left.code_ir.t_info).array_type == .VIEW &&
+		// 	(cast(*TypeInfoArray) node.right.code_ir.t_info).array_type == .FIXED
+		else if IsArrayInfoType(.VIEW, node.left.code_ir.t_info) && IsArrayInfoType(.FIXED, node.right.code_ir.t_info){
 			//We push an array view of the fixed array on the stack and set this node to that array view.
 			//NOTE : We could make this a function with other fixed to array view casting but maybe it's
 			//not worth it if we only do it here and when we assign the variable from fixed to view.
@@ -5601,8 +5624,8 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 						argument_nodes : [1] *BinaryNode = .[node.right];
 						valid_unary_op : bool = false;
 						for fd : cd.all_function_declarations if fd.is_operator_overload && fd.op_token_type == node.value.token_type {
-							same_func_args := SameFuncArgs(fd, argument_nodes);
-							if same_func_args {
+							valid_func_args := ValidFuncArgs(fd.t_info_proc, argument_nodes);
+							if valid_func_args {
 								valid_unary_op = true;
 
 								cfcd : CompFuncCallData;
@@ -5999,8 +6022,8 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 			else {
 				argument_nodes : [2] *BinaryNode = .[node.left, node.right];
 				for fd : cd.all_function_declarations if fd.is_operator_overload && fd.op_token_type == node.value.token_type {
-					same_func_args := SameFuncArgs(fd, argument_nodes);
-					if same_func_args {
+					valid_func_args := ValidFuncArgs(fd.t_info_proc, argument_nodes);
+					if valid_func_args {
 						valid_binary_op = true;
 
 						cfcd : CompFuncCallData;
@@ -7199,11 +7222,23 @@ CompileFunctionCall :: inline (cfcd : CompFuncCallData, cd : *CompilationData) -
 			// AddByteOffsetFromSbp(arg_size, cd);
 			next_stack_p += arg_size;
 			} else {
-			arg_size : int = arg_node.code_ir.t_info.runtime_size;
-			CreateMInstr(.mov, RamMem(.sbp,next_stack_p), arg_node.code_ir.op, Imm(arg_size), d=cd);
-			//NOTE : We don't want to do AddByteOffsetFromSbp() because this is on the next stack, so it does not
-			//count for the max.
-			next_stack_p += arg_size;
+			if IsArrayInfoType(.VIEW, cfcd.proc_type.argument_types[it_index]) &&
+				IsArrayInfoType(.FIXED, arg_node.code_ir.t_info)
+			{
+				arg_fixed_array_type := cast(*TypeInfoArray) arg_node.code_ir.t_info;
+				//Move array count
+				CreateMInstr(.mov, RamMem(.sbp,next_stack_p), Imm(arg_fixed_array_type.array_count), Imm(cd.int_type_info.runtime_size), d=cd);
+				//Move array data
+				SetAddressNode(arg_node, RamMem(.sbp,next_stack_p+8), cd);
+				next_stack_p += cd.array_view_struct_info.runtime_size;
+			} else {
+				arg_node_op : MusicOperand = GetValueOp(arg_node, cd, .r0);
+				arg_size : int = arg_node.code_ir.t_info.runtime_size;
+				CreateMInstr(.mov, RamMem(.sbp,next_stack_p), arg_node_op, Imm(arg_size), d=cd);
+				//NOTE : We don't want to do AddByteOffsetFromSbp() because this is on the next stack, so it does not
+				//count for the max.
+				next_stack_p += arg_size;
+			}
 			}
 		// } else {
 			//TODO COMMENT THIS CASE OUT CAN JUST COPY FOR NOW for simplicity in compiler and debugger

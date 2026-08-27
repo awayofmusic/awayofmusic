@@ -32,13 +32,15 @@ main :: () {
 	rd.row_base_pt = -23.;
 	#asm { create_row rd; }
 	
-	seq0 := int.[3,3];
-	seq : [] int = seq0;
-	Sequence(0,9,seq);
+	Sequence(0, 9, int.[+3,+3]);
+	Sequence(1, 0, int.[-3,-3]);
 
-	seq1 := int.[-3,-3];
-	seq = seq1;
-	Sequence(1,0,seq);
+	//TODO This should work but array value is incorrect
+	/*
+	for int.[3,3,3] {
+		tano(0,it_index) ~= it;
+	}
+	*/
 }
 
 Sequence :: (row : int, start : int, seq : [] int) {
