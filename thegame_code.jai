@@ -865,6 +865,24 @@ TypeNameAlreadyExists :: inline (node : *BinaryNode, cd : *CompilationData) -> b
 	return false;
 }
 
+CheckValidNode :: inline (node : *BinaryNode, null_check_node : *BinaryNode, cd : *CompilationData) -> bool {
+	//TODO This case should likely be caught by the parser
+	if node == null {
+		CreateCompErr(cd, .EVALUATION, null_check_node, "Node is null. This might be an internal compiler error.");
+		return false;
+	}
+	else if node.code_ir.ir_type == .UNKNOWN_IDENT {
+		CreateCompErr(cd, .EVALUATION, node, "Unknown identifier.");
+		return false;
+	} 
+	else if node.code_ir.t_info == null {
+		CreateCompErr(cd, .EVALUATION, node, "Unknown type.");
+		return false;
+	}
+	return true;
+}
+
+
 DirectiveLoadFile :: struct {
 	//NOTE : file_name is the input file_name (maybe we should rename it).
 	//TODO Can also store a string view of just the file name for displaying.
@@ -2067,6 +2085,10 @@ CreateCompErr :: inline (
 	print("check_err_string=%\n", check_err_string);
 	}
 }
+IsCompilationFail :: inline (cd : CompilationData) -> bool {
+	comp_fail : bool = cd.comp_errors.all_compiler_errors.count > 0;
+	return comp_fail;
+}
 
 ForLoopData :: struct {
 	is_reverse : bool;
@@ -2893,6 +2915,44 @@ GetAddressOp :: inline (node : *BinaryNode, cd : *CompilationData, suggested_op 
 		CreateMInstr(.add, address_op, op_0, op_1, d=cd);
 	}
 	return address_op;
+}
+GetArrayAddressOp :: inline (
+	node : *BinaryNode, 
+	set_reg : RegDef,
+	address_op : MusicOperand,
+	cd : *CompilationData,
+	$with_index : bool = true,
+	index_op : MusicOperand = .{})
+{
+	assert(node.code_ir.t_info.type_enum == .ARRAY);
+	array_info := cast(*TypeInfoArray) node.code_ir.t_info;
+	SetAddressNode(node, address_op, cd);
+	if array_info.array_type == .VIEW {
+		//data address comes 8 bytes after count in array struct info
+		CreateMInstr(.add, RegMem(set_reg), address_op, Imm(8), d=cd);
+		CreateMInstr(.mov, address_op, RamMem(set_reg), Imm(8), d=cd);
+	}
+	#if with_index {
+	//Store the address of the array position by the index * element_size
+	CreateMInstr(.mul, RegMem(set_reg), index_op, Imm(array_info.element_type.runtime_size), d=cd);
+	CreateMInstr(.add, address_op, address_op, RegMem(set_reg), d=cd);
+	}
+}
+GetArrayValueOp :: inline (
+	node : *BinaryNode,
+	set_reg : RegDef,
+	//address_op separate from value_op otherwise debugger would have incorrect value if setting the address in the value_op temporarily
+	address_op : MusicOperand,
+	value_op : MusicOperand,
+	index_op : MusicOperand,
+	cd : *CompilationData)
+{
+	assert(node.code_ir.t_info.type_enum == .ARRAY);
+	array_info := cast(*TypeInfoArray) node.code_ir.t_info;
+	GetArrayAddressOp(node, set_reg, address_op, cd, true, index_op);
+	//Get the value at the above index position
+	CreateMInstr(.mov, RegMem(set_reg), address_op, Imm(cd.void_pointer_type_info.runtime_size), d=cd);
+	CreateMInstr(.mov, value_op, RamMem(set_reg), Imm(array_info.element_type.runtime_size), d=cd);		
 }
 
 //TODO We could pass array_info into ArrayToRamArrayOp but since it's just a cast we don't for now.
@@ -5432,20 +5492,22 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 				//This variable will keep track of the loop array value and is pushed in the next instruction below
 				value_var : *VariableData = CreateStackVarData(cd, fld.value_name, value_type, .DEFAULT);
 				array_count_op : MusicOperand = ---;
-				array_data_op : MusicOperand = ---;
+				//TODO CLEANUP
+				// array_data_op : MusicOperand = ---;
 				if array_info.array_type == {
 				case .FIXED;
 					array_count_op = Imm(array_info.array_count);
-					array_data_op = node.right.code_ir.op;
+					// array_data_op = node.right.code_ir.op;
 				case .RESIZABLE; #through;
 				case .VIEW;
-					array_count_op = node.right.code_ir.op;
-					array_data_op = AddOperandOffset(8, array_count_op);
+					array_count_op = GetValueOp(node.right, cd, .bx);
+					// array_data_op = AddOperandOffset(8, array_count_op);
 				}
 				//NOTE : We update value_var after the loop comparison now since we only can once we know the index is valid.
 				// CreateMInstr(.mov, value_var.op, array_data_op, Imm(value_var.t_info.runtime_size), d=cd);
 
 				//We've processed the array now, so we can reuse the registers if possible
+				//TODO Can likely remove this now since we don't set any available registers above
 				FreeOperandRegisters(node.right.code_ir.op, *cd.all_registers);
 
 				//TODO FROM HERE CLEANUP FOR LOOP HERE AND TESTS, then start on structs
@@ -5461,8 +5523,16 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 				} else {
 					//NOTE : This push is tracked by the index_var above. Start from 0 and then incremenet
 					CreateMInstr(.mov, index_var.op, Imm(0), Imm(index_var.t_info.runtime_size), d=cd);
+					if array_info.array_type == .VIEW {
+						array_count_op = GetValueOp(node.right, cd, .bx);
+					}
 					CreateMInstr(.clt, RegMem(.ax), index_var.op, array_count_op, d=cd);
-					jmp_instr_index = cd.all_music_instructions.count-1; //jump to last instruction
+					if array_info.array_type == .VIEW && node.right.code_ir.node_op_type == .ADDRESS_IN_MEMORY {
+						//If the temp address is on the stack then we need to get it with an extra instruction in get value op above
+						jmp_instr_index = cd.all_music_instructions.count-2;
+					} else {
+						jmp_instr_index = cd.all_music_instructions.count-1;
+					}
 					post_op = OpCode.add;
 				}
 
@@ -5473,19 +5543,9 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 				ctrl_fjmp.scope_index = cd.open_scope_stack.count-1;
 
 				if fld.is_pointer {
-					if array_info.array_type == .FIXED {
-						op_0, op_1 := GetMemoryAddressAsOperands(array_data_op);
-						CreateMInstr(.add, RegMem(.ax), op_0, op_1, d=cd);
-						CreateMInstr(.mul, RegMem(.bx), index_var.op, Imm(array_info.element_type.runtime_size), d=cd);
-						CreateMInstr(.add, value_var.op, RegMem(.ax), RegMem(.bx), d=cd);
-					} else {
-						CreateMInstr(.mul, RegMem(.ax), index_var.op, Imm(array_info.element_type.runtime_size), d=cd);
-						CreateMInstr(.add, value_var.op, array_data_op, RegMem(.ax), d=cd);
-					}
+					GetArrayAddressOp(node.right, .ax, value_var.op, cd, true, index_var.op);
 				} else {
-					CreateMInstr(.mul, RegMem(.ax), index_var.op, Imm(array_info.element_type.runtime_size), d=cd);
-					CreateMInstr(.add, RegMem(.ax), array_data_op, RegMem(.ax), d=cd);
-					CreateMInstr(.mov, value_var.op, RamMem(.ax), Imm(array_info.element_type.runtime_size), d=cd);					
+					GetArrayValueOp(node.right, .ax, RegMem(.bx), value_var.op, index_var.op, cd);
 				}
 
 				//TODO Set it to [2] MusicInstruction if this is how it stays
@@ -6151,7 +6211,10 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 		//TODO This can be checked at the parser level
 		//TODO MAybe I prefer leaving node.left everywhere cause it's easier to think about
 		var_node : *BinaryNode = node.left;
-		assert(var_node != null);
+
+		valid_node : bool = CheckValidNode(var_node, node, cd);
+		if !valid_node return false;
+
 		if var_node.code_ir.t_info.type_enum == .POINTER {
 			//TODO Should we be doin this with .STACK_VARIABLE or just grabbing the op and checking that?
 			//Also should rename to MEMORY_VARIABLE but maybe a valid op is enough in any case since

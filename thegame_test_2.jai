@@ -1,3 +1,5 @@
+//TODO MOVE THIS BACK INTO thegame_test once we move out a bunch to thegame_test_code
+
 //TODO I think maybe we can also put tests in the same file as code if we separate some of it out eventually
 AssertSplitSelcs :: (test_selcs : [] StartEndLineChar, selcs : [] StartEndLineChar) {
 	count_equal := AssertEquals(test_selcs.count, selcs.count);

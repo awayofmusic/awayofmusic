@@ -1451,6 +1451,9 @@ main :: () {
 	}
 }
 DONE,, unit_test_alloc);
+	comp_success : bool = AssertEquals(false, IsCompilationFail(cd));
+	if !comp_success return;
+	// print("%\n", cd.disassembly);
 
 	var_index : int;
 	vars_equal : bool = TestNextManyVarDecl(*var_index, cd.all_variables, .[
@@ -1505,20 +1508,23 @@ DONE,, unit_test_alloc);
 		MakeMI(.mset, a_var.op, Imm(0), Imm(a_var.t_info.runtime_size)),
 	]);
 
+	a_op_0, a_op_1 := GetMemoryAddressAsOperands(a_var.op);
 	//TODO Could add scope checks to this as well.
 	TestNextManyInstr(*instr_index, cd, .[
 		//if i == 0
 		MakeMI(.ceq, RamMem(.sbp,24), i_var.op, Imm(1)),
-		MakeMI(.fjmp, Imm(instr_index+12), RamMem(.sbp,24)),
+		MakeMI(.fjmp, Imm(instr_index+14), RamMem(.sbp,24)),
 
 		//for < x,y : a {}
 		//< for loop setup instruction
 		MakeMI(.sub, index_rev_var.op, Imm(cd.all_type_info_array[0].array_count), Imm(1)),
 		//For loop top instructions
 		MakeMI(.cgte, RegMem(.ax), index_rev_var.op, Imm(0)),
-		MakeMI(.fjmp, Imm(instr_index + 12), RegMem(.ax)),
+		MakeMI(.fjmp, Imm(instr_index + 14), RegMem(.ax)),
+		MakeMI(.add, RegMem(.bx), a_op_0, a_op_1),
 		MakeMI(.mul, RegMem(.ax), index_rev_var.op, Imm(cd.all_type_info_array[0].element_type.runtime_size)),
-		MakeMI(.add, RegMem(.ax), a_var.op, RegMem(.ax)),
+		MakeMI(.add, RegMem(.bx), RegMem(.bx), RegMem(.ax)),
+		MakeMI(.mov, RegMem(.ax), RegMem(.bx), Imm(cd.all_type_info_array[0].element_type.runtime_size)),
 		MakeMI(.mov, it_rev_var.op, RamMem(.ax), Imm(cd.all_type_info_array[0].element_type.runtime_size)),			
 
 		//i = y
@@ -1947,22 +1953,28 @@ main :: () {
 	for * a {}
 	for * < a {}
 
-	//Array view with named variables
 	v : [] int = a;
 	for val,idx : v {}
-	//TODO inverse with vars
-	// for < val,idx : v {}
-	//TODO Could also add for loop pointer tests here
-	//to make sure that's working once we implement it
+	for < val,idx : v {}
+
+	pv : *[] int = *v;
+	for * pv.* {}
+	for < * pv.* {}
 }
 DONE,, unit_test_alloc);
+	comp_success : bool = AssertEquals(false, IsCompilationFail(cd));
+	if !comp_success return;
+	// print("%\n", cd.disassembly);
 
-	scope_count := AssertEquals(7, cd.all_scope_data.count);
+	scope_count := AssertEquals(10, cd.all_scope_data.count);
 	for_scope : ScopeData;
 	for_rev_scope : ScopeData;
 	for_p_scope : ScopeData;
 	for_p_rev_scope : ScopeData;
 	for_var_scope : ScopeData;
+	for_var_rev_scope : ScopeData;
+	for_var_p_scope : ScopeData;
+	for_var_p_rev_scope : ScopeData;
 	if scope_count {
 		//0 and 1 are global and main scope
 		for_scope = cd.all_scope_data[2];
@@ -1984,10 +1996,25 @@ DONE,, unit_test_alloc);
 		for_var_scope = cd.all_scope_data[6];
 		AssertEquals(ScopeDataType.CONTROL_SCOPE, for_var_scope.scope_type);
 		AssertEquals(CodeTokenType.KEYWORD_FOR, for_var_scope.scope_token.token_type);
+
+		for_var_rev_scope = cd.all_scope_data[7];
+		AssertEquals(ScopeDataType.CONTROL_SCOPE, for_var_rev_scope.scope_type);
+		AssertEquals(CodeTokenType.KEYWORD_FOR, for_var_rev_scope.scope_token.token_type);
+
+		for_var_p_scope = cd.all_scope_data[8];
+		AssertEquals(ScopeDataType.CONTROL_SCOPE, for_var_p_scope.scope_type);
+		AssertEquals(CodeTokenType.KEYWORD_FOR, for_var_p_scope.scope_token.token_type);
+
+		for_var_p_rev_scope = cd.all_scope_data[9];
+		AssertEquals(ScopeDataType.CONTROL_SCOPE, for_var_p_rev_scope.scope_type);
+		AssertEquals(CodeTokenType.KEYWORD_FOR, for_var_p_rev_scope.scope_token.token_type);
 	}
 
 	int_p_t_info, found_int_p := GetTypeInfoPointer(*cd.int_type_info, cd);
 	AssertEquals(true, found_int_p);
+
+	int_p_arr_info, found_int_p_arr := GetTypeInfoPointer(cd.all_type_info_array[1], cd);
+	AssertEquals(true, found_int_p_arr);
 
 	var_index : int;
 	vars_equal : bool = TestNextManyVarDecl(*var_index, cd.all_variables, .[
@@ -2002,7 +2029,14 @@ DONE,, unit_test_alloc);
 		VarDecl("it_index", *cd.int_type_info, RamMem(.sbp,24), 2),
 		VarDecl("v", cd.all_type_info_array[1], RamMem(.sbp,16), 1),
 		VarDecl("val", *cd.int_type_info, RamMem(.sbp,32), 2),
-		VarDecl("idx", *cd.int_type_info, RamMem(.sbp,40), 2)
+		VarDecl("idx", *cd.int_type_info, RamMem(.sbp,40), 2),
+		VarDecl("val", *cd.int_type_info, RamMem(.sbp,32), 2),
+		VarDecl("idx", *cd.int_type_info, RamMem(.sbp,40), 2),
+		VarDecl("pv", int_p_arr_info, RamMem(.sbp,32), 1),
+		VarDecl("it", int_p_t_info, RamMem(.sbp,48), 2),
+		VarDecl("it_index", *cd.int_type_info, RamMem(.sbp,56), 2),
+		VarDecl("it", int_p_t_info, RamMem(.sbp,48), 2),
+		VarDecl("it_index", *cd.int_type_info, RamMem(.sbp,56), 2),
 	]);
 	if !vars_equal return;
 	a_var := cd.all_variables[0];
@@ -2017,6 +2051,13 @@ DONE,, unit_test_alloc);
 	v_var := cd.all_variables[9];
 	val_var := cd.all_variables[10];
 	idx_var := cd.all_variables[11];
+	val_rev_var := cd.all_variables[12];
+	idx_rev_var := cd.all_variables[13];
+	pv_var := cd.all_variables[14];
+	view_it_p_var := cd.all_variables[15];
+	view_index_p_var := cd.all_variables[16];
+	view_it_p_rev_var := cd.all_variables[17];
+	view_index_p_rev_var := cd.all_variables[18];
 
 	a_t_info : *TypeInfoArray = cd.all_type_info_array[0];
 
@@ -2028,19 +2069,23 @@ DONE,, unit_test_alloc);
 		MakeMI(.mset, a_var.op, Imm(0), Imm(a_var.t_info.runtime_size)),
 	]);
 
-	//Empty for array loops are 8 instructions [start,end] inclusive
+	a_op_0, a_op_1 := GetMemoryAddressAsOperands(a_var.op);
+
+	//Empty for array loops are 10 instructions [start,end] inclusive
 	AssertEquals(instr_index, for_scope.start_instr_index);
-	AssertEquals(instr_index+7, for_scope.end_instr_index);
+	AssertEquals(instr_index+9, for_scope.end_instr_index);
 	//for a {}
 	TestNextManyInstr(*instr_index, cd, .[
 		//initialize it_index
 		MakeMI(.mov, it_index_var.op, Imm(0), Imm(it_index_var.t_info.runtime_size)),
 		//top loop instructions
 		MakeMI(.clt, RegMem(.ax), it_index_var.op, Imm(a_t_info.array_count)),
-		MakeMI(.fjmp, Imm(instr_index+8), RegMem(.ax)),
+		MakeMI(.fjmp, Imm(instr_index+10), RegMem(.ax)),
 		//get value based on it_index
+		MakeMI(.add, RegMem(.bx), a_op_0, a_op_1),
 		MakeMI(.mul, RegMem(.ax), it_index_var.op, Imm(a_t_info.element_type.runtime_size)),
-		MakeMI(.add, RegMem(.ax), a_var.op, RegMem(.ax)),
+		MakeMI(.add, RegMem(.bx), RegMem(.bx), RegMem(.ax)),
+		MakeMI(.mov, RegMem(.ax), RegMem(.bx), Imm(8)),
 		MakeMI(.mov, it_var.op, RamMem(.ax), Imm(a_t_info.element_type.runtime_size)),			
 
 		//loop bottom instructions
@@ -2049,9 +2094,9 @@ DONE,, unit_test_alloc);
 		MakeMI(.jmp, Imm(instr_index+1)),
 	]);
 
-	//Empty for < array loops are 8 instructions
+	//Empty for < array loops are 10 instructions
 	AssertEquals(instr_index, for_rev_scope.start_instr_index);
-	AssertEquals(instr_index+7, for_rev_scope.end_instr_index);
+	AssertEquals(instr_index+9, for_rev_scope.end_instr_index);
 	//for < a {}
 	TestNextManyInstr(*instr_index, cd, .[
 		//pre loop instructions to setup reverse it and it_index
@@ -2059,17 +2104,18 @@ DONE,, unit_test_alloc);
 		MakeMI(.sub, index_rev_var.op, Imm(cd.all_type_info_array[0].array_count), Imm(1)),
 		//loop top instructions
 		MakeMI(.cgte, RegMem(.ax), index_rev_var.op, Imm(0)),
-		MakeMI(.fjmp, Imm(instr_index+8), RegMem(.ax)),
+		MakeMI(.fjmp, Imm(instr_index+10), RegMem(.ax)),
 		//get value based on it_index
+		MakeMI(.add, RegMem(.bx), a_op_0, a_op_1),
 		MakeMI(.mul, RegMem(.ax), it_index_var.op, Imm(a_t_info.element_type.runtime_size)),
-		MakeMI(.add, RegMem(.ax), a_var.op, RegMem(.ax)),
-		MakeMI(.mov, it_var.op, RamMem(.ax), Imm(a_t_info.element_type.runtime_size)),
+		MakeMI(.add, RegMem(.bx), RegMem(.bx), RegMem(.ax)),
+		MakeMI(.mov, RegMem(.ax), RegMem(.bx), Imm(8)),
+		MakeMI(.mov, it_rev_var.op, RamMem(.ax), Imm(a_t_info.element_type.runtime_size)),
 		//loop bottom instructions
-		MakeMI(.sub, it_index_var.op, Imm(1)),
+		MakeMI(.sub, index_rev_var.op, Imm(1)),
 		MakeMI(.jmp, Imm(instr_index+1)),
 	]);
 
-	a_op_0, a_op_1 := GetMemoryAddressAsOperands(a_var.op);
 	//Empty for pointer fixed array loops are 8 instructions [start,end] inclusive
 	AssertEquals(instr_index, for_p_scope.start_instr_index);
 	AssertEquals(instr_index+7, for_p_scope.end_instr_index);
@@ -2081,9 +2127,9 @@ DONE,, unit_test_alloc);
 		MakeMI(.clt, RegMem(.ax), index_p_var.op, Imm(a_t_info.array_count)),
 		MakeMI(.fjmp, Imm(instr_index+8), RegMem(.ax)),
 		//get value based on it_index (since it's a pointer we store directly)
-		MakeMI(.add, RegMem(.ax), a_op_0, a_op_1),
-		MakeMI(.mul, RegMem(.bx), index_p_var.op, Imm(a_t_info.element_type.runtime_size)),
-		MakeMI(.add, it_p_var.op, RegMem(.ax), RegMem(.bx)),
+		MakeMI(.add, it_p_var.op, a_op_0, a_op_1),
+		MakeMI(.mul, RegMem(.ax), index_p_var.op, Imm(a_t_info.element_type.runtime_size)),
+		MakeMI(.add, it_p_var.op, it_p_var.op, RegMem(.ax)),
 		//loop bottom instructions
 		MakeMI(.add, index_p_var.op, Imm(1)),
 		MakeMI(.jmp, Imm(instr_index+1)),
@@ -2100,9 +2146,9 @@ DONE,, unit_test_alloc);
 		MakeMI(.cgte, RegMem(.ax), index_p_rev_var.op, Imm(0)),
 		MakeMI(.fjmp, Imm(instr_index+8), RegMem(.ax)),
 		//get value based on it_index (since it's a pointer we store directly)
-		MakeMI(.add, RegMem(.ax), a_op_0, a_op_1),
-		MakeMI(.mul, RegMem(.bx), index_p_rev_var.op, Imm(a_t_info.element_type.runtime_size)),
-		MakeMI(.add, it_p_rev_var.op, RegMem(.ax), RegMem(.bx)),
+		MakeMI(.add, it_p_rev_var.op, a_op_0, a_op_1),
+		MakeMI(.mul, RegMem(.ax), index_p_rev_var.op, Imm(a_t_info.element_type.runtime_size)),
+		MakeMI(.add, it_p_rev_var.op, it_p_rev_var.op, RegMem(.ax)),
 		//loop bottom instructions
 		MakeMI(.sub, index_p_rev_var.op, Imm(1)),
 		MakeMI(.jmp, Imm(instr_index+1)),
@@ -2117,23 +2163,105 @@ DONE,, unit_test_alloc);
 		MakeMI(.add, v_data_op, a_op_0, a_op_1),
 	]);
 
-	//Empty for array loops are 8 instructions
+	v_op_0, v_op_1 := GetMemoryAddressAsOperands(v_var.op);
+	//Empty for array loops are 12 instructions
 	AssertEquals(instr_index, for_var_scope.start_instr_index);
-	AssertEquals(instr_index+7, for_var_scope.end_instr_index);
+	AssertEquals(instr_index+11, for_var_scope.end_instr_index);
 	//for val,idx : v {}
 	TestNextManyInstr(*instr_index, cd, .[
 		//loop setup var instructions
 		MakeMI(.mov, idx_var.op, Imm(0), Imm(idx_var.t_info.runtime_size)),
 		//top loop instructions
 		MakeMI(.clt, RegMem(.ax), idx_var.op, v_var.op),
-		MakeMI(.fjmp, Imm(instr_index+8), RegMem(.ax)),
+		MakeMI(.fjmp, Imm(instr_index+12), RegMem(.ax)),
 		//get value based on it_index
+		MakeMI(.add, RegMem(.bx), v_op_0, v_op_1),
+		MakeMI(.add, RegMem(.ax), RegMem(.bx), Imm(a_t_info.element_type.runtime_size)),
+		MakeMI(.mov, RegMem(.bx), RamMem(.ax), Imm(a_t_info.element_type.runtime_size)),
 		MakeMI(.mul, RegMem(.ax), idx_var.op, Imm(a_t_info.element_type.runtime_size)),
-		MakeMI(.add, RegMem(.ax), v_data_op, RegMem(.ax)),
+		MakeMI(.add, RegMem(.bx), RegMem(.bx), RegMem(.ax)),
+		MakeMI(.mov, RegMem(.ax), RegMem(.bx), Imm(8)),
 		MakeMI(.mov, val_var.op, RamMem(.ax), Imm(a_t_info.element_type.runtime_size)),
 		//bottom loop instructions
 		MakeMI(.add, idx_var.op, Imm(1)),
 		MakeMI(.jmp, Imm(instr_index+1)),
+	]);
+
+	//Empty for array loops are 12 instructions
+	AssertEquals(instr_index, for_var_rev_scope.start_instr_index);
+	AssertEquals(instr_index+11, for_var_rev_scope.end_instr_index);
+	//for < val,idx : v {}
+	TestNextManyInstr(*instr_index, cd, .[
+		//loop setup var instructions
+		MakeMI(.sub, idx_rev_var.op, v_var.op, Imm(1)),
+		//top loop instructions
+		MakeMI(.cgte, RegMem(.ax), idx_rev_var.op, Imm(0)),
+		MakeMI(.fjmp, Imm(instr_index+12), RegMem(.ax)),
+		//get value based on it_index
+		MakeMI(.add, RegMem(.bx), v_op_0, v_op_1),
+		MakeMI(.add, RegMem(.ax), RegMem(.bx), Imm(a_t_info.element_type.runtime_size)),
+		MakeMI(.mov, RegMem(.bx), RamMem(.ax), Imm(a_t_info.element_type.runtime_size)),
+		MakeMI(.mul, RegMem(.ax), idx_rev_var.op, Imm(a_t_info.element_type.runtime_size)),
+		MakeMI(.add, RegMem(.bx), RegMem(.bx), RegMem(.ax)),
+		MakeMI(.mov, RegMem(.ax), RegMem(.bx), Imm(8)),
+		MakeMI(.mov, val_rev_var.op, RamMem(.ax), Imm(a_t_info.element_type.runtime_size)),
+		//bottom loop instructions
+		MakeMI(.sub, idx_rev_var.op, Imm(1)),
+		MakeMI(.jmp, Imm(instr_index+1)),
+	]);
+
+	//pv : *[] int = *v;
+	pv_data_op := AddOperandOffset(8, pv_var.op);
+	TestNextManyInstr(*instr_index, cd, .[
+		MakeMI(.add, pv_var.op, v_op_0, v_op_1),
+	]);
+
+	// v_op_0, v_op_1 := GetMemoryAddressAsOperands(v_var.op);
+	//Empty for array loops are 13 instructions
+	AssertEquals(instr_index, for_var_p_scope.start_instr_index);
+	AssertEquals(instr_index+12, for_var_p_scope.end_instr_index);
+	//for * pv.* {}
+	TestNextManyInstr(*instr_index, cd, .[
+		//loop setup var instructions
+		MakeMI(.mov, pv_data_op, pv_var.op, Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mov, RegMem(.bx), pv_data_op, Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mov, view_index_p_var.op, Imm(0), Imm(cd.int_type_info.runtime_size)),
+		//top loop instructions - jump back to 1 extra instruction to get the correct count
+		MakeMI(.mov, RegMem(.bx), pv_data_op, Imm(cd.void_pointer_type_info.runtime_size)),
+		MakeMI(.clt, RegMem(.ax), view_index_p_var.op, RamMem(.bx)),
+		MakeMI(.fjmp, Imm(instr_index+13), RegMem(.ax)),
+		//get value based on it_index
+		MakeMI(.mov, view_it_p_var.op, pv_data_op, Imm(cd.void_pointer_type_info.runtime_size)),
+		MakeMI(.add, RegMem(.ax), view_it_p_var.op, Imm(a_t_info.element_type.runtime_size)),
+		MakeMI(.mov, view_it_p_var.op, RamMem(.ax), Imm(a_t_info.element_type.runtime_size)),
+		MakeMI(.mul, RegMem(.ax), view_index_p_var.op, Imm(a_t_info.element_type.runtime_size)),
+		MakeMI(.add, view_it_p_var.op, view_it_p_var.op, RegMem(.ax)),
+		//bottom loop instructions
+		MakeMI(.add, view_index_p_var.op, Imm(1)),
+		MakeMI(.jmp, Imm(instr_index+3)),
+	]);
+
+	//Empty for array loops are 13 instructions
+	AssertEquals(instr_index, for_var_p_rev_scope.start_instr_index);
+	AssertEquals(instr_index+11, for_var_p_rev_scope.end_instr_index);
+	//for * < pv.* {}
+	TestNextManyInstr(*instr_index, cd, .[
+		//loop setup var instructions
+		MakeMI(.mov, pv_data_op, pv_var.op, Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mov, RegMem(.bx), pv_data_op, Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.sub, view_index_p_rev_var.op, RamMem(.bx), Imm(1)),
+		//top loop instructions - jump back to 1 extra instruction to get the correct count
+		MakeMI(.cgte, RegMem(.ax), view_index_p_rev_var.op, Imm(0)),
+		MakeMI(.fjmp, Imm(instr_index+12), RegMem(.ax)),
+		//get value based on it_index
+		MakeMI(.mov, view_it_p_rev_var.op, pv_data_op, Imm(cd.void_pointer_type_info.runtime_size)),
+		MakeMI(.add, RegMem(.ax), view_it_p_rev_var.op, Imm(a_t_info.element_type.runtime_size)),
+		MakeMI(.mov, view_it_p_rev_var.op, RamMem(.ax), Imm(a_t_info.element_type.runtime_size)),
+		MakeMI(.mul, RegMem(.ax), view_index_p_rev_var.op, Imm(a_t_info.element_type.runtime_size)),
+		MakeMI(.add, view_it_p_rev_var.op, view_it_p_rev_var.op, RegMem(.ax)),
+		//bottom loop instructions
+		MakeMI(.sub, view_index_p_rev_var.op, Imm(1)),
+		MakeMI(.jmp, Imm(instr_index+3)),
 
 		MakeMI(.exit),
 	]);
@@ -5538,7 +5666,7 @@ main :: () {
 	ta[0].x = 5;
 
 	test2 : [1] T2;
-	test2[0].arr[1] = ta[0].x;
+	//test2[0].arr[1] = ta[0].x;
 
 	// fa : [] int = NewArray(int, 4);
 	// ap : *[] int = *fa;
@@ -5579,30 +5707,27 @@ DONE,,unit_test_alloc);
 		VarDecl("ta", cd.all_type_info_array[1]),
 		VarDecl("test2", cd.all_type_info_array[2]),
 	]);
-
 	if !vars_equal return;
 
 	ta_var := cd.all_variables[0];
 	test2_var := cd.all_variables[1];
 
 
-	//TODO We could pull some of these groups out if we reuse certain instruction sets
-	//since then that would be consistent with the compiler as well. Let's see over time.
 	instr_index : int = 0;
 	TestNextManyInstr(*instr_index, cd, .[
-		//Initialize fa : [4] int
+		//Initialize ta : [2] Test
 		MakeMI(.mset, ta_var.op, Imm(0), Imm(ta_var.t_info.runtime_size)),
 	]);
 
 	#if 0 {
 	array_access_op : MusicOperand = AddOperandOffset(8, fc_var.op);
-	fa_op0, fa_op1 := GetMemoryAddressAsOperands(fa_var.op);
+	fa_op0, fa_op1 := GetMemoryAddressAsOperands(ta_var.op);
 	TestNextManyInstr(*instr_index, cd, .[
-		//fa[0] = 2;
-		MakeMI(.add, array_access_op, fa_op0, fa_op1),
+		//ta[0] = 2;
+		MakeMI(.add, RamMem(.sbp,ta_var.t_info.runtime_size), fa_op0, fa_op1),
 		MakeMI(.mul, RegMem(.ax), Imm(1), Imm(cd.all_type_info_array[0].element_type.runtime_size)),
 		MakeMI(.add, array_access_op, RegMem(.ax)),
-		//fa[1] = fa[0];
+		//ta[1] = ta[0];
 		MakeMI(.mov, RegMem(.r0), array_access_op, Imm(8)),
 		MakeMI(.mov, RamMem(.r0), Imm(10), Imm(cd.int_type_info.runtime_size)),
 	]);
