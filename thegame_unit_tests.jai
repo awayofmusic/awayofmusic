@@ -1375,6 +1375,9 @@ main :: () {
 	for 1..10 if i == 0 while i < 1 i = 1;
 }
 DONE,, unit_test_alloc);
+	comp_success : bool = AssertEquals(false, IsCompilationFail(cd));
+	if !comp_success return;
+	// print("%\n", cd.disassembly);
 
 	vars_equal : bool = TestManyVarDeclSameStack(cd.all_variables, .[
 		VarDecl("i", *cd.int_type_info, scope_index=1),
@@ -1402,26 +1405,27 @@ DONE,, unit_test_alloc);
 	reset_scope_int : int = i_var.t_info.runtime_size+it_var.t_info.runtime_size;
 	TestNextManyInstr(*instr_index, cd, .[
 		//for 1..10
+		MakeMI(.sub, it_var.op, Imm(1), Imm(1)),
+		MakeMI(.add, it_var.op, Imm(1)),
 		MakeMI(.clte, RegMem(.ax), it_var.op, Imm(10)),
-		MakeMI(.fjmp, Imm(instr_index+10), RegMem(.ax)),
+		MakeMI(.fjmp, Imm(instr_index+11), RegMem(.ax)),
 
 		//if i == 0
 		MakeMI(.ceq, RamMem(.sbp,16), i_var.op, Imm(0)),
-		MakeMI(.fjmp, Imm(instr_index+8), RamMem(.sbp,16)),
+		MakeMI(.fjmp, Imm(instr_index+10), RamMem(.sbp,16)),
 
 		//while i < 1
 		MakeMI(.clt, RamMem(.sbp,24), i_var.op, Imm(1)),
-		MakeMI(.fjmp, Imm(instr_index+8), RamMem(.sbp,24)),
+		MakeMI(.fjmp, Imm(instr_index+10), RamMem(.sbp,24)),
 
 		//i = 1
 		MakeMI(.mov, i_var.op, Imm(1), Imm(i_var.t_info.runtime_size)),
 
 		//End while scope
-		MakeMI(.jmp, Imm(instr_index+4)),
+		MakeMI(.jmp, Imm(instr_index+6)),
 
 		//post for loop instructions
-		MakeMI(.add, it_var.op, Imm(1)),
-		MakeMI(.jmp, Imm(instr_index)),
+		MakeMI(.jmp, Imm(instr_index+1)),
 
 		MakeMI(.exit),
 	]);
@@ -1480,26 +1484,27 @@ DONE,, unit_test_alloc);
 	reset_scope_int : int = i_var.t_info.runtime_size+x_var.t_info.runtime_size;
 	TestNextManyInstr(*instr_index, cd, .[
 		//for x : 0..10
+		MakeMI(.sub, x_var.op, Imm(1), Imm(1)),
+		MakeMI(.add, x_var.op, Imm(1)),
 		MakeMI(.clte, RegMem(.ax), x_var.op, Imm(10)),
-		MakeMI(.fjmp, Imm(instr_index+10), RegMem(.ax)),
+		MakeMI(.fjmp, Imm(instr_index+11), RegMem(.ax)),
 
 		//if i == 0
 		MakeMI(.ceq, RamMem(.sbp,16), i_var.op, Imm(0)),
-		MakeMI(.fjmp, Imm(instr_index+8), RamMem(.sbp,16)),
+		MakeMI(.fjmp, Imm(instr_index+10), RamMem(.sbp,16)),
 
 		//while i < 1
 		MakeMI(.clt, RamMem(.sbp,24), i_var.op, Imm(1)),
-		MakeMI(.fjmp, Imm(instr_index+8), RamMem(.sbp,24)),
+		MakeMI(.fjmp, Imm(instr_index+10), RamMem(.sbp,24)),
 
 		//i = 1
 		MakeMI(.mov, i_var.op, x_var.op, Imm(i_var.t_info.runtime_size)),
 
 		//End while scope
-		MakeMI(.jmp, Imm(instr_index+4)),
+		MakeMI(.jmp, Imm(instr_index+6)),
 
 		//post for loop instructions
-		MakeMI(.add, x_var.op, Imm(1)),
-		MakeMI(.jmp, Imm(instr_index)),
+		MakeMI(.jmp, Imm(instr_index+1)),
 	]);
 
 
@@ -1773,6 +1778,9 @@ main :: () {
 	b : int = 5;
 	for x : a..b {}
 
+	pa : *int = *a;
+	pb : *int = *b;
+	for < pa.*..pb.* {}
 
 	// for y : 0..1 for x : 0..10 {
 	// 	tano[y+1,x] = tano[y,x] + 4;
@@ -1793,11 +1801,15 @@ main :: () {
 	*/
 }
 DONE,, unit_test_alloc);
+	comp_success : bool = AssertEquals(false, IsCompilationFail(cd));
+	if !comp_success return;
+	// print("%\n", cd.disassembly);
 
-	scope_count := AssertEquals(5, cd.all_scope_data.count);
+	scope_count := AssertEquals(6, cd.all_scope_data.count);
 	for_scope : ScopeData;
 	for_rev_scope : ScopeData;
 	for_var_scope : ScopeData;
+	for_p_rev_scope : ScopeData;
 	if scope_count {
 		//0 and 1 are global and main scope
 		for_scope = cd.all_scope_data[2];
@@ -1811,7 +1823,13 @@ DONE,, unit_test_alloc);
 		for_var_scope = cd.all_scope_data[4];
 		AssertEquals(ScopeDataType.CONTROL_SCOPE, for_var_scope.scope_type);
 		AssertEquals(CodeTokenType.KEYWORD_FOR, for_var_scope.scope_token.token_type);
+
+		for_p_rev_scope = cd.all_scope_data[5];
+		AssertEquals(ScopeDataType.CONTROL_SCOPE, for_p_rev_scope.scope_type);
+		AssertEquals(CodeTokenType.KEYWORD_FOR, for_p_rev_scope.scope_token.token_type);
 	}
+
+	int_p_t_info, found_int_p := GetTypeInfoPointer(*cd.int_type_info, cd);
 
 	vars_equal : bool;
 	var_index : int;
@@ -1820,7 +1838,11 @@ DONE,, unit_test_alloc);
 		VarDecl("it", *cd.int_type_info, RamMem(.sbp,0), 2),
 		VarDecl("a", *cd.int_type_info, RamMem(.sbp,0), 1),
 		VarDecl("b", *cd.int_type_info, RamMem(.sbp,8), 1),
-		VarDecl("x", *cd.int_type_info, RamMem(.sbp,16), 2)
+		VarDecl("x", *cd.int_type_info, RamMem(.sbp,16), 2),
+		VarDecl("pa", int_p_t_info, RamMem(.sbp,16), 1),
+		VarDecl("pb", int_p_t_info, RamMem(.sbp,24), 1),
+		//Dereference pa.* and pb.* stored at [sbp+32] and [sbp+40]
+		VarDecl("it", *cd.int_type_info, RamMem(.sbp,48), 2),
 	]);
 	if !vars_equal return;
 	it_var := cd.all_variables[0];
@@ -1828,31 +1850,36 @@ DONE,, unit_test_alloc);
 	a_var := cd.all_variables[2];
 	b_var := cd.all_variables[3];
 	x_var := cd.all_variables[4];
+	pa_var := cd.all_variables[5];
+	pb_var := cd.all_variables[6];
+	it_p_rev_var := cd.all_variables[7];
 
 	instr_index : int = 0;
 
 	AssertEquals(instr_index, for_scope.start_instr_index);
-	AssertEquals(instr_index+3, for_scope.end_instr_index);
+	AssertEquals(instr_index+4, for_scope.end_instr_index);
 	//TODO Should we make a function to check for loops for this?
 	//starting loop instructions
 	TestNextManyInstr(*instr_index, cd, .[
-		MakeMI(.clte, RegMem(.ax), it_var.op, Imm(10)),
-		MakeMI(.fjmp, Imm(instr_index+4), RegMem(.ax)),
-		//post loop instructions
+		MakeMI(.sub, it_var.op, Imm(1), Imm(1)),
 		MakeMI(.add, it_var.op, Imm(1)),
-		MakeMI(.jmp, Imm(0)),
+		MakeMI(.clte, RegMem(.ax), it_var.op, Imm(10)),
+		MakeMI(.fjmp, Imm(instr_index+5), RegMem(.ax)),
+		//post loop instructions
+		MakeMI(.jmp, Imm(1)),
 	]);
 
 	AssertEquals(instr_index, for_rev_scope.start_instr_index);
-	AssertEquals(instr_index+3, for_rev_scope.end_instr_index);
+	AssertEquals(instr_index+4, for_rev_scope.end_instr_index);
 	//TODO Can split the pre and post instrs if we want to test instructions in between the loop
 	//Reverse loop for < 1..10 {}
 	TestNextManyInstr(*instr_index, cd, .[
+		MakeMI(.add, it_var.op, Imm(10), Imm(1)),
+		MakeMI(.sub, it_var.op, Imm(1)),
 		MakeMI(.cgte, RegMem(.ax), it_rev_var.op, Imm(1)),
-		MakeMI(.fjmp, Imm(instr_index+4), RegMem(.ax)),
+		MakeMI(.fjmp, Imm(instr_index+5), RegMem(.ax)),
 		//post loop instructions
-		MakeMI(.sub, it_rev_var.op, Imm(1)),
-		MakeMI(.jmp, Imm(4)),
+		MakeMI(.jmp, Imm(instr_index+1)),
 	]);
 
 
@@ -1864,18 +1891,70 @@ DONE,, unit_test_alloc);
 	]);
 
 	AssertEquals(instr_index, for_var_scope.start_instr_index);
-	AssertEquals(instr_index+3, for_var_scope.end_instr_index);
+	AssertEquals(instr_index+4, for_var_scope.end_instr_index);
 	TestNextManyInstr(*instr_index, cd, .[
-		MakeMI(.clte, RegMem(.ax), x_var.op, b_var.op),
-		MakeMI(.fjmp, Imm(instr_index+4), RegMem(.ax)),
-		//post loop instructions
+		MakeMI(.sub, x_var.op, a_var.op, Imm(1)),
 		MakeMI(.add, x_var.op, Imm(1)),
-		MakeMI(.jmp, Imm(instr_index)),
+		MakeMI(.clte, RegMem(.ax), x_var.op, b_var.op),
+		MakeMI(.fjmp, Imm(instr_index+5), RegMem(.ax)),
+		//post loop instructions
+		MakeMI(.jmp, Imm(instr_index+1)),
+	]);
+
+	a_op0, a_op1 := GetMemoryAddressAsOperands(a_var.op);
+	b_op0, b_op1 := GetMemoryAddressAsOperands(b_var.op);
+
+	TestNextManyInstr(*instr_index, cd, .[
+		//pa : *int = *a;
+		MakeMI(.add, pa_var.op, a_op0, a_op1),
+		//pb : int = *b;
+		MakeMI(.add, pb_var.op, b_op0, b_op1),
+	]);
+
+	AssertEquals(instr_index, for_p_rev_scope.start_instr_index);
+	AssertEquals(instr_index+8, for_p_rev_scope.end_instr_index);
+	TestNextManyInstr(*instr_index, cd, .[
+		//pa.*
+		MakeMI(.mov, RamMem(.sbp, 32), pa_var.op, Imm(cd.void_pointer_type_info.runtime_size)),
+		//pb.*
+		MakeMI(.mov, RamMem(.sbp, 40), pb_var.op, Imm(cd.void_pointer_type_info.runtime_size)),
+		MakeMI(.mov, RegMem(.r0), RamMem(.sbp,40), Imm(cd.void_pointer_type_info.runtime_size)),
+		MakeMI(.mov, RegMem(.r1), RamMem(.sbp,32), Imm(cd.void_pointer_type_info.runtime_size)),
+
+		MakeMI(.add, it_p_rev_var.op, RamMem(.r0), Imm(1)),
+		MakeMI(.sub, it_p_rev_var.op, Imm(1)),
+		MakeMI(.cgte, RegMem(.ax), it_p_rev_var.op, RamMem(.r1)),
+		MakeMI(.fjmp, Imm(instr_index+9), RegMem(.ax)),
+		//post loop instructions
+		MakeMI(.jmp, Imm(instr_index+5)),
 
 		MakeMI(.exit),
 	]);
 
 	AssertEquals(instr_index, cd.all_music_instructions.count);
+
+
+	//TEST invalid for loop range type
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	for 1.5..3 {}
+}
+DONE,, unit_test_alloc);
+	AssertEquals(1, cd.comp_errors.all_compiler_errors.count);
+
+	//TEST invalid for loop range with pointer
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	x : int;
+	y : int;
+	for * x..y {}
+}
+DONE,, unit_test_alloc);
+	AssertEquals(1, cd.comp_errors.all_compiler_errors.count);
 
 } @UnitTest
 

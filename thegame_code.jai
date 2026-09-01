@@ -5417,14 +5417,19 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 		fld : *ForLoopData = peek_pointer(cd.all_for_loop_data);
 		
 		if node.right.value.token_type == .DOUBLE_DOT {
-			r_node := node.right;
-			assert(r_node.left != null && r_node.right != null);
-			valid_for_range :: TypeInfoTag.[.INTEGER];
-			if !AllOrEquals(r_node.left.code_ir.t_info.type_enum, valid_for_range) ||
-			 	!AllOrEquals(r_node.right.code_ir.t_info.type_enum, valid_for_range)
-		 	{
-				CreateCompErr(cd, .EVALUATION, node,
-				sprint("Invalid for range type. Must be one of %.", valid_for_range));
+			dots_node := node.right;
+			right_valid : bool = CheckValidNode(dots_node.right, dots_node, cd);
+			if !right_valid return false;
+			left_valid : bool = CheckValidNode(dots_node.left, dots_node, cd);
+			if !left_valid return false;
+
+			//TODO Keep this here in case we allow other types in for loop range later
+			// valid_for_range :: TypeInfoTag.[.INTEGER];
+			// if !AllOrEquals(dots_node.left.code_ir.t_info.type_enum, valid_for_range) ||
+			//  	!AllOrEquals(dots_node.right.code_ir.t_info.type_enum, valid_for_range)
+		 	// {
+			if dots_node.left.code_ir.t_info.type_enum != .INTEGER || dots_node.right.code_ir.t_info.type_enum != .INTEGER {
+				CreateCompErr(cd, .EVALUATION, node, "Invalid for loop range type must be integer.");
 				return false;
 			}
 			if fld.is_pointer {
@@ -5432,45 +5437,42 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 				return false;				
 			}
 
-			//IMPORTANT : We free these here so we need to use any of the nodes before using the register below
-			FreeOperandRegisters(r_node.left.code_ir.op, *cd.all_registers);
-			FreeOperandRegisters(r_node.right.code_ir.op, *cd.all_registers);
-
-			//TODO Should I just store the check on the stack instead of register here?
-			reg_data : *RegisterData = OLDGetNextAvailableRegister(cd);
-			reg_data.is_available = true;
-			reg := cast(RegDef) reg_data.reg_index;
-			post_op : OpCode;
 			//Start of for loop check if range is still good
 			index_var : *VariableData = CreateStackVarData(cd, fld.value_name, *cd.int_type_info);
+			right_op : MusicOperand = GetValueOp(dots_node.right, cd, .r0);
+			left_op : MusicOperand = GetValueOp(dots_node.left, cd, .r1);
+			check_reg : MusicOperand = RegMem(.ax);
+			post_op : OpCode;
 			if fld.is_reverse {
-				//TODO Can remove these pushes once we know we don't use that anymore.
-				// CreateMInstr(.push, r_node.right.code_ir.op, d=cd);
-				CreateMInstr(.cgte, RegMem(reg), index_var.op, r_node.left.code_ir.op, d=cd);
+				CreateMInstr(.add, index_var.op, right_op, Imm(1), d=cd);
+				CreateMInstr(.sub, index_var.op, Imm(1), d=cd);
+				CreateMInstr(.cgte, check_reg, index_var.op, left_op, d=cd);
 				post_op = OpCode.sub;
 			} else {
-				// CreateMInstr(.push, r_node.left.code_ir.op, d=cd);
-				CreateMInstr(.clte, RegMem(reg), index_var.op, r_node.right.code_ir.op, d=cd);
+				CreateMInstr(.sub, index_var.op, left_op, Imm(1), d=cd);
+				CreateMInstr(.add, index_var.op, Imm(1), d=cd);
+				CreateMInstr(.clte, check_reg, index_var.op, right_op, d=cd);
 				post_op = OpCode.add;
 			}
 			//Set here so we restart from the comparison operator
-			jmp_instr_index : int = cd.all_music_instructions.count-1;
+			jmp_instr_index : int = cd.all_music_instructions.count-2;
 
-			CreateMInstr(.fjmp, Imm(0), RegMem(reg), d=cd);
+			CreateMInstr(.fjmp, Imm(0), check_reg, d=cd);
 			ctrl_fjmp : *ControlFjmps = array_add(*cd.all_control_fjmps);
 			ctrl_fjmp.instr_index = cd.all_music_instructions.count-1;
 			ctrl_fjmp.scope_index = cd.open_scope_stack.count-1;
 
 			//TODO Can remove this if we only have 2 post_loop_instrs
-			fld.post_instr_count = 2;
+			fld.post_instr_count = 1;
 			//Increment/decrement instruction
-			fld.post_loop_instrs[0] = MakeMusicInstruction(post_op, index_var.op, Imm(1));
+			// fld.post_loop_instrs[0] = MakeMusicInstruction(post_op, index_var.op, Imm(1));
 			//Jmp back to start of loop comparison check
-			fld.post_loop_instrs[1] = MakeMusicInstruction(.jmp, Imm(jmp_instr_index));
+			fld.post_loop_instrs[0] = MakeMusicInstruction(.jmp, Imm(jmp_instr_index));
 
 		} else {
-			//We have an array or music memory
-			valid_for_iter :: TypeInfoTag.[.ARRAY,.MUSIC_UNIT];
+			//We have an array or music memory (not implementing music memory for now since we can convert tano to arrays)
+			// valid_for_iter :: TypeInfoTag.[.ARRAY,.MUSIC_UNIT];
+			valid_for_iter :: TypeInfoTag.[.ARRAY];
 			if !AllOrEquals(node.right.code_ir.t_info.type_enum, valid_for_iter) {
 				CreateCompErr(cd, .EVALUATION, node,
 				sprint("Invalid for iterator type. Must be one of %\n", valid_for_iter));
@@ -5486,32 +5488,19 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 				// var_type := VariableType.RESTRICTED_INPUT;
 				value_type : *TypeInfo = array_info.element_type;
 				if fld.is_pointer {
-					// var_type = .DEFAULT;
 					value_type = GetOrCreateTypeInfoPointer(array_info.element_type, cd);
 				}
 				//This variable will keep track of the loop array value and is pushed in the next instruction below
 				value_var : *VariableData = CreateStackVarData(cd, fld.value_name, value_type, .DEFAULT);
 				array_count_op : MusicOperand = ---;
-				//TODO CLEANUP
-				// array_data_op : MusicOperand = ---;
 				if array_info.array_type == {
 				case .FIXED;
 					array_count_op = Imm(array_info.array_count);
-					// array_data_op = node.right.code_ir.op;
 				case .RESIZABLE; #through;
 				case .VIEW;
 					array_count_op = GetValueOp(node.right, cd, .bx);
-					// array_data_op = AddOperandOffset(8, array_count_op);
 				}
-				//NOTE : We update value_var after the loop comparison now since we only can once we know the index is valid.
-				// CreateMInstr(.mov, value_var.op, array_data_op, Imm(value_var.t_info.runtime_size), d=cd);
 
-				//We've processed the array now, so we can reuse the registers if possible
-				//TODO Can likely remove this now since we don't set any available registers above
-				FreeOperandRegisters(node.right.code_ir.op, *cd.all_registers);
-
-				//TODO FROM HERE CLEANUP FOR LOOP HERE AND TESTS, then start on structs
-				//cleanup Test_ForLoopArray and Test_Inline and Test_MultiControl
 				jmp_instr_index : int;
 				post_op : OpCode;
 				index_var : *VariableData = CreateStackVarData(cd, fld.index_name, *cd.int_type_info);

@@ -9,7 +9,7 @@
 if it is an issue but also maybe it is good to have at least 1 very elaborate test for completeness to check
 a slow full debugging session of a for loop.
 */
-Test_ForLoop :: (
+Test_ForLoopRange :: (
 	test_name : string,
 	game_memory : *GameMemory, 
 	renderer_data : *RendererData, 
@@ -32,23 +32,38 @@ Test_ForLoop :: (
 //TODO Could do sprint if needed to put things in here
 #string DONE
 main :: () {
-  x : int = 0;
-  for 0..1 {
-    x = x + 1;
-    y : int = 3;
-  }
-  x = 2;
+	x : int = 0;
+	for 1..3 {
+		x = it + 1;
+		y : int = 3;
+	}
+	for < 11..13 {
+	}
+
+	x0 : int = 2;
+	x1 : int = 4;
+	for i : x0..x1 {
+		x = i;
+	}
+	for < x0..x1 {
+		x = it;
+	}
 }
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
 			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
 	
-		array_resize(*perm.test_data.all_sub_tests, 16);
+		array_resize(*perm.test_data.all_sub_tests, 47+1);
 	} 
 
 	wait_test := WaitTest(*perm.test_data);
 	if wait_test return;
+
+	text_op : *TextOpSpaceData;
+	if perm.all_data.all_text_op_space_data.count > 0 {
+		text_op = *perm.all_data.all_text_op_space_data[0];
+	}
 
 	if perm.test_data.sub_test_index == {
 	case 0; {
@@ -63,7 +78,1524 @@ DONE);
 	case 5; DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
 	case 6; {
 		//Before the for scope
-		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		bp0 := text_op.exec_info.debug_info.break_points[0];
+		AssertEquals(bp0.asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(0, c_frame.function_scope.start_instr_index);
+			AssertEquals(text_op.text_comp_data.all_music_instructions.count-1, c_frame.function_scope.end_instr_index);
+
+			count_equals = AssertEquals(4, c_frame.all_scopes_in_function.count);
+			if count_equals {
+				scope := c_frame.all_scopes_in_function[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, scope.scope_token.token_type);
+			}
+
+			AssertEquals(0, c_frame.call_open_scopes.count);
+
+			count_equals = AssertEquals(3, c_frame.frame_vars.count);
+			if count_equals {
+				var := c_frame.frame_vars[0];
+				AssertEquals("x", var.name);
+				AssertEquals(TypeInfoTag.INTEGER, var.t_info.type_enum);
+				AssertEquals(c_frame.function_scope.id, var.scope_id);
+				AssertEquals(c_frame.function_scope.function_id, var.function_id);
+			}
+		}	
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	} 
+	case 7; {
+		//In the for scope now - at for 1..3
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(1, text_op.exec_info.debug_info.break_points.count);
+		bp0 : DebugBreakpoint;
+		if count_equals {
+			bp0 = text_op.exec_info.debug_info.break_points[0];
+			AssertEquals(bp0.asm_index+1, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(4, c_frame.all_scopes_in_function.count);
+			AssertEquals(1, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp0.asm_index+1, for_scope.start_instr_index);
+				AssertEquals(bp0.asm_index+8, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(5, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("it", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(0, it_value);
+
+				y_var := c_frame.frame_vars[4];
+				AssertEquals("y", y_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, y_var.t_info.type_enum);
+				AssertEquals(for_scope.id, y_var.scope_id);
+				AssertEquals(for_scope.function_id, y_var.function_id);
+			}
+		}
+
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	} 
+	case 8; {
+		//at x = x + 1;
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(1, text_op.exec_info.debug_info.break_points.count);
+		bp0 : DebugBreakpoint;
+		if count_equals {
+			bp0 = text_op.exec_info.debug_info.break_points[0];
+			AssertEquals(bp0.asm_index+5, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			count_equals = AssertEquals(5, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("it", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(1, it_value);
+
+				y_var := c_frame.frame_vars[4];
+				AssertEquals("y", y_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, y_var.t_info.type_enum);
+			}
+		}
+
+
+		CodeBPForTest(4, *text_op.exec_info.debug_info, text_op.text_comp_data);
+		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+	}
+	case 9; {
+		//At the y : int for the 1st time
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		AssertEquals(2, text_op.exec_info.debug_info.break_points.count);
+		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(1, c_frame.call_open_scopes.count);
+			AssertEquals(5, c_frame.frame_vars.count);
+			if count_equals {
+				x_var := c_frame.frame_vars[0];
+				x_value := ComputeOperandInt(x_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(2, x_value);
+			}
+		}
+
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 10; {
+		//At the close "}" of the foor loop for we add to "it" and reset the scope.
+		//TODO Eventually we will likely not reset the scope and just store all stack positions directly.
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+
+			//note the for scope is still open and never closed
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+			}
+
+			AssertEquals(5, c_frame.frame_vars.count);
+		}
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 11; {
+		//Back at the for scope now - at for 0..1
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+
+			//note the for scope is still open and never closed
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+			}
+
+			count_equals = AssertEquals(5, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("it", it_var.name);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(1, it_value);
+
+				y_var := c_frame.frame_vars[4];
+				AssertEquals("y", y_var.name);
+			}
+		}
+
+
+		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);	
+	}
+	case 12; {
+		//At the y : int for the 2nd time
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		AssertEquals(2, text_op.exec_info.debug_info.break_points.count);
+		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(1, c_frame.call_open_scopes.count);
+			AssertEquals(5, c_frame.frame_vars.count);
+		}
+
+		//Check all the variables are correct in the loop in the watch data
+		AddWatchDataForTest(.["x", "y", "it"], text_op);
+		for 0..text_op.watch_data_rows.count-2 {
+			EvaluateWatchData(it, text_op, perm.all_data, true);
+		}
+		count_equal := AssertEquals(4, text_op.watch_data_rows.count);
+		if count_equal {
+			x_var : WatchData = GetWatch("x", text_op.watch_data_rows);
+			AssertEquals("3", x_var.value_str);
+			AssertEquals("int", x_var.type_str);
+
+			y_var : WatchData = GetWatch("y", text_op.watch_data_rows);
+			AssertEquals("int", y_var.type_str);
+
+			it_var : WatchData = GetWatch("it", text_op.watch_data_rows);
+			AssertEquals("2", it_var.value_str);
+			AssertEquals("int", it_var.type_str);
+		}
+
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 13; {
+		//At the close "}" of the for loop for we add to "it" and reset the scope.
+		//TODO Eventually we will likely not reset the scope and just store all stack positions directly.
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+
+			//note the for scope is still open and never closed
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+			}
+
+			AssertEquals(5, c_frame.frame_vars.count);
+		}
+
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 14; {
+		//Back at the top for loop for the final check
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+
+			//note the for scope is still open and never closed
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+			}
+
+			count_equals = AssertEquals(5, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("it", it_var.name);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(2, it_value);
+			}
+		}
+
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 15; {
+		//Back at the top for loop for the final check
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+
+			//note the for scope is still open and never closed
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+			}
+
+			count_equals = AssertEquals(5, c_frame.frame_vars.count);
+			if count_equals {
+				//We increment it at the bottom of the for loop so it should be 2 now
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("it", it_var.name);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(3, it_value);
+			}
+		}
+
+
+		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+	}
+	case 16; {
+		//Back y : int for last time
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+
+			//note the for scope is still open and never closed
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+			}
+
+			count_equals = AssertEquals(5, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("it", it_var.name);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(3, it_value);
+			}
+		}
+
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 18; DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	case 19; {
+		//Back at top for last check
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+
+			//note the for scope is still open and never closed
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+			}
+
+			count_equals = AssertEquals(5, c_frame.frame_vars.count);
+			if count_equals {
+				//We increment it at the top of the for loop so it should be 3 now
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("it", it_var.name);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(3, it_value);
+			}
+		}
+
+
+		CodeBPForTest(6, *text_op.exec_info.debug_info, text_op.text_comp_data);
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 20; {
+		//At for < 11..13
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		AssertEquals(9, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(1, c_frame.call_open_scopes.count);
+			AssertEquals(4, c_frame.frame_vars.count);
+		}
+
+		//Check that the y and it var are no longer available but x still is with correct value.
+		count_equals = AssertEquals(4, text_op.watch_data_rows.count);
+		if count_equals {
+			x_var : WatchData = GetWatch("x", text_op.watch_data_rows);
+			AssertEquals("4", x_var.value_str);
+			AssertEquals("int", x_var.type_str);
+
+			y_var : WatchData = GetWatch("y", text_op.watch_data_rows);
+			AssertEquals(true, y_var.is_error);
+		}
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 21; {
+		//End of first iteration for < 11..13
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(3, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[2];
+			AssertEquals(bp.asm_index+4, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(4, c_frame.all_scopes_in_function.count);
+			AssertEquals(2, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+4, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(4, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("it", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(13, it_value);
+			}
+		}
+
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 22; {
+		//Start of second iteration for < 11..13
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(3, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[2];
+			AssertEquals(bp.asm_index+1, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(4, c_frame.all_scopes_in_function.count);
+			AssertEquals(2, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+4, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(4, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("it", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(13, it_value);
+			}
+		}
+
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 23; {
+		//End of second iteration for < 11..13
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(3, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[2];
+			AssertEquals(bp.asm_index+4, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(4, c_frame.all_scopes_in_function.count);
+			AssertEquals(2, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+4, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(4, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("it", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(12, it_value);
+			}
+		}
+
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 24; DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	case 25; {
+		//End of third iteration for < 11..13
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(3, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[2];
+			AssertEquals(bp.asm_index+4, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(4, c_frame.all_scopes_in_function.count);
+			AssertEquals(2, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+4, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(4, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("it", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(11, it_value);
+			}
+		}
+
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 26; {
+		//Start of fourth iteration for < 11..13
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(3, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[2];
+			AssertEquals(bp.asm_index+1, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(4, c_frame.all_scopes_in_function.count);
+			AssertEquals(2, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+4, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(4, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("it", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(11, it_value);
+			}
+		}
+
+		CodeBPForTest(11, *text_op.exec_info.debug_info, text_op.text_comp_data);
+		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);	
+	}
+	case 27; {
+		//Start of fourth iteration for < 11..13
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(4, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[3];
+			AssertEquals(bp.asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(4, c_frame.all_scopes_in_function.count);
+			AssertEquals(3, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+5, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(4, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("i", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(0, it_value);
+			}
+		}
+
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 28; {
+		//At for i : x0..x1 { x = i;
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(4, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[3];
+			AssertEquals(bp.asm_index+4, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(4, c_frame.all_scopes_in_function.count);
+			AssertEquals(3, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+5, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(4, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("i", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(2, it_value);
+			}
+		}
+
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 29; {
+		//At end of first iteration for i : x0..x1 { }
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(4, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[3];
+			AssertEquals(bp.asm_index+5, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(4, c_frame.all_scopes_in_function.count);
+			AssertEquals(3, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+5, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(4, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("i", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(2, it_value);
+			}
+		}
+
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 30; {
+		//Start of second iteration for i : x0..x1
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(4, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[3];
+			AssertEquals(bp.asm_index+1, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(4, c_frame.all_scopes_in_function.count);
+			AssertEquals(3, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+5, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(4, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("i", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(2, it_value);
+			}
+		}
+
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 31; {
+		//In second iteration for i : x0..x1 { x = i;
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(4, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[3];
+			AssertEquals(bp.asm_index+4, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(4, c_frame.all_scopes_in_function.count);
+			AssertEquals(3, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+5, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(4, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("i", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(3, it_value);
+
+				x_watch := GetWatch("x", text_op.watch_data_rows);
+				AssertEquals("2", x_watch.value_str);
+			}
+		}
+
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 32; {
+		//End of second iteration for i : x0..x1 {};
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(4, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[3];
+			AssertEquals(bp.asm_index+5, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(4, c_frame.all_scopes_in_function.count);
+			AssertEquals(3, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+5, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(4, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("i", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(3, it_value);
+
+				x_watch := GetWatch("x", text_op.watch_data_rows);
+				AssertEquals("3", x_watch.value_str);
+			}
+		}
+
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 33; {
+		//Start of third iteration for i : x0..x1 {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(4, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[3];
+			AssertEquals(bp.asm_index+1, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(4, c_frame.all_scopes_in_function.count);
+			AssertEquals(3, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+5, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(4, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("i", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(3, it_value);
+
+				x_watch := GetWatch("x", text_op.watch_data_rows);
+				AssertEquals("3", x_watch.value_str);
+			}
+		}
+
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 34; {
+		//In third iteration for i : x0..x1 { x = i;
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(4, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[3];
+			AssertEquals(bp.asm_index+4, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(4, c_frame.all_scopes_in_function.count);
+			AssertEquals(3, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+5, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(4, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("i", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(4, it_value);
+
+				x_watch := GetWatch("x", text_op.watch_data_rows);
+				AssertEquals("3", x_watch.value_str);
+			}
+		}
+
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 35; {
+		//End third iteration for i : x0..x1 { }
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(4, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[3];
+			AssertEquals(bp.asm_index+5, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(4, c_frame.all_scopes_in_function.count);
+			AssertEquals(3, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+5, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(4, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("i", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(4, it_value);
+
+				x_watch := GetWatch("x", text_op.watch_data_rows);
+				AssertEquals("4", x_watch.value_str);
+			}
+		}
+
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 36; {
+		//Start fourth iteration for i : x0..x1 { }
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(4, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[3];
+			AssertEquals(bp.asm_index+1, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(4, c_frame.all_scopes_in_function.count);
+			AssertEquals(3, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+5, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(4, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("i", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(4, it_value);
+
+				x_watch := GetWatch("x", text_op.watch_data_rows);
+				AssertEquals("4", x_watch.value_str);
+			}
+		}
+
+		CodeBPForTest(14, *text_op.exec_info.debug_info, text_op.text_comp_data);
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 37; {
+		//Start first iteration for < x0..x1 {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(5, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[4];
+			AssertEquals(bp.asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(4, c_frame.all_scopes_in_function.count);
+			AssertEquals(4, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+5, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(4, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("it", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(5, it_value);
+			}
+		}
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 38; {
+		//In first iteration for < x0..x1 { x = it;
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(5, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[4];
+			AssertEquals(bp.asm_index+4, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(4, c_frame.all_scopes_in_function.count);
+			AssertEquals(4, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+5, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(4, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("it", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(4, it_value);
+			}
+		}
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 39; {
+		//End first iteration for < x0..x1 { }
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(5, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[4];
+			AssertEquals(bp.asm_index+5, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(4, c_frame.all_scopes_in_function.count);
+			AssertEquals(4, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+5, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(4, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("it", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(4, it_value);
+
+				x_watch := GetWatch("x", text_op.watch_data_rows);
+				AssertEquals("4", x_watch.value_str);
+			}
+		}
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 40; {
+		//Start second iteration for < x0..x1 { }
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(5, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[4];
+			AssertEquals(bp.asm_index+1, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(4, c_frame.all_scopes_in_function.count);
+			AssertEquals(4, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+5, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(4, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("it", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(4, it_value);
+
+				x_watch := GetWatch("x", text_op.watch_data_rows);
+				AssertEquals("4", x_watch.value_str);
+			}
+		}
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 41; {
+		//In second iteration for < x0..x1 { x = it;
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(5, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[4];
+			AssertEquals(bp.asm_index+4, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(4, c_frame.all_scopes_in_function.count);
+			AssertEquals(4, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+5, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(4, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("it", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(3, it_value);
+
+				x_watch := GetWatch("x", text_op.watch_data_rows);
+				AssertEquals("4", x_watch.value_str);
+			}
+		}
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 42; {
+		//End second iteration for < x0..x1 { }
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(5, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[4];
+			AssertEquals(bp.asm_index+5, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(4, c_frame.all_scopes_in_function.count);
+			AssertEquals(4, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+5, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(4, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("it", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(3, it_value);
+
+				x_watch := GetWatch("x", text_op.watch_data_rows);
+				AssertEquals("3", x_watch.value_str);
+			}
+		}
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 43; DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	case 44; DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	case 45; {
+		//End third iteration for < x0..x1 { }
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(5, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[4];
+			AssertEquals(bp.asm_index+5, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(4, c_frame.all_scopes_in_function.count);
+			AssertEquals(4, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+5, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(4, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("it", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(2, it_value);
+
+				x_watch := GetWatch("x", text_op.watch_data_rows);
+				AssertEquals("2", x_watch.value_str);
+			}
+		}
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 46; {
+		//Start fourth iteration for < x0..x1 {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(5, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[4];
+			AssertEquals(bp.asm_index+1, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(4, c_frame.all_scopes_in_function.count);
+			AssertEquals(4, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+5, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(4, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[3];
+				AssertEquals("it", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(2, it_value);
+
+				x_watch := GetWatch("x", text_op.watch_data_rows);
+				AssertEquals("2", x_watch.value_str);
+			}
+		}
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 47; {
+		//Out of all for loops
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(5, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[4];
+			AssertEquals(bp.asm_index+6, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(4, c_frame.all_scopes_in_function.count);
+			AssertEquals(4, c_frame.s_index);
+
+			count_equals = AssertEquals(0, c_frame.call_open_scopes.count);
+			count_equals = AssertEquals(3, c_frame.frame_vars.count);
+			if count_equals {
+				it_watch := GetWatch("it", text_op.watch_data_rows);
+				AssertEquals(true, it_watch.is_error);
+
+				x_watch := GetWatch("x", text_op.watch_data_rows);
+				AssertEquals("2", x_watch.value_str);
+			}
+		}
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	}
+
+	ContinueTest(*perm.test_data);
+
+} @ITest
+
+Test_ForLoopRangePointer :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	perm : *Persist = GetPermanentStorage(game_memory);
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+
+		//TODO Use InitAllData here once we remove this
+		perm.all_data = InitAllData();
+		ResetAllRendererData(renderer_data);
+
+		SetupMusicAndRows(perm.all_data, TWO_ROWS);
+
+		//TODO Should we just create generally in here? I guess this makes things consistent across tests.
+		text_file := CreateTestTextFile(*ALL_NEXT_IDS, *perm.all_data.all_text_files);
+		WriteFileString(text_file,
+//TODO Could do sprint if needed to put things in here
+#string DONE
+main :: () {
+	x : int;
+	x0 : int = 2;
+	px0 : *int = *x0;
+	x1 : int = 4;
+	px1 : *int = *x1;
+	for i : px0.*..px1.* {
+		x = i;
+	}
+}
+DONE);
+
+		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
+			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+	
+		array_resize(*perm.test_data.all_sub_tests, 15+1);
+	} 
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	text_op : *TextOpSpaceData;
+	if perm.all_data.all_text_op_space_data.count > 0 {
+		text_op = *perm.all_data.all_text_op_space_data[0];
+	}
+
+	if perm.test_data.sub_test_index == {
+	case 0; {
+		open_test := MakeTerminalEvent(.open_op, TEST_TEXT_NAME);
+		array_add(*perm.all_data.all_terminal_events, open_test);
+	}
+	case 1; DownUpInputMap(.TEXT_DEBUG_TOGGLE, game_input);
+	case 2; DownUpInputMap(.TEXT_COMPILE, game_input);
+	case 3; {
+		comp_success : bool = AssertEquals(false, IsCompilationFail(text_op.text_comp_data));
+		if !comp_success {
+			EndTest(*perm.test_data);
+		} else {
+			AddWatchDataForTest(.["x", "i"], text_op);
+			CodeBPForTest(5, *text_op.exec_info.debug_info, text_op.text_comp_data);
+			DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+		}
+	}
+	case 4; {
+		//Before the for scope
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
 
 		bp0 := text_op.exec_info.debug_info.break_points[0];
@@ -85,28 +1617,21 @@ DONE);
 
 			AssertEquals(0, c_frame.call_open_scopes.count);
 
-			count_equals = AssertEquals(1, c_frame.frame_vars.count);
-			if count_equals {
-				var := c_frame.frame_vars[0];
-				AssertEquals("x", var.name);
-				AssertEquals(TypeInfoTag.INTEGER, var.t_info.type_enum);
-				AssertEquals(c_frame.function_scope.id, var.scope_id);
-				AssertEquals(c_frame.function_scope.function_id, var.function_id);
-			}
+			count_equals = AssertEquals(5, c_frame.frame_vars.count);
 		}	
 
-		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+		CodeBPForTest(6, *text_op.exec_info.debug_info, text_op.text_comp_data);
+		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);	
 	} 
-	case 7; {
-		//In the for scope now - at for 0..1
-		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
+	case 5; {
+		//Start first iteration for i : px0.*..px1.* {
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
 
-		count_equals := AssertEquals(1, text_op.exec_info.debug_info.break_points.count);
-		bp0 : DebugBreakpoint;
+		count_equals := AssertEquals(2, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
 		if count_equals {
-			bp0 = text_op.exec_info.debug_info.break_points[0];
-			AssertEquals(bp0.asm_index+1, perm.all_data.all_register_memory[RegDef.pc].int_value);
+			bp = text_op.exec_info.debug_info.break_points[1];
+			AssertEquals(bp.asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		}
 
 		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -122,262 +1647,459 @@ DONE);
 				for_scope = c_frame.call_open_scopes[0];
 				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
 				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
-				AssertEquals(bp0.asm_index+1, for_scope.start_instr_index);
-				AssertEquals(bp0.asm_index+7, for_scope.end_instr_index);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+9, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
-			count_equals = AssertEquals(3, c_frame.frame_vars.count);
+			count_equals = AssertEquals(6, c_frame.frame_vars.count);
 			if count_equals {
-				it_var := c_frame.frame_vars[1];
-				AssertEquals("it", it_var.name);
-				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
-				AssertEquals(for_scope.id, it_var.scope_id);
-				AssertEquals(for_scope.function_id, it_var.function_id);
-				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				i_var := c_frame.frame_vars[5];
+				AssertEquals("i", i_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, i_var.t_info.type_enum);
+				AssertEquals(for_scope.id, i_var.scope_id);
+				AssertEquals(for_scope.function_id, i_var.function_id);
+				it_value := ComputeOperandInt(i_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
 				AssertEquals(0, it_value);
-
-				y_var := c_frame.frame_vars[2];
-				AssertEquals("y", y_var.name);
-				AssertEquals(TypeInfoTag.INTEGER, y_var.t_info.type_enum);
-				AssertEquals(for_scope.id, y_var.scope_id);
-				AssertEquals(for_scope.function_id, y_var.function_id);
 			}
 		}
 
 
 		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
-	} 
-	case 8; {
-		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
+	}
+	case 6; {
+		//At for i : px0.*..px1.* { x = i;
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
 
-		count_equals := AssertEquals(1, text_op.exec_info.debug_info.break_points.count);
-		bp0 : DebugBreakpoint;
+		count_equals := AssertEquals(2, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
 		if count_equals {
-			bp0 = text_op.exec_info.debug_info.break_points[0];
-			AssertEquals(bp0.asm_index+3, perm.all_data.all_register_memory[RegDef.pc].int_value);
+			bp = text_op.exec_info.debug_info.break_points[1];
+			AssertEquals(bp.asm_index+8, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		}
 
 		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
 		if count_equals {
 			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
-			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
-			count_equals = AssertEquals(3, c_frame.frame_vars.count);
-		}
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(1, c_frame.all_scopes_in_function.count);
+			AssertEquals(1, c_frame.s_index);
 
-
-		CodeBPForTest(4, *text_op.exec_info.debug_info, text_op.text_comp_data);
-		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
-	}
-	case 9; {
-		//At the y : int for the 1st time
-		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
-		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
-
-		AssertEquals(2, text_op.exec_info.debug_info.break_points.count);
-		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
-		if count_equals {
-			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
-			AssertEquals(1, c_frame.call_open_scopes.count);
-			AssertEquals(3, c_frame.frame_vars.count);
-			if count_equals {
-				x_var := c_frame.frame_vars[0];
-				x_value := ComputeOperandInt(x_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
-				AssertEquals(1, x_value);
-			}
-		}
-
-
-		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
-	}
-	case 10; {
-		//At the close "}" of the foor loop for we add to "it" and reset the scope.
-		//TODO Eventually we will likely not reset the scope and just store all stack positions directly.
-		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
-		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
-
-		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
-		if count_equals {
-			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
-
-			//note the for scope is still open and never closed
 			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
 			for_scope : ScopeData;
 			if count_equals {
 				for_scope = c_frame.call_open_scopes[0];
 				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
 				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+9, for_scope.end_instr_index);
 			}
 
-			AssertEquals(3, c_frame.frame_vars.count);
-		}
-
-		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
-	}
-	case 11; {
-		//Back at the for scope now - at for 0..1
-		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
-		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
-
-		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
-		if count_equals {
-			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
-
-			//note the for scope is still open and never closed
-			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
-			for_scope : ScopeData;
+			count_equals = AssertEquals(6, c_frame.frame_vars.count);
 			if count_equals {
-				for_scope = c_frame.call_open_scopes[0];
-				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
-				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
-			}
-
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
-			count_equals = AssertEquals(3, c_frame.frame_vars.count);
-			if count_equals {
-				//We increment it at the bottom of the for loop so it should be 1 now
-				it_var := c_frame.frame_vars[1];
-				AssertEquals("it", it_var.name);
-				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
-				AssertEquals(1, it_value);
-
-				y_var := c_frame.frame_vars[2];
-				AssertEquals("y", y_var.name);
-			}
-		}
-
-
-		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);	
-	}
-	case 12; {
-		//At the y : int for the 2nd time
-		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
-		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
-
-		AssertEquals(2, text_op.exec_info.debug_info.break_points.count);
-		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
-		if count_equals {
-			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
-			AssertEquals(1, c_frame.call_open_scopes.count);
-			AssertEquals(3, c_frame.frame_vars.count);
-			if count_equals {
-				x_var := c_frame.frame_vars[0];
-				x_value := ComputeOperandInt(x_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
-				AssertEquals(2, x_value);
-			}
-		}
-
-		//Check all the variables are correct in the loop in the watch data
-		AddWatchDataForTest(.["x", "y", "it"], text_op);
-		for 0..text_op.watch_data_rows.count-2 {
-			EvaluateWatchData(it, text_op, perm.all_data, true);
-		}
-		count_equal := AssertEquals(4, text_op.watch_data_rows.count);
-		if count_equal {
-			x_var : WatchData = text_op.watch_data_rows[0];
-			AssertEquals("2", x_var.value_str);
-			AssertEquals("int", x_var.type_str);
-
-			y_var : WatchData = text_op.watch_data_rows[1];
-			AssertEquals("int", y_var.type_str);
-
-			it_var : WatchData = text_op.watch_data_rows[2];
-			AssertEquals("1", it_var.value_str);
-			AssertEquals("int", it_var.type_str);
-		}
-
-
-		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
-	}
-	case 13; {
-		//At the close "}" of the for loop for we add to "it" and reset the scope.
-		//TODO Eventually we will likely not reset the scope and just store all stack positions directly.
-		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
-		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
-
-		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
-		if count_equals {
-			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
-
-			//note the for scope is still open and never closed
-			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
-			for_scope : ScopeData;
-			if count_equals {
-				for_scope = c_frame.call_open_scopes[0];
-				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
-				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
-			}
-
-			AssertEquals(3, c_frame.frame_vars.count);
-		}
-
-
-		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
-	}
-	case 14; {
-		//Back at the top for loop for the final check
-		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
-		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
-
-		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
-		if count_equals {
-			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
-
-			//note the for scope is still open and never closed
-			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
-			for_scope : ScopeData;
-			if count_equals {
-				for_scope = c_frame.call_open_scopes[0];
-				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
-				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
-			}
-
-			count_equals = AssertEquals(3, c_frame.frame_vars.count);
-			if count_equals {
-				//We increment it at the bottom of the for loop so it should be 2 now
-				it_var := c_frame.frame_vars[1];
-				AssertEquals("it", it_var.name);
+				it_var := c_frame.frame_vars[5];
+				AssertEquals("i", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
 				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
 				AssertEquals(2, it_value);
 			}
 		}
 
 
-		CodeBPForTest(6, *text_op.exec_info.debug_info, text_op.text_comp_data);
-		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
 	}
-	case 15; {
-		//Out of the for loop now so the for scope should be gone
-		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
+	case 7; {
+		//At end of first iteration for i : x0..x1 { }
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
 
-		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		count_equals := AssertEquals(2, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[1];
+			AssertEquals(bp.asm_index+9, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
 		if count_equals {
 			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
-			AssertEquals(0, c_frame.call_open_scopes.count);
-			count_equals := AssertEquals(1, c_frame.frame_vars.count);
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(1, c_frame.all_scopes_in_function.count);
+			AssertEquals(1, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
 			if count_equals {
-				x_var := c_frame.frame_vars[0];
-				AssertEquals("x", x_var.name);
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+9, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(6, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[5];
+				AssertEquals("i", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(2, it_value);
 			}
 		}
 
-		//Check that the y and it var are no longer available but x still is with correct value.
-		count_equal := AssertEquals(4, text_op.watch_data_rows.count);
-		if count_equal {
-			x_var : WatchData = text_op.watch_data_rows[0];
-			AssertEquals("2", x_var.value_str);
-			AssertEquals("int", x_var.type_str);
 
-			y_var : WatchData = text_op.watch_data_rows[1];
-			AssertEquals(true, y_var.is_error);
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 8; {
+		//Start of second iteration for i : x0..x1
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
 
-			it_var : WatchData = text_op.watch_data_rows[2];
-			AssertEquals(true, it_var.is_error);
+		count_equals := AssertEquals(2, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[1];
+			AssertEquals(bp.asm_index+5, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(1, c_frame.all_scopes_in_function.count);
+			AssertEquals(1, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+9, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(6, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[5];
+				AssertEquals("i", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(2, it_value);
+			}
+		}
+
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 9; {
+		//In second iteration for i : x0..x1 { x = i;
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(2, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[1];
+			AssertEquals(bp.asm_index+8, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(1, c_frame.all_scopes_in_function.count);
+			AssertEquals(1, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+9, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(6, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[5];
+				AssertEquals("i", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(3, it_value);
+
+				x_watch := GetWatch("x", text_op.watch_data_rows);
+				AssertEquals("2", x_watch.value_str);
+			}
+		}
+
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 10; {
+		//End of second iteration for i : x0..x1 {};
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(2, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[1];
+			AssertEquals(bp.asm_index+9, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(1, c_frame.all_scopes_in_function.count);
+			AssertEquals(1, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+9, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(6, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[5];
+				AssertEquals("i", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(3, it_value);
+
+				x_watch := GetWatch("x", text_op.watch_data_rows);
+				AssertEquals("3", x_watch.value_str);
+			}
+		}
+
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 11; {
+		//Start of third iteration for i : x0..x1 {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(2, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[1];
+			AssertEquals(bp.asm_index+5, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(1, c_frame.all_scopes_in_function.count);
+			AssertEquals(1, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+9, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(6, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[5];
+				AssertEquals("i", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(3, it_value);
+
+				x_watch := GetWatch("x", text_op.watch_data_rows);
+				AssertEquals("3", x_watch.value_str);
+			}
+		}
+
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 12; {
+		//In third iteration for i : x0..x1 { x = i;
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(2, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[1];
+			AssertEquals(bp.asm_index+8, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(1, c_frame.all_scopes_in_function.count);
+			AssertEquals(1, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+9, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(6, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[5];
+				AssertEquals("i", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(4, it_value);
+
+				x_watch := GetWatch("x", text_op.watch_data_rows);
+				AssertEquals("3", x_watch.value_str);
+			}
+		}
+
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 13; {
+		//End third iteration for i : x0..x1 { }
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(2, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[1];
+			AssertEquals(bp.asm_index+9, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(1, c_frame.all_scopes_in_function.count);
+			AssertEquals(1, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+9, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(6, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[5];
+				AssertEquals("i", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(4, it_value);
+
+				x_watch := GetWatch("x", text_op.watch_data_rows);
+				AssertEquals("4", x_watch.value_str);
+			}
+		}
+
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 14; {
+		//Start fourth iteration for i : x0..x1 { }
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(2, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[1];
+			AssertEquals(bp.asm_index+5, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(1, c_frame.all_scopes_in_function.count);
+			AssertEquals(1, c_frame.s_index);
+
+			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
+			for_scope : ScopeData;
+			if count_equals {
+				for_scope = c_frame.call_open_scopes[0];
+				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
+				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
+				AssertEquals(bp.asm_index, for_scope.start_instr_index);
+				AssertEquals(bp.asm_index+9, for_scope.end_instr_index);
+			}
+
+			count_equals = AssertEquals(6, c_frame.frame_vars.count);
+			if count_equals {
+				it_var := c_frame.frame_vars[5];
+				AssertEquals("i", it_var.name);
+				AssertEquals(TypeInfoTag.INTEGER, it_var.t_info.type_enum);
+				AssertEquals(for_scope.id, it_var.scope_id);
+				AssertEquals(for_scope.function_id, it_var.function_id);
+				it_value := ComputeOperandInt(it_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
+				AssertEquals(4, it_value);
+
+				x_watch := GetWatch("x", text_op.watch_data_rows);
+				AssertEquals("4", x_watch.value_str);
+			}
+		}
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 15; {
+		//Out of all for loops
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		count_equals := AssertEquals(2, text_op.exec_info.debug_info.break_points.count);
+		bp : DebugBreakpoint;
+		if count_equals {
+			bp = text_op.exec_info.debug_info.break_points[1];
+			AssertEquals(bp.asm_index+10, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		}
+
+		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(1, c_frame.all_scopes_in_function.count);
+			AssertEquals(1, c_frame.s_index);
+
+			count_equals = AssertEquals(0, c_frame.call_open_scopes.count);
+			count_equals = AssertEquals(5, c_frame.frame_vars.count);
+			if count_equals {
+				it_watch := GetWatch("i", text_op.watch_data_rows);
+				AssertEquals(true, it_watch.is_error);
+
+				x_watch := GetWatch("x", text_op.watch_data_rows);
+				AssertEquals("4", x_watch.value_str);
+			}
+		}
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
 	}
 	}
 
@@ -513,8 +2235,6 @@ DONE);
 				AssertEquals(bp0.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -566,8 +2286,6 @@ DONE);
 				AssertEquals(bp0.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -619,8 +2337,6 @@ DONE);
 				AssertEquals(bp0.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -672,8 +2388,6 @@ DONE);
 				AssertEquals(bp0.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -720,8 +2434,6 @@ DONE);
 				AssertEquals(bp0.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -767,8 +2479,6 @@ DONE);
 				AssertEquals(bp0.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -839,8 +2549,6 @@ DONE);
 				AssertEquals(bp1.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -886,8 +2594,6 @@ DONE);
 				AssertEquals(bp1.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -933,8 +2639,6 @@ DONE);
 				AssertEquals(bp1.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -980,8 +2684,6 @@ DONE);
 				AssertEquals(bp1.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -1027,8 +2729,6 @@ DONE);
 				AssertEquals(bp1.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -1074,8 +2774,6 @@ DONE);
 				AssertEquals(bp1.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -1121,8 +2819,6 @@ DONE);
 				AssertEquals(bp1.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -1169,8 +2865,6 @@ DONE);
 				AssertEquals(bp.asm_index+11, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -1216,8 +2910,6 @@ DONE);
 				AssertEquals(bp.asm_index+11, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -1263,8 +2955,6 @@ DONE);
 				AssertEquals(bp.asm_index+11, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -1310,8 +3000,6 @@ DONE);
 				AssertEquals(bp.asm_index+11, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -1357,8 +3045,6 @@ DONE);
 				AssertEquals(bp.asm_index+11, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -1404,8 +3090,6 @@ DONE);
 				AssertEquals(bp.asm_index+11, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -1451,8 +3135,6 @@ DONE);
 				AssertEquals(bp.asm_index+11, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -1499,8 +3181,6 @@ DONE);
 				AssertEquals(bp.asm_index+15, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -1536,8 +3216,6 @@ DONE);
 
 			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -1575,8 +3253,6 @@ DONE);
 
 			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -1614,8 +3290,6 @@ DONE);
 
 			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -1653,8 +3327,6 @@ DONE);
 
 			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -1692,8 +3364,6 @@ DONE);
 
 			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -1739,8 +3409,6 @@ DONE);
 				AssertEquals(bp.asm_index+15, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -1909,8 +3577,6 @@ DONE);
 				AssertEquals(bp0.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -1962,8 +3628,6 @@ DONE);
 				AssertEquals(bp0.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -2019,8 +3683,6 @@ DONE);
 				AssertEquals(bp0.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -2072,8 +3734,6 @@ DONE);
 				AssertEquals(bp0.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_watch := GetWatch("it", text_op.watch_data_rows);
@@ -2118,8 +3778,6 @@ DONE);
 				AssertEquals(bp0.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_watch := GetWatch("it", text_op.watch_data_rows);
@@ -2163,8 +3821,6 @@ DONE);
 				AssertEquals(bp0.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_watch := GetWatch("it", text_op.watch_data_rows);
@@ -2233,8 +3889,6 @@ DONE);
 				AssertEquals(bp1.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -2277,8 +3931,6 @@ DONE);
 				AssertEquals(bp1.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -2325,8 +3977,6 @@ DONE);
 				AssertEquals(bp1.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -2376,8 +4026,6 @@ DONE);
 				AssertEquals(bp1.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -2427,8 +4075,6 @@ DONE);
 				AssertEquals(bp1.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -2479,8 +4125,6 @@ DONE);
 				AssertEquals(bp1.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -2526,8 +4170,6 @@ DONE);
 				AssertEquals(bp1.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -2574,8 +4216,6 @@ DONE);
 				AssertEquals(bp1.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -2623,8 +4263,6 @@ DONE);
 				AssertEquals(bp1.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -2672,8 +4310,6 @@ DONE);
 				AssertEquals(bp1.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[5];
@@ -2720,8 +4356,6 @@ DONE);
 				AssertEquals(bp.asm_index+11, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				i_var := c_frame.frame_vars[5];
@@ -2766,8 +4400,6 @@ DONE);
 				AssertEquals(bp.asm_index+11, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				i_var := c_frame.frame_vars[5];
@@ -2814,8 +4446,6 @@ DONE);
 				AssertEquals(bp.asm_index+11, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				i_var := c_frame.frame_vars[5];
@@ -2866,8 +4496,6 @@ DONE);
 				AssertEquals(bp.asm_index+11, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				i_var := c_frame.frame_vars[5];
@@ -2914,8 +4542,6 @@ DONE);
 				AssertEquals(bp.asm_index+11, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				i_var := c_frame.frame_vars[5];
@@ -2961,8 +4587,6 @@ DONE);
 				AssertEquals(bp.asm_index+11, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				i_var := c_frame.frame_vars[5];
@@ -3011,8 +4635,6 @@ DONE);
 				AssertEquals(bp.asm_index+11, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				i_var := c_frame.frame_vars[5];
@@ -3062,8 +4684,6 @@ DONE);
 				AssertEquals(bp.asm_index+15, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				i_var := c_frame.frame_vars[5];
@@ -3178,8 +4798,6 @@ DONE);
 
 			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				i_var := c_frame.frame_vars[5];
@@ -3220,8 +4838,6 @@ DONE);
 
 			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				i_var := c_frame.frame_vars[5];
@@ -3262,8 +4878,6 @@ DONE);
 
 			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				i_var := c_frame.frame_vars[5];
@@ -3306,8 +4920,6 @@ DONE);
 
 			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				i_var := c_frame.frame_vars[5];
@@ -3348,8 +4960,6 @@ DONE);
 
 			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				i_var := c_frame.frame_vars[5];
@@ -3390,8 +5000,6 @@ DONE);
 
 			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				i_var := c_frame.frame_vars[5];
@@ -3442,8 +5050,6 @@ DONE);
 				AssertEquals(bp.asm_index+15, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(7, c_frame.frame_vars.count);
 			if count_equals {
 				i_var := c_frame.frame_vars[5];
@@ -3614,8 +5220,6 @@ DONE);
 				AssertEquals(bp0.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(8, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[6];
@@ -3667,8 +5271,6 @@ DONE);
 				AssertEquals(bp0.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(8, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[6];
@@ -3724,8 +5326,6 @@ DONE);
 				AssertEquals(bp0.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(8, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[6];
@@ -3781,8 +5381,6 @@ DONE);
 				AssertEquals(bp0.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(8, c_frame.frame_vars.count);
 			if count_equals {
 				it_watch := GetWatch("it", text_op.watch_data_rows);
@@ -3827,8 +5425,6 @@ DONE);
 				AssertEquals(bp0.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(8, c_frame.frame_vars.count);
 			if count_equals {
 				it_watch := GetWatch("it", text_op.watch_data_rows);
@@ -3876,8 +5472,6 @@ DONE);
 				AssertEquals(bp0.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(8, c_frame.frame_vars.count);
 			if count_equals {
 				it_watch := GetWatch("it", text_op.watch_data_rows);
@@ -3946,8 +5540,6 @@ DONE);
 				AssertEquals(bp1.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(8, c_frame.frame_vars.count);
 			if count_equals {
 				y_var := c_frame.frame_vars[6];
@@ -3989,8 +5581,6 @@ DONE);
 				AssertEquals(bp1.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(8, c_frame.frame_vars.count);
 			if count_equals {
 				y_var := c_frame.frame_vars[6];
@@ -4037,8 +5627,6 @@ DONE);
 				AssertEquals(bp1.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(8, c_frame.frame_vars.count);
 			if count_equals {
 				y_var := c_frame.frame_vars[6];
@@ -4090,8 +5678,6 @@ DONE);
 				AssertEquals(bp1.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(8, c_frame.frame_vars.count);
 			if count_equals {
 				y_var := c_frame.frame_vars[6];
@@ -4143,8 +5729,6 @@ DONE);
 				AssertEquals(bp1.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(8, c_frame.frame_vars.count);
 			if count_equals {
 				y_var := c_frame.frame_vars[6];
@@ -4196,8 +5780,6 @@ DONE);
 				AssertEquals(bp1.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(8, c_frame.frame_vars.count);
 			if count_equals {
 				y_var := c_frame.frame_vars[6];
@@ -4249,8 +5831,6 @@ DONE);
 				AssertEquals(bp1.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(8, c_frame.frame_vars.count);
 			if count_equals {
 				y_var := c_frame.frame_vars[6];
@@ -4302,8 +5882,6 @@ DONE);
 				AssertEquals(bp1.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(8, c_frame.frame_vars.count);
 			if count_equals {
 				y_var := c_frame.frame_vars[6];
@@ -4355,8 +5933,6 @@ DONE);
 				AssertEquals(bp1.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(8, c_frame.frame_vars.count);
 			if count_equals {
 				y_var := c_frame.frame_vars[6];
@@ -4408,8 +5984,6 @@ DONE);
 				AssertEquals(bp1.asm_index+12, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(8, c_frame.frame_vars.count);
 			if count_equals {
 				y_var := c_frame.frame_vars[6];
@@ -4461,8 +6035,6 @@ DONE);
 				AssertEquals(bp.asm_index+11, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(8, c_frame.frame_vars.count);
 			if count_equals {
 				x_var := c_frame.frame_vars[6];
@@ -4602,8 +6174,6 @@ DONE);
 				AssertEquals(bp.asm_index+11, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(8, c_frame.frame_vars.count);
 			if count_equals {
 				x_var := c_frame.frame_vars[6];
@@ -4653,8 +6223,6 @@ DONE);
 				AssertEquals(bp.asm_index+11, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(8, c_frame.frame_vars.count);
 			if count_equals {
 				x_var := c_frame.frame_vars[6];
@@ -4704,8 +6272,6 @@ DONE);
 				AssertEquals(bp.asm_index+11, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(8, c_frame.frame_vars.count);
 			if count_equals {
 				x_var := c_frame.frame_vars[6];
@@ -4755,8 +6321,6 @@ DONE);
 				AssertEquals(bp.asm_index+11, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(8, c_frame.frame_vars.count);
 			if count_equals {
 				x_var := c_frame.frame_vars[6];
@@ -4807,8 +6371,6 @@ DONE);
 				AssertEquals(bp.asm_index+14, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(8, c_frame.frame_vars.count);
 			if count_equals {
 				n_var := c_frame.frame_vars[6];
@@ -5083,8 +6645,6 @@ DONE);
 
 			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(8, c_frame.frame_vars.count);
 			if count_equals {
 				n_var := c_frame.frame_vars[6];
@@ -5126,8 +6686,6 @@ DONE);
 
 			count_equals = AssertEquals(1, c_frame.call_open_scopes.count);
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(8, c_frame.frame_vars.count);
 			if count_equals {
 				n_var := c_frame.frame_vars[6];
@@ -5177,8 +6735,6 @@ DONE);
 				AssertEquals(bp.asm_index+14, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(8, c_frame.frame_vars.count);
 			if count_equals {
 				n_var := c_frame.frame_vars[6];
@@ -5344,8 +6900,6 @@ DONE);
 				AssertEquals(bp0.asm_index+11, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(4, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[1];
@@ -5438,8 +6992,6 @@ DONE);
 				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(4, c_frame.frame_vars.count);
 			if count_equals {
 				a_var := c_frame.frame_vars[0];
@@ -5484,8 +7036,6 @@ DONE);
 				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(4, c_frame.frame_vars.count);
 			if count_equals {
 				a_var := c_frame.frame_vars[0];
@@ -5668,8 +7218,6 @@ DONE);
 				AssertEquals(bp0.asm_index+11, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(4, c_frame.frame_vars.count);
 			if count_equals {
 				it_var := c_frame.frame_vars[1];
@@ -5806,8 +7354,6 @@ DONE);
 				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(4, c_frame.frame_vars.count);
 			if count_equals {
 				//We increment it at the bottom of the for loop so it should be 1 now
@@ -5985,8 +7531,6 @@ DONE);
 				AssertEquals(bp0.asm_index+9, for_scope.end_instr_index);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(4, c_frame.frame_vars.count);
 			if count_equals {
 				a_var := c_frame.frame_vars[0];
@@ -6102,8 +7646,6 @@ DONE);
 				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
 			}
 
-			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
-			//see how the variables change through the for loop cycles and not for it to reset each for loop.
 			count_equals = AssertEquals(4, c_frame.frame_vars.count);
 			if count_equals {
 				a_var := c_frame.frame_vars[0];

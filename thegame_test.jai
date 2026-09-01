@@ -8017,7 +8017,7 @@ DONE);
 				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
 				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
 				AssertEquals(bp0.asm_index+1, for_scope.start_instr_index);
-				AssertEquals(bp0.asm_index+9, for_scope.end_instr_index);
+				AssertEquals(bp0.asm_index+10, for_scope.end_instr_index);
 			}
 
 			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
@@ -8077,13 +8077,13 @@ DONE);
 				AssertEquals(ScopeDataType.CONTROL_SCOPE, for_scope.scope_type);
 				AssertEquals(CodeTokenType.KEYWORD_FOR, for_scope.scope_token.token_type);
 				AssertEquals(bp0.asm_index+1, for_scope.start_instr_index);
-				AssertEquals(bp0.asm_index+9, for_scope.end_instr_index);
+				AssertEquals(bp0.asm_index+10, for_scope.end_instr_index);
 
 				if_scope = c_frame.call_open_scopes[1];
 				AssertEquals(ScopeDataType.CONTROL_SCOPE, if_scope.scope_type);
 				AssertEquals(CodeTokenType.KEYWORD_IF, if_scope.scope_token.token_type);
-				AssertEquals(bp0.asm_index+5, if_scope.start_instr_index);
-				AssertEquals(bp0.asm_index+7, if_scope.end_instr_index);
+				AssertEquals(bp0.asm_index+7, if_scope.start_instr_index);
+				AssertEquals(bp0.asm_index+9, if_scope.end_instr_index);
 			}
 
 			//Note that we have all 3 variables open on the for loop line. This makes sense because we want to
