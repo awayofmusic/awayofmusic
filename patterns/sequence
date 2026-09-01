@@ -36,6 +36,7 @@ main :: () {
 	//Sequence(1, 0, int.[-3,-3]);
 
 	//TODO Should we write a test for this or just write a test for this sequence file?
+	//This is the same as above but allows for compositional improvisation
 	x : int = 9;
 	tano(0,0) ~= x;
 	for int.[+3,+3,+3] {
