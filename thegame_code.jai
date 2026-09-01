@@ -1588,13 +1588,13 @@ ParseLeaf :: (cd : *CompilationData, pl : ParserLevel = .STATEMENT) -> *BinaryNo
 			if for_type_token.token_type == {
 			case #char "<";
 				if for_loop_data.is_reverse {
-					CreateCompErr(cd, .PARSER, node, "Multiple < found on for loop.");
+					CreateCompErr(cd, .PARSER, for_type_token, "Multiple < found on for loop.");
 					return null, false;
 				}
 				for_loop_data.is_reverse = true;
 			case #char "*";
 				if for_loop_data.is_pointer {
-					CreateCompErr(cd, .PARSER, node, "Multiple * found on for loop.");
+					CreateCompErr(cd, .PARSER, for_type_token, "Multiple * found on for loop.");
 					return null, false;					
 				}
 				for_loop_data.is_pointer = true;
@@ -2101,8 +2101,9 @@ ForLoopData :: struct {
 
 	//TODO Can remove post_instr_count if we only ever have 2 post_loop_instrs anyways
 	//which is what we have no in all cases since we just increment index and then jmp back to loop
+	//ACTUALLY only using 1 now so we can switch to 1 if that helps
 	post_instr_count : int;
-	post_loop_instrs : [2] MusicInstruction;
+	post_loop_instrs : [1] MusicInstruction;
 }
 
 MultiReturnMemoryOperand :: struct {
@@ -5442,17 +5443,17 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 			right_op : MusicOperand = GetValueOp(dots_node.right, cd, .r0);
 			left_op : MusicOperand = GetValueOp(dots_node.left, cd, .r1);
 			check_reg : MusicOperand = RegMem(.ax);
-			post_op : OpCode;
+			// post_op : OpCode;
 			if fld.is_reverse {
 				CreateMInstr(.add, index_var.op, right_op, Imm(1), d=cd);
 				CreateMInstr(.sub, index_var.op, Imm(1), d=cd);
 				CreateMInstr(.cgte, check_reg, index_var.op, left_op, d=cd);
-				post_op = OpCode.sub;
+				// post_op = OpCode.sub;
 			} else {
 				CreateMInstr(.sub, index_var.op, left_op, Imm(1), d=cd);
 				CreateMInstr(.add, index_var.op, Imm(1), d=cd);
 				CreateMInstr(.clte, check_reg, index_var.op, right_op, d=cd);
-				post_op = OpCode.add;
+				// post_op = OpCode.add;
 			}
 			//Set here so we restart from the comparison operator
 			jmp_instr_index : int = cd.all_music_instructions.count-2;
@@ -5465,6 +5466,7 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 			//TODO Can remove this if we only have 2 post_loop_instrs
 			fld.post_instr_count = 1;
 			//Increment/decrement instruction
+			//Notes on why we put this at beginning of the loop instead in for array case below
 			// fld.post_loop_instrs[0] = MakeMusicInstruction(post_op, index_var.op, Imm(1));
 			//Jmp back to start of loop comparison check
 			fld.post_loop_instrs[0] = MakeMusicInstruction(.jmp, Imm(jmp_instr_index));
@@ -5502,27 +5504,32 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 				}
 
 				jmp_instr_index : int;
-				post_op : OpCode;
+				// post_op : OpCode;
 				index_var : *VariableData = CreateStackVarData(cd, fld.index_name, *cd.int_type_info);
 				if fld.is_reverse {
-					CreateMInstr(.sub, index_var.op, array_count_op, Imm(1), d=cd);
-					CreateMInstr(.cgte, RegMem(.ax), index_var.op, Imm(0), d=cd);
+					//Start at count since we are subtracting 1 below as part of the loop
+					CreateMInstr(.mov, index_var.op, array_count_op, Imm(cd.int_type_info.runtime_size), d=cd);
+					CreateMInstr(.sub, index_var.op, Imm(1), d=cd);
 					jmp_instr_index = cd.all_music_instructions.count-1; //jump to last instruction
-					post_op = OpCode.sub;
+					CreateMInstr(.cgte, RegMem(.ax), index_var.op, Imm(0), d=cd);
+					// post_op = OpCode.sub;
 				} else {
-					//NOTE : This push is tracked by the index_var above. Start from 0 and then incremenet
-					CreateMInstr(.mov, index_var.op, Imm(0), Imm(index_var.t_info.runtime_size), d=cd);
+					//NOTE : This push is tracked by the index_var above. Start from 0 and then increment
+					//Start at -1 since we are add below in the loop to start the loop at index 0
+					CreateMInstr(.mov, index_var.op, Imm(-1), Imm(index_var.t_info.runtime_size), d=cd);
 					if array_info.array_type == .VIEW {
+						//Only need count var for array view since for fixed array the count is known at compile time and is set above
 						array_count_op = GetValueOp(node.right, cd, .bx);
 					}
-					CreateMInstr(.clt, RegMem(.ax), index_var.op, array_count_op, d=cd);
+					CreateMInstr(.add, index_var.op, Imm(1), d=cd);
 					if array_info.array_type == .VIEW && node.right.code_ir.node_op_type == .ADDRESS_IN_MEMORY {
 						//If the temp address is on the stack then we need to get it with an extra instruction in get value op above
 						jmp_instr_index = cd.all_music_instructions.count-2;
 					} else {
 						jmp_instr_index = cd.all_music_instructions.count-1;
 					}
-					post_op = OpCode.add;
+					CreateMInstr(.clt, RegMem(.ax), index_var.op, array_count_op, d=cd);
+					// post_op = OpCode.add;
 				}
 
 				//Add .fjmp in any case and then keep track of it so we know where to fjmp to later when closing the loop
@@ -5538,11 +5545,17 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 				}
 
 				//TODO Set it to [2] MusicInstruction if this is how it stays
-				fld.post_instr_count = 2;
+				fld.post_instr_count = 1;
 				//Add post loop instructions and jump back to the comparison check
-				fld.post_loop_instrs[0] = MakeMI(post_op, index_var.op, Imm(1));
+				//NOTE : We move this to beginning of loop because otherwise it_index updates at the bottom of the loop
+				//and then it updates at the top which feels weird while debugging since we have it_index does not match it
+				//while we are on the first line. Also we go over the limit of the for loop. This way it and it_index are
+				//always in sync and we jump out right away of the foor loop before reaching the next value.
+				//Downside is we start one off and immediately add/sub but that seems fine since the value can be wrong
+				//if we are grabbing some memory on the stack which is already set.
+				// fld.post_loop_instrs[0] = MakeMI(post_op, index_var.op, Imm(1));
 				//Jmp back to start of loop comparison check
-				fld.post_loop_instrs[1] = MakeMI(.jmp, Imm(jmp_instr_index));
+				fld.post_loop_instrs[0] = MakeMI(.jmp, Imm(jmp_instr_index));
 			}
 			case .MUSIC_UNIT; {
 				//TODO Cycle through tano notes or tano row

@@ -32,15 +32,23 @@ main :: () {
 	rd.row_base_pt = -23.;
 	#asm { create_row rd; }
 	
-	Sequence(0, 9, int.[+3,+3]);
-	Sequence(1, 0, int.[-3,-3]);
+	//Sequence(0, 9, int.[+3,+3]);
+	//Sequence(1, 0, int.[-3,-3]);
 
-	//TODO This should work but array value is incorrect
-	/*
-	for int.[3,3,3] {
-		tano(0,it_index) ~= it;
+	//TODO Should we write a test for this or just write a test for this sequence file?
+	x : int = 9;
+	tano(0,0) ~= x;
+	for int.[+3,+3,+3] {
+		tano(0,it_index+1) ~= x+it;
+		x += it;
 	}
-	*/
+
+	x = 0;
+	tano(1,0) ~= x;
+	for int.[-3,-3,-3] {
+		tano(1,it_index+1) ~= x+it;
+		x += it;
+	}
 }
 
 Sequence :: (row : int, start : int, seq : [] int) {

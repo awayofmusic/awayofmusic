@@ -322,7 +322,7 @@ if(Window) {
 	} else {
 	midi_port_number : int = 0;
 	}
-	// game_memory.midi_output = open_output(midi_port_number);
+	game_memory.midi_output = open_output(midi_port_number);
 	// assert(game_memory.midi_output != null, "No midi output found with port %.\n", midi_port_number);
 
 	while(Running) {

@@ -1522,7 +1522,8 @@ DONE,, unit_test_alloc);
 
 		//for < x,y : a {}
 		//< for loop setup instruction
-		MakeMI(.sub, index_rev_var.op, Imm(cd.all_type_info_array[0].array_count), Imm(1)),
+		MakeMI(.mov, index_rev_var.op, Imm(cd.all_type_info_array[0].array_count), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.sub, index_rev_var.op, Imm(1)),
 		//For loop top instructions
 		MakeMI(.cgte, RegMem(.ax), index_rev_var.op, Imm(0)),
 		MakeMI(.fjmp, Imm(instr_index + 14), RegMem(.ax)),
@@ -1538,8 +1539,6 @@ DONE,, unit_test_alloc);
 		MakeMI(.mov, i_var.op, Imm(0), Imm(i_var.t_info.runtime_size)),
 
 		//Close rev for loop
-		MakeMI(.sub, index_rev_var.op, Imm(1)),
-		// MakeMI(.sub, it_rev_var.op, Imm(cd.int_type_info.runtime_size)),
 		MakeMI(.jmp, Imm(instr_index + 3)),
 
 		MakeMI(.exit),
@@ -1944,6 +1943,26 @@ main :: () {
 DONE,, unit_test_alloc);
 	AssertEquals(1, cd.comp_errors.all_compiler_errors.count);
 
+	//TEST multiple reverse fail
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	for < < 1..3 {}
+}
+DONE,, unit_test_alloc);
+	AssertEquals(1, cd.comp_errors.all_compiler_errors.count);
+
+	//TEST multiple pointer fail
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	for * * 1..3 {}
+}
+DONE,, unit_test_alloc);
+	AssertEquals(1, cd.comp_errors.all_compiler_errors.count);
+
 	//TEST invalid for loop range with pointer
 	reset(*unit_test_alloc_pool, true);
 	cd = CompileCode(.{print_errors_to_console=false},
@@ -1955,6 +1974,17 @@ main :: () {
 }
 DONE,, unit_test_alloc);
 	AssertEquals(1, cd.comp_errors.all_compiler_errors.count);
+
+	//TEST invalid range should be 2 dots not 1 dot
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {	
+	for 0.10 {}
+}
+DONE,, unit_test_alloc);
+	AssertEquals(1, cd.comp_errors.all_compiler_errors.count);
+
 
 } @UnitTest
 
@@ -2156,8 +2186,9 @@ DONE,, unit_test_alloc);
 	//for a {}
 	TestNextManyInstr(*instr_index, cd, .[
 		//initialize it_index
-		MakeMI(.mov, it_index_var.op, Imm(0), Imm(it_index_var.t_info.runtime_size)),
+		MakeMI(.mov, it_index_var.op, Imm(-1), Imm(it_index_var.t_info.runtime_size)),
 		//top loop instructions
+		MakeMI(.add, it_index_var.op, Imm(1)),
 		MakeMI(.clt, RegMem(.ax), it_index_var.op, Imm(a_t_info.array_count)),
 		MakeMI(.fjmp, Imm(instr_index+10), RegMem(.ax)),
 		//get value based on it_index
@@ -2168,7 +2199,6 @@ DONE,, unit_test_alloc);
 		MakeMI(.mov, it_var.op, RamMem(.ax), Imm(a_t_info.element_type.runtime_size)),			
 
 		//loop bottom instructions
-		MakeMI(.add, it_index_var.op, Imm(1)),
 		// MakeMI(.add, it_var.op, Imm(cd.int_type_info.runtime_size)),
 		MakeMI(.jmp, Imm(instr_index+1)),
 	]);
@@ -2180,7 +2210,8 @@ DONE,, unit_test_alloc);
 	TestNextManyInstr(*instr_index, cd, .[
 		//pre loop instructions to setup reverse it and it_index
 		//so that they start from a.count-1
-		MakeMI(.sub, index_rev_var.op, Imm(cd.all_type_info_array[0].array_count), Imm(1)),
+		MakeMI(.mov, index_rev_var.op, Imm(cd.all_type_info_array[0].array_count), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.sub, index_rev_var.op, Imm(1)),
 		//loop top instructions
 		MakeMI(.cgte, RegMem(.ax), index_rev_var.op, Imm(0)),
 		MakeMI(.fjmp, Imm(instr_index+10), RegMem(.ax)),
@@ -2191,7 +2222,6 @@ DONE,, unit_test_alloc);
 		MakeMI(.mov, RegMem(.ax), RegMem(.bx), Imm(8)),
 		MakeMI(.mov, it_rev_var.op, RamMem(.ax), Imm(a_t_info.element_type.runtime_size)),
 		//loop bottom instructions
-		MakeMI(.sub, index_rev_var.op, Imm(1)),
 		MakeMI(.jmp, Imm(instr_index+1)),
 	]);
 
@@ -2201,8 +2231,9 @@ DONE,, unit_test_alloc);
 	//for * a {}
 	TestNextManyInstr(*instr_index, cd, .[
 		//initialize it_index
-		MakeMI(.mov, index_p_var.op, Imm(0), Imm(index_p_var.t_info.runtime_size)),
+		MakeMI(.mov, index_p_var.op, Imm(-1), Imm(index_p_var.t_info.runtime_size)),
 		//top loop instructions
+		MakeMI(.add, index_p_var.op, Imm(1)),
 		MakeMI(.clt, RegMem(.ax), index_p_var.op, Imm(a_t_info.array_count)),
 		MakeMI(.fjmp, Imm(instr_index+8), RegMem(.ax)),
 		//get value based on it_index (since it's a pointer we store directly)
@@ -2210,7 +2241,6 @@ DONE,, unit_test_alloc);
 		MakeMI(.mul, RegMem(.ax), index_p_var.op, Imm(a_t_info.element_type.runtime_size)),
 		MakeMI(.add, it_p_var.op, it_p_var.op, RegMem(.ax)),
 		//loop bottom instructions
-		MakeMI(.add, index_p_var.op, Imm(1)),
 		MakeMI(.jmp, Imm(instr_index+1)),
 	]);
 
@@ -2220,7 +2250,8 @@ DONE,, unit_test_alloc);
 	//for * < a {}
 	TestNextManyInstr(*instr_index, cd, .[
 		//initialize it_index
-		MakeMI(.sub, index_p_rev_var.op, Imm(cd.all_type_info_array[0].array_count), Imm(1)),
+		MakeMI(.mov, index_p_rev_var.op, Imm(cd.all_type_info_array[0].array_count), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.sub, index_p_rev_var.op, Imm(1)),
 		//top loop instructions
 		MakeMI(.cgte, RegMem(.ax), index_p_rev_var.op, Imm(0)),
 		MakeMI(.fjmp, Imm(instr_index+8), RegMem(.ax)),
@@ -2229,7 +2260,6 @@ DONE,, unit_test_alloc);
 		MakeMI(.mul, RegMem(.ax), index_p_rev_var.op, Imm(a_t_info.element_type.runtime_size)),
 		MakeMI(.add, it_p_rev_var.op, it_p_rev_var.op, RegMem(.ax)),
 		//loop bottom instructions
-		MakeMI(.sub, index_p_rev_var.op, Imm(1)),
 		MakeMI(.jmp, Imm(instr_index+1)),
 	]);
 
@@ -2249,8 +2279,9 @@ DONE,, unit_test_alloc);
 	//for val,idx : v {}
 	TestNextManyInstr(*instr_index, cd, .[
 		//loop setup var instructions
-		MakeMI(.mov, idx_var.op, Imm(0), Imm(idx_var.t_info.runtime_size)),
+		MakeMI(.mov, idx_var.op, Imm(-1), Imm(idx_var.t_info.runtime_size)),
 		//top loop instructions
+		MakeMI(.add, idx_var.op, Imm(1)),
 		MakeMI(.clt, RegMem(.ax), idx_var.op, v_var.op),
 		MakeMI(.fjmp, Imm(instr_index+12), RegMem(.ax)),
 		//get value based on it_index
@@ -2262,7 +2293,6 @@ DONE,, unit_test_alloc);
 		MakeMI(.mov, RegMem(.ax), RegMem(.bx), Imm(8)),
 		MakeMI(.mov, val_var.op, RamMem(.ax), Imm(a_t_info.element_type.runtime_size)),
 		//bottom loop instructions
-		MakeMI(.add, idx_var.op, Imm(1)),
 		MakeMI(.jmp, Imm(instr_index+1)),
 	]);
 
@@ -2272,8 +2302,9 @@ DONE,, unit_test_alloc);
 	//for < val,idx : v {}
 	TestNextManyInstr(*instr_index, cd, .[
 		//loop setup var instructions
-		MakeMI(.sub, idx_rev_var.op, v_var.op, Imm(1)),
+		MakeMI(.mov, idx_rev_var.op, v_var.op, Imm(cd.int_type_info.runtime_size)),
 		//top loop instructions
+		MakeMI(.sub, idx_rev_var.op, Imm(1)),
 		MakeMI(.cgte, RegMem(.ax), idx_rev_var.op, Imm(0)),
 		MakeMI(.fjmp, Imm(instr_index+12), RegMem(.ax)),
 		//get value based on it_index
@@ -2285,7 +2316,6 @@ DONE,, unit_test_alloc);
 		MakeMI(.mov, RegMem(.ax), RegMem(.bx), Imm(8)),
 		MakeMI(.mov, val_rev_var.op, RamMem(.ax), Imm(a_t_info.element_type.runtime_size)),
 		//bottom loop instructions
-		MakeMI(.sub, idx_rev_var.op, Imm(1)),
 		MakeMI(.jmp, Imm(instr_index+1)),
 	]);
 
@@ -2304,9 +2334,10 @@ DONE,, unit_test_alloc);
 		//loop setup var instructions
 		MakeMI(.mov, pv_data_op, pv_var.op, Imm(cd.int_type_info.runtime_size)),
 		MakeMI(.mov, RegMem(.bx), pv_data_op, Imm(cd.int_type_info.runtime_size)),
-		MakeMI(.mov, view_index_p_var.op, Imm(0), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mov, view_index_p_var.op, Imm(-1), Imm(cd.int_type_info.runtime_size)),
 		//top loop instructions - jump back to 1 extra instruction to get the correct count
 		MakeMI(.mov, RegMem(.bx), pv_data_op, Imm(cd.void_pointer_type_info.runtime_size)),
+		MakeMI(.add, view_index_p_var.op, Imm(1)),
 		MakeMI(.clt, RegMem(.ax), view_index_p_var.op, RamMem(.bx)),
 		MakeMI(.fjmp, Imm(instr_index+13), RegMem(.ax)),
 		//get value based on it_index
@@ -2316,7 +2347,6 @@ DONE,, unit_test_alloc);
 		MakeMI(.mul, RegMem(.ax), view_index_p_var.op, Imm(a_t_info.element_type.runtime_size)),
 		MakeMI(.add, view_it_p_var.op, view_it_p_var.op, RegMem(.ax)),
 		//bottom loop instructions
-		MakeMI(.add, view_index_p_var.op, Imm(1)),
 		MakeMI(.jmp, Imm(instr_index+3)),
 	]);
 
@@ -2328,8 +2358,9 @@ DONE,, unit_test_alloc);
 		//loop setup var instructions
 		MakeMI(.mov, pv_data_op, pv_var.op, Imm(cd.int_type_info.runtime_size)),
 		MakeMI(.mov, RegMem(.bx), pv_data_op, Imm(cd.int_type_info.runtime_size)),
-		MakeMI(.sub, view_index_p_rev_var.op, RamMem(.bx), Imm(1)),
+		MakeMI(.mov, view_index_p_rev_var.op, RamMem(.bx), Imm(cd.int_type_info.runtime_size)),
 		//top loop instructions - jump back to 1 extra instruction to get the correct count
+		MakeMI(.sub, view_index_p_rev_var.op, Imm(1)),
 		MakeMI(.cgte, RegMem(.ax), view_index_p_rev_var.op, Imm(0)),
 		MakeMI(.fjmp, Imm(instr_index+12), RegMem(.ax)),
 		//get value based on it_index
@@ -2339,13 +2370,41 @@ DONE,, unit_test_alloc);
 		MakeMI(.mul, RegMem(.ax), view_index_p_rev_var.op, Imm(a_t_info.element_type.runtime_size)),
 		MakeMI(.add, view_it_p_rev_var.op, view_it_p_rev_var.op, RegMem(.ax)),
 		//bottom loop instructions
-		MakeMI(.sub, view_index_p_rev_var.op, Imm(1)),
 		MakeMI(.jmp, Imm(instr_index+3)),
 
 		MakeMI(.exit),
 	]);
 
 	AssertEquals(instr_index, cd.all_music_instructions.count);
+
+	//TEST invalid range should be 2 dots not 1 dot
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {	
+	for < < int.[] {}
+}
+DONE,, unit_test_alloc);
+	AssertEquals(1, cd.comp_errors.all_compiler_errors.count);
+
+	//TEST invalid pointer
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {	
+	for * * float.[] {}
+}
+DONE,, unit_test_alloc);
+	AssertEquals(1, cd.comp_errors.all_compiler_errors.count);
+
+		reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {	
+	for * < * < int.[] {}
+}
+DONE,, unit_test_alloc);
+	AssertEquals(1, cd.comp_errors.all_compiler_errors.count);
 
 } @UnitTest
 

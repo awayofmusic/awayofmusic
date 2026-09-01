@@ -2266,7 +2266,7 @@ DONE);
 		bp0 : DebugBreakpoint;
 		if count_equals {
 			bp0 = text_op.exec_info.debug_info.break_points[0];
-			AssertEquals(bp0.asm_index+10, perm.all_data.all_register_memory[RegDef.pc].int_value);
+			AssertEquals(bp0.asm_index+11, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		}
 
 		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -2317,7 +2317,7 @@ DONE);
 		bp0 : DebugBreakpoint;
 		if count_equals {
 			bp0 = text_op.exec_info.debug_info.break_points[0];
-			AssertEquals(bp0.asm_index+11, perm.all_data.all_register_memory[RegDef.pc].int_value);
+			AssertEquals(bp0.asm_index+12, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		}
 
 		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -2398,7 +2398,7 @@ DONE);
 				it_index_var := c_frame.frame_vars[6];
 				AssertEquals("it_index", it_index_var.name);
 				it_index_value := ComputeOperandInt(it_index_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
-				AssertEquals(1, it_index_value);
+				AssertEquals(0, it_index_value);
 			}
 		}
 
@@ -2414,7 +2414,7 @@ DONE);
 		bp0 : DebugBreakpoint;
 		if count_equals {
 			bp0 = text_op.exec_info.debug_info.break_points[0];
-			AssertEquals(bp0.asm_index+11, perm.all_data.all_register_memory[RegDef.pc].int_value);
+			AssertEquals(bp0.asm_index+12, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		}
 
 		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -2489,7 +2489,7 @@ DONE);
 				it_index_var := c_frame.frame_vars[6];
 				AssertEquals("it_index", it_index_var.name);
 				it_index_value := ComputeOperandInt(it_index_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
-				AssertEquals(2, it_index_value);
+				AssertEquals(1, it_index_value);
 			}
 		}
 
@@ -2574,7 +2574,7 @@ DONE);
 		bp1 : DebugBreakpoint;
 		if count_equals {
 			bp1 = text_op.exec_info.debug_info.break_points[1];
-			AssertEquals(bp1.asm_index+10, perm.all_data.all_register_memory[RegDef.pc].int_value);
+			AssertEquals(bp1.asm_index+11, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		}
 
 		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -2619,7 +2619,7 @@ DONE);
 		bp1 : DebugBreakpoint;
 		if count_equals {
 			bp1 = text_op.exec_info.debug_info.break_points[1];
-			AssertEquals(bp1.asm_index+11, perm.all_data.all_register_memory[RegDef.pc].int_value);
+			AssertEquals(bp1.asm_index+12, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		}
 
 		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -2694,7 +2694,7 @@ DONE);
 				it_index_var := c_frame.frame_vars[6];
 				AssertEquals("it_index", it_index_var.name);
 				it_index_value := ComputeOperandInt(it_index_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
-				AssertEquals(1, it_index_value);
+				AssertEquals(0, it_index_value);
 			}
 		}
 
@@ -2709,7 +2709,7 @@ DONE);
 		bp1 : DebugBreakpoint;
 		if count_equals {
 			bp1 = text_op.exec_info.debug_info.break_points[1];
-			AssertEquals(bp1.asm_index+10, perm.all_data.all_register_memory[RegDef.pc].int_value);
+			AssertEquals(bp1.asm_index+11, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		}
 
 		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -2754,7 +2754,7 @@ DONE);
 		bp1 : DebugBreakpoint;
 		if count_equals {
 			bp1 = text_op.exec_info.debug_info.break_points[1];
-			AssertEquals(bp1.asm_index+11, perm.all_data.all_register_memory[RegDef.pc].int_value);
+			AssertEquals(bp1.asm_index+12, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		}
 
 		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -2829,7 +2829,7 @@ DONE);
 				it_index_var := c_frame.frame_vars[6];
 				AssertEquals("it_index", it_index_var.name);
 				it_index_value := ComputeOperandInt(it_index_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
-				AssertEquals(2, it_index_value);
+				AssertEquals(1, it_index_value);
 			}
 		}
 
@@ -2890,7 +2890,7 @@ DONE);
 		bp : DebugBreakpoint;
 		if count_equals {
 			bp = text_op.exec_info.debug_info.break_points[2];
-			AssertEquals(bp.asm_index+9, perm.all_data.all_register_memory[RegDef.pc].int_value);
+			AssertEquals(bp.asm_index+10, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		}
 
 		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -2935,7 +2935,7 @@ DONE);
 		bp : DebugBreakpoint;
 		if count_equals {
 			bp = text_op.exec_info.debug_info.break_points[2];
-			AssertEquals(bp.asm_index+10, perm.all_data.all_register_memory[RegDef.pc].int_value);
+			AssertEquals(bp.asm_index+11, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		}
 
 		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -3010,7 +3010,7 @@ DONE);
 				it_index_var := c_frame.frame_vars[6];
 				AssertEquals("it_index", it_index_var.name);
 				it_index_value := ComputeOperandInt(it_index_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
-				AssertEquals(1, it_index_value);
+				AssertEquals(0, it_index_value);
 			}
 		}
 
@@ -3025,7 +3025,7 @@ DONE);
 		bp : DebugBreakpoint;
 		if count_equals {
 			bp = text_op.exec_info.debug_info.break_points[2];
-			AssertEquals(bp.asm_index+9, perm.all_data.all_register_memory[RegDef.pc].int_value);
+			AssertEquals(bp.asm_index+10, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		}
 
 		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -3070,7 +3070,7 @@ DONE);
 		bp : DebugBreakpoint;
 		if count_equals {
 			bp = text_op.exec_info.debug_info.break_points[2];
-			AssertEquals(bp.asm_index+10, perm.all_data.all_register_memory[RegDef.pc].int_value);
+			AssertEquals(bp.asm_index+11, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		}
 
 		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -3145,7 +3145,7 @@ DONE);
 				it_index_var := c_frame.frame_vars[6];
 				AssertEquals("it_index", it_index_var.name);
 				it_index_value := ComputeOperandInt(it_index_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
-				AssertEquals(2, it_index_value);
+				AssertEquals(1, it_index_value);
 			}
 		}
 
@@ -3204,7 +3204,7 @@ DONE);
 		bp : DebugBreakpoint;
 		if count_equals {
 			bp = text_op.exec_info.debug_info.break_points[3];
-			AssertEquals(bp.asm_index+13, perm.all_data.all_register_memory[RegDef.pc].int_value);
+			AssertEquals(bp.asm_index+14, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		}
 
 		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -3241,7 +3241,7 @@ DONE);
 		bp : DebugBreakpoint;
 		if count_equals {
 			bp = text_op.exec_info.debug_info.break_points[3];
-			AssertEquals(bp.asm_index+14, perm.all_data.all_register_memory[RegDef.pc].int_value);
+			AssertEquals(bp.asm_index+15, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		}
 
 		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -3300,7 +3300,7 @@ DONE);
 				it_index_var := c_frame.frame_vars[6];
 				AssertEquals("it_index", it_index_var.name);
 				it_index_value := ComputeOperandInt(it_index_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
-				AssertEquals(1, it_index_value);
+				AssertEquals(0, it_index_value);
 			}
 		}
 
@@ -3315,7 +3315,7 @@ DONE);
 		bp : DebugBreakpoint;
 		if count_equals {
 			bp = text_op.exec_info.debug_info.break_points[3];
-			AssertEquals(bp.asm_index+13, perm.all_data.all_register_memory[RegDef.pc].int_value);
+			AssertEquals(bp.asm_index+14, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		}
 
 		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -3352,7 +3352,7 @@ DONE);
 		bp : DebugBreakpoint;
 		if count_equals {
 			bp = text_op.exec_info.debug_info.break_points[3];
-			AssertEquals(bp.asm_index+14, perm.all_data.all_register_memory[RegDef.pc].int_value);
+			AssertEquals(bp.asm_index+15, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		}
 
 		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -3419,7 +3419,7 @@ DONE);
 				it_index_var := c_frame.frame_vars[6];
 				AssertEquals("it_index", it_index_var.name);
 				it_index_value := ComputeOperandInt(it_index_var.op, perm.all_data.all_register_memory, perm.all_data.ram_memory);
-				AssertEquals(2, it_index_value);
+				AssertEquals(1, it_index_value);
 			}
 		}
 

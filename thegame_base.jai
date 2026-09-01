@@ -5800,6 +5800,7 @@ if perm.all_data.game_audio_play.play_state == AudioPlayState.PLAY {
 		//TODO we could not do this and let the notes release with the envelopes
 		//ACTUALLY for midi this is necessary
 		array_add(*perm.all_data.all_audio_events, MakeAudioEvent(.STOP_ALL_MUSIC_PTS));
+		//TODO We can set a start audio memory unit for each mspace and this would allow to start/end loops
 		array_add(*perm.all_data.all_audio_events, MakeAudioEvent(.RESET_AUDIO_TO_MEMORY_UNIT, 0));
 	} 	
 }
