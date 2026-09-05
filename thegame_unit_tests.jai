@@ -3564,10 +3564,8 @@ Test_FuncWithArray :: () {
 main :: () {
   fa : [2] int = int.[0,1];
   f2(fa);
-  //TODO Eventually we can auto-cast the array
-  //but it's annoying because we have to check each array type
-  //since we could possibly have the same function with different fixed array or array view.
   av : [] int = fa;
+  //TODO this autocasts but in case we change that later i will do this so the instructions stay the same
   foo(av);
   //TODO Could implement this casting eventually
   // foo(cast([] int) fa);
@@ -3579,6 +3577,9 @@ f2 :: (a : [2] int) {
   a[1] = 3;
 }
 DONE,,unit_test_alloc);
+	comp_success : bool = AssertEquals(false, IsCompilationFail(cd));
+	if !comp_success return;
+	// print("%\n", cd.disassembly);
 
 	count_equal = AssertEquals(3, cd.all_function_declarations.count);
 	if !count_equal return;
@@ -3712,11 +3713,11 @@ DONE,,unit_test_alloc);
 	//foo :: (a : [] int)
 	TestNextManyInstr(*instr_index, cd, .[
 		//a[1]
-		MakeMI(.add, RegMem(.ax), a_0, a_1),
-		MakeMI(.add, RegMem(.ax), Imm(8)),
-		MakeMI(.mov, array_access_op, RamMem(.ax)),
+		MakeMI(.add, array_access_op, a_0, a_1),
+		MakeMI(.add, RegMem(.ax), array_access_op, Imm(8)),
+		MakeMI(.mov, array_access_op, RamMem(.ax), Imm(8)),
 		MakeMI(.mul, RegMem(.ax), Imm(1), Imm(fa_info.element_type.runtime_size)),
-		MakeMI(.add, array_access_op, RegMem(.ax)),
+		MakeMI(.add, array_access_op, array_access_op, RegMem(.ax)),
 		//a[1] = 1;
 		MakeMI(.mov, RegMem(.r0), array_access_op, Imm(cd.void_pointer_type_info.runtime_size)),
 		MakeMI(.mov, RamMem(.r0), Imm(2), Imm(cd.int_type_info.runtime_size)),
@@ -3736,7 +3737,7 @@ DONE,,unit_test_alloc);
 		//a[1]
 		MakeMI(.add, f2_access_op, a_f2_0, a_f2_1),
 		MakeMI(.mul, RegMem(.ax), Imm(1), Imm(fa_info.element_type.runtime_size)),
-		MakeMI(.add, f2_access_op, RegMem(.ax)),
+		MakeMI(.add, f2_access_op, f2_access_op, RegMem(.ax)),
 		//a[1] = 3;
 		MakeMI(.mov, RegMem(.r0), f2_access_op, Imm(cd.void_pointer_type_info.runtime_size)),
 		MakeMI(.mov, RamMem(.r0), Imm(3), Imm(cd.int_type_info.runtime_size)),
@@ -5622,6 +5623,10 @@ main :: () {
 }
 DONE,,unit_test_alloc);
 
+	comp_success : bool = AssertEquals(false, IsCompilationFail(cd));
+	if !comp_success return;
+	// print("%\n", cd.disassembly);
+
 	count_equal = AssertEquals(2, cd.all_type_info_array.count);
 	if count_equal {
 		fixed_info := cd.all_type_info_array[0];
@@ -5679,7 +5684,7 @@ DONE,,unit_test_alloc);
 		//fa[1]
 		MakeMI(.add, array_access_op, fa_op0, fa_op1),
 		MakeMI(.mul, RegMem(.ax), Imm(1), Imm(cd.all_type_info_array[0].element_type.runtime_size)),
-		MakeMI(.add, array_access_op, RegMem(.ax)),
+		MakeMI(.add, array_access_op, array_access_op, RegMem(.ax)),
 		//fa[1] = 10;
 		MakeMI(.mov, RegMem(.r0), array_access_op, Imm(8)),
 		MakeMI(.mov, RamMem(.r0), Imm(10), Imm(cd.int_type_info.runtime_size)),
@@ -5691,9 +5696,8 @@ DONE,,unit_test_alloc);
 		//fa.data
 		MakeMI(.add, array_data_op, fa_op0, fa_op1),
 		//fa.data[1]
-		MakeMI(.mov, array_access_op, array_data_op, Imm(8)),
 		MakeMI(.mul, RegMem(.ax), Imm(1), Imm(cd.all_type_info_array[0].element_type.runtime_size)),
-		MakeMI(.add, array_access_op, RegMem(.ax)),
+		MakeMI(.add, array_access_op, array_data_op, RegMem(.ax)),
 		//fa.data[1] = 10
 		MakeMI(.mov, RegMem(.r0), array_access_op, Imm(8)),
 		MakeMI(.mov, RamMem(.r0), Imm(10), Imm(cd.int_type_info.runtime_size)),
@@ -5704,7 +5708,7 @@ DONE,,unit_test_alloc);
 		//fa[1]
 		MakeMI(.add, array_access_op, fa_op0, fa_op1),
 		MakeMI(.mul, RegMem(.ax), Imm(1), Imm(cd.all_type_info_array[0].element_type.runtime_size)),
-		MakeMI(.add, array_access_op, RegMem(.ax)),
+		MakeMI(.add, array_access_op, array_data_op, RegMem(.ax)),
 		//fi : int = fa[1];
 		MakeMI(.mov, RegMem(.r0), array_access_op, Imm(8)),
 		MakeMI(.mov, fi_var.op, RamMem(.r0), Imm(cd.int_type_info.runtime_size)),
@@ -5716,9 +5720,8 @@ DONE,,unit_test_alloc);
 		//fa.data
 		MakeMI(.add, array_data_op, fa_op0, fa_op1),
 		//fa.data[1]
-		MakeMI(.mov, array_access_op, array_data_op, Imm(8)),
 		MakeMI(.mul, RegMem(.ax), Imm(1), Imm(cd.all_type_info_array[0].element_type.runtime_size)),
-		MakeMI(.add, array_access_op, RegMem(.ax)),
+		MakeMI(.add, array_access_op, array_data_op, RegMem(.ax)),
 		//fi = fa.data[1];
 		MakeMI(.mov, RegMem(.r0), array_access_op, Imm(8)),
 		MakeMI(.mov, fi_var.op, RamMem(.r0), Imm(cd.int_type_info.runtime_size)),
@@ -5740,11 +5743,11 @@ DONE,,unit_test_alloc);
 	a_0, a_1 := GetMemoryAddressAsOperands(a_var.op);
 	TestNextManyInstr(*instr_index, cd, .[
 		//a[1]
-		MakeMI(.add, RegMem(.ax), a_0, a_1),
-		MakeMI(.add, RegMem(.ax), Imm(8)),
-		MakeMI(.mov, array_access_op, RamMem(.ax)),
+		MakeMI(.add, array_access_op, a_0, a_1),
+		MakeMI(.add, RegMem(.ax), array_access_op, Imm(8)),
+		MakeMI(.mov, array_access_op, RamMem(.ax), Imm(8)),
 		MakeMI(.mul, RegMem(.ax), Imm(1), Imm(cd.all_type_info_array[0].element_type.runtime_size)),
-		MakeMI(.add, array_access_op, RegMem(.ax)),
+		MakeMI(.add, array_access_op, array_access_op, RegMem(.ax)),
 		//a.data[1] = 10;
 		MakeMI(.mov, RegMem(.r0), array_access_op, Imm(8)),
 		MakeMI(.mov, RamMem(.r0), Imm(10), Imm(cd.int_type_info.runtime_size)),
@@ -5754,9 +5757,8 @@ DONE,,unit_test_alloc);
 	array_access_op = AddOperandOffset(8, c_var.op);
 	TestNextManyInstr(*instr_index, cd, .[
 		//a.data[1]
-		MakeMI(.mov, array_access_op, a_data_op, Imm(8)),
 		MakeMI(.mul, RegMem(.ax), Imm(1), Imm(cd.all_type_info_array[1].element_type.runtime_size)),
-		MakeMI(.add, array_access_op, RegMem(.ax)),
+		MakeMI(.add, array_access_op, a_data_op, RegMem(.ax)),
 		//a.data[1] = 10;
 		MakeMI(.mov, RegMem(.r0), array_access_op, Imm(8)),
 		MakeMI(.mov, RamMem(.r0), Imm(10), Imm(cd.int_type_info.runtime_size)),
@@ -5764,11 +5766,11 @@ DONE,,unit_test_alloc);
 
 	TestNextManyInstr(*instr_index, cd, .[
 		//a[1]
-		MakeMI(.add, RegMem(.ax), a_0, a_1),
-		MakeMI(.add, RegMem(.ax), Imm(8)),
-		MakeMI(.mov, array_access_op, RamMem(.ax)),
+		MakeMI(.add, array_access_op, a_0, a_1),
+		MakeMI(.add, RegMem(.ax), array_access_op, Imm(8)),
+		MakeMI(.mov, array_access_op, RamMem(.ax), Imm(8)),
 		MakeMI(.mul, RegMem(.ax), Imm(1), Imm(cd.all_type_info_array[1].element_type.runtime_size)),
-		MakeMI(.add, array_access_op, RegMem(.ax)),
+		MakeMI(.add, array_access_op, array_access_op, RegMem(.ax)),
 		//i : int = a[1];
 		MakeMI(.mov, RegMem(.r0), array_access_op, Imm(8)),
 		MakeMI(.mov, i_var.op, RamMem(.r0), Imm(cd.int_type_info.runtime_size)),
@@ -5777,9 +5779,8 @@ DONE,,unit_test_alloc);
 	array_access_op = AddOperandOffset(8, i_var.op);
 	TestNextManyInstr(*instr_index, cd, .[
 		//a.data[1]
-		MakeMI(.mov, array_access_op, a_data_op, Imm(8)),
 		MakeMI(.mul, RegMem(.ax), Imm(1), Imm(cd.all_type_info_array[1].element_type.runtime_size)),
-		MakeMI(.add, array_access_op, RegMem(.ax)),
+		MakeMI(.add, array_access_op, a_data_op, RegMem(.ax)),
 		//i = a.data[1];
 		MakeMI(.mov, RegMem(.r0), array_access_op, Imm(8)),
 		MakeMI(.mov, i_var.op, RamMem(.r0), Imm(cd.int_type_info.runtime_size)),
@@ -6858,21 +6859,16 @@ Test_CompileMultiArray :: () {
 	cd = CompileCode(cs,
 #string DONE
 main :: () {
-	f : [3][3] int;
-	f[1][2] = 10;
-	f[1].data[2] = 10;
-
-	t : int = f[1][2];
-	t = f[1].data[2];
-
-	t = f[1].count;
-
-	f_1 : [3] int = f[1];
-
-	//TODO Test this as it's not working right now for *[3] int
-	// d : *[3] int = f[1].data;
+	af : [3][3] int;
+	af[2][1] = 10;
+	af[2].data[1] = 10;
+	t : int = af[2][1];
+	t = af[1].count;
 }
 DONE,,unit_test_alloc);
+	comp_success : bool = AssertEquals(false, IsCompilationFail(cd));
+	if !comp_success return;
+	// print("%\n", cd.disassembly);
 
 	count_equal = AssertEquals(2, cd.all_type_info_array.count);
 	if !count_equal return;
@@ -6895,40 +6891,41 @@ DONE,,unit_test_alloc);
 
 
 	vars_equal : bool = TestManyVarDeclSameStack(cd.all_variables, .[
-		VarDecl("f", cd.all_type_info_array[1]),
+		VarDecl("af", *dim2_info.info),
 		VarDecl("t", *cd.int_type_info),
-		VarDecl("f_1", cd.all_type_info_array[0])
 	]);
 
 	if !vars_equal return;
 
-	f_var := cd.all_variables[0];
+	af_var := cd.all_variables[0];
 	t_var := cd.all_variables[1];
-	f_1_var := cd.all_variables[2];
 
 	//Initialize f : [3][3] int
 	instr_index : int = 0;
 	TestNextManyInstr(*instr_index, cd, .[
-		MakeMI(.mset, f_var.op, Imm(0), Imm(f_var.t_info.runtime_size)),
+		MakeMI(.mset, af_var.op, Imm(0), Imm(af_var.t_info.runtime_size)),
 	]);
 
-	array_access_op := AddOperandOffset(f_var.t_info.runtime_size, f_var.op);
+	af_op_0, af_op_1 := GetMemoryAddressAsOperands(af_var.op);
+
+	array_access_op := AddOperandOffset(af_var.t_info.runtime_size, af_var.op);
+	array_data_op := AddOperandOffset(8, array_access_op);
 	//f[1]
 	f_1_expected := MusicInstruction.[
-		MakeMI(.add, array_access_op, ValueToOp(f_var.op.values[0]), ValueToOp(f_var.op.values[1])),
-		MakeMI(.mul, RegMem(.ax), Imm(1), Imm(dim2_info.element_type.runtime_size)),
-		MakeMI(.add, array_access_op, RegMem(.ax))
+		MakeMI(.add, array_access_op, af_op_0, af_op_1),
+		MakeMI(.mul, RegMem(.ax), Imm(2), Imm(dim2_info.element_type.runtime_size)),
+		MakeMI(.add, array_access_op, array_access_op, RegMem(.ax))
 	];
 	TestNextManyInstr(*instr_index, cd, f_1_expected);
 
 	//f[1][2] = 10
 	f_1_2_assign_instr := MusicInstruction.[
 		//f[1][2]
-		// MakeMI(.add, RegMem(.ax), RegMem(.ax), Imm(0)),
-		MakeMI(.mul, RegMem(.ax), Imm(2), Imm(dim1_info.element_type.runtime_size)),
-		MakeMI(.add, array_access_op, RegMem(.ax)),
+		MakeMI(.mov, array_data_op, array_access_op, Imm(8)),
+		MakeMI(.mul, RegMem(.ax), Imm(1), Imm(dim1_info.element_type.runtime_size)),
+		MakeMI(.add, array_data_op, array_data_op, RegMem(.ax)),
 		//f[1][2] = 10
-		MakeMI(.mov, RegMem(.r0), array_access_op, Imm(8)),
+		MakeMI(.mov, RegMem(.r0), array_data_op, Imm(8)),
 		MakeMI(.mov, RamMem(.r0), Imm(10), Imm(8)),
 	];
 	f_1_2_bin_access := array_view(f_1_2_assign_instr,0,3);
@@ -6937,69 +6934,149 @@ DONE,,unit_test_alloc);
 	//f[1]
 	TestNextManyInstr(*instr_index, cd, f_1_expected);
 
+	next_data_op := AddOperandOffset(8, array_data_op);
 	//f[1].data[2] = 10
-	TestNextManyInstr(*instr_index, cd, f_1_2_assign_instr);
-
-	//f[1]
-	TestNextManyInstr(*instr_index, cd, f_1_expected);
-
-	//f[1][2]
-	TestNextManyInstr(*instr_index, cd, f_1_2_bin_access);
-
-	//t = f[1][2]
-	TestNextManyInstr(*instr_index, cd, .[
-		MakeMI(.mov, t_var.op, RamMem(.r0), Imm(dim1_info.element_type.runtime_size))
-	]);
-
-	//NOTE : Need to + 8 here since we set the t : int variable
-	array_access_op = AddOperandOffset(8, array_access_op);
-	//f[1]
-	f_1_expected = MusicInstruction.[
-		MakeMI(.add, array_access_op, ValueToOp(f_var.op.values[0]), ValueToOp(f_var.op.values[1])),
-		MakeMI(.mul, RegMem(.ax), Imm(1), Imm(dim2_info.element_type.runtime_size)),
-		MakeMI(.add, array_access_op, RegMem(.ax))
-	];
-	//f[1]
-	TestNextManyInstr(*instr_index, cd, f_1_expected);
-
-	f_1_2_assign_instr = MusicInstruction.[
+	TestNextManyInstr(*instr_index, cd, MusicInstruction.[
 		//f[1][2]
-		// MakeMI(.add, RegMem(.ax), RegMem(.ax), Imm(0)),
-		MakeMI(.mul, RegMem(.ax), Imm(2), Imm(dim1_info.element_type.runtime_size)),
-		MakeMI(.add, array_access_op, RegMem(.ax)),
+		MakeMI(.mov, array_data_op, array_access_op, Imm(8)),
+		MakeMI(.mul, RegMem(.ax), Imm(1), Imm(dim1_info.element_type.runtime_size)),
+		MakeMI(.add, next_data_op, array_data_op, RegMem(.ax)),
 		//f[1][2] = 10
-		MakeMI(.mov, RegMem(.r0), array_access_op, Imm(8)),
+		MakeMI(.mov, RegMem(.r0), next_data_op, Imm(8)),
 		MakeMI(.mov, RamMem(.r0), Imm(10), Imm(8)),
-	];
-	f_1_2_bin_access = array_view(f_1_2_assign_instr,0,3);
-	//f[1].data[2]
-	TestNextManyInstr(*instr_index, cd, f_1_2_bin_access);
-
-	t_assign_instr := MusicInstruction.[
-		MakeMI(.mov, t_var.op, RamMem(.r0), Imm(dim1_info.element_type.runtime_size))
-	];
-	//t = f[1].data[2]
-	TestNextManyInstr(*instr_index, cd, t_assign_instr);
-
-
-	//TODO TECHNICALLY f[1].count doesn't need these for
-	//fixed arrays because we only need the integer value
-	//which is known at compile-time.
-	//f[1]
-	TestNextManyInstr(*instr_index, cd, f_1_expected);
-
-	//t = f[1].count
-	TestNextManyInstr(*instr_index, cd, .[
-		MakeMI(.mov, t_var.op, Imm(dim1_info.array_count), Imm(t_var.t_info.runtime_size))
 	]);
 
-	//f[1]
+	//af[2]
 	TestNextManyInstr(*instr_index, cd, f_1_expected);
 
-	//assign f_1 = f[1]
+	//af[2][1]
+	TestNextManyInstr(*instr_index, cd, f_1_2_bin_access);
+
+	//t : int = af[2][1]
 	TestNextManyInstr(*instr_index, cd, .[
-		MakeMI(.mov, RegMem(.r0), array_access_op, Imm(8)),
-		MakeMI(.mov, f_1_var.op, RamMem(.r0), Imm(f_1_var.t_info.runtime_size)),
+		MakeMI(.mov, RegMem(.r0), array_data_op, Imm(8)),
+		MakeMI(.mov, t_var.op, RamMem(.r0), Imm(dim1_info.element_type.runtime_size)),
+	]);
+
+	//t = af[1].count
+	TestNextManyInstr(*instr_index, cd, .[
+		MakeMI(.add, array_data_op, af_op_0, af_op_1),
+		MakeMI(.mul, RegMem(.ax), Imm(1), Imm(dim1_info.runtime_size)),
+		MakeMI(.add, array_data_op, array_data_op, RegMem(.ax)),
+		MakeMI(.mov, array_access_op, Imm(3), Imm(cd.int_type_info.runtime_size)),
+
+		MakeMI(.exit),
+	]);
+
+	AssertEquals(instr_index, cd.all_music_instructions.count);
+
+} @UnitTest
+
+Test_MultiArrayView :: () {
+	cs : CompileSettings;
+	cd : *CompilationData;
+	count_equal : bool;
+
+	cd = CompileCode(cs,
+#string DONE
+main :: () {
+	av : [][] int = NewArray(3, [] int);
+	av[1] = NewArray(3, int);
+	av[1][2] = 10;
+	t : int = av[1].count;
+}
+DONE,,unit_test_alloc);
+	comp_success : bool = AssertEquals(false, IsCompilationFail(cd));
+	if !comp_success return;
+	// print("%\n", cd.disassembly);
+
+	count_equal = AssertEquals(2, cd.all_type_info_array.count);
+	if !count_equal return;
+
+	view1_info : *TypeInfoArray = cd.all_type_info_array[0];
+	AssertEquals(TypeInfoTag.ARRAY, view1_info.type_enum);
+	AssertEquals(16, view1_info.runtime_size);
+	AssertEquals(ArrayInfoType.VIEW, view1_info.array_type);
+	AssertEquals(*cd.int_type_info, view1_info.element_type);
+	AssertEquals(TypeInfoTag.INTEGER, view1_info.element_type.type_enum);
+	AssertEquals(8, view1_info.element_type.runtime_size);
+
+	view2_info : *TypeInfoArray = cd.all_type_info_array[1];
+	AssertEquals(TypeInfoTag.ARRAY, view2_info.type_enum);
+	AssertEquals(16, view2_info.runtime_size);
+	AssertEquals(ArrayInfoType.VIEW, view2_info.array_type);
+	AssertEquals(*view1_info.info, view2_info.element_type);
+
+
+	vars_equal : bool = TestManyVarDeclSameStack(cd.all_variables, .[
+		VarDecl("av", *view2_info.info),
+		VarDecl("t", *cd.int_type_info),
+	]);
+
+	if !vars_equal return;
+
+	av_var := cd.all_variables[0];
+	t_var := cd.all_variables[1];
+
+	instr_index : int = 0;
+	array_data_op := AddOperandOffset(8, av_var.op);
+
+	//av : [][] int = NewArray(3, [] int);
+	TestNextManyInstr(*instr_index, cd, .[
+		MakeMI(.mov, av_var.op, Imm(3), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mul, array_data_op, Imm(cd.array_view_struct_info.runtime_size), Imm(3)),
+		MakeMI(.alloc, array_data_op, array_data_op),
+	]);
+
+	array_access_op := AddOperandOffset(8, array_data_op);
+	array_data_op = AddOperandOffset(8, array_access_op);
+	//NewArray(3, int);
+	TestNextManyInstr(*instr_index, cd, .[
+		MakeMI(.mov, array_access_op, Imm(3), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mul, array_data_op, Imm(cd.int_type_info.runtime_size), Imm(3)),
+		MakeMI(.alloc, array_data_op, array_data_op),
+	]);
+
+	array_data_op = AddOperandOffset(8, array_data_op);
+	av_0, av_1 := GetMemoryAddressAsOperands(av_var.op);
+	//av[1] = NewArray(3, int);
+	TestNextManyInstr(*instr_index, cd, .[
+		MakeMI(.add, array_data_op, av_0, av_1),
+		MakeMI(.add, RegMem(.ax), array_data_op, Imm(8)),
+		MakeMI(.mov, array_data_op, RamMem(.ax), Imm(8)),
+		MakeMI(.mul, RegMem(.ax), Imm(1), Imm(cd.array_view_struct_info.runtime_size)),
+		MakeMI(.add, array_data_op, array_data_op, RegMem(.ax)),
+		MakeMI(.mov, RegMem(.r0), array_data_op, Imm(8)),
+		MakeMI(.mov, RamMem(.r0), array_access_op, Imm(cd.array_view_struct_info.runtime_size)),
+	]);
+
+	array_data_op = AddOperandOffset(8, array_access_op);
+	//av[1][2] = 10;
+	TestNextManyInstr(*instr_index, cd, .[
+		MakeMI(.add, array_access_op, av_0, av_1),
+		MakeMI(.add, RegMem(.ax), array_access_op, Imm(8)),
+		MakeMI(.mov, array_access_op, RamMem(.ax), Imm(8)),
+		MakeMI(.mul, RegMem(.ax), Imm(1), Imm(cd.array_view_struct_info.runtime_size)),
+		MakeMI(.add, array_access_op, array_access_op, RegMem(.ax)),
+		MakeMI(.mov, array_data_op, array_access_op, Imm(8)),
+		MakeMI(.add, RegMem(.ax), array_data_op, Imm(8)),
+		MakeMI(.mov, array_data_op, RamMem(.ax), Imm(8)),
+		MakeMI(.mul, RegMem(.ax), Imm(2), Imm(8)),
+		MakeMI(.add, array_data_op, array_data_op, RegMem(.ax)),
+		MakeMI(.mov, RegMem(.r0), array_data_op, Imm(8)),
+		MakeMI(.mov, RamMem(.r0), Imm(10), Imm(cd.int_type_info.runtime_size)),
+	]);
+
+	//t : int = av[1].count;
+	TestNextManyInstr(*instr_index, cd, .[
+		MakeMI(.add, t_var.op, av_0, av_1),
+		MakeMI(.add, RegMem(.ax), t_var.op, Imm(8)),
+		MakeMI(.mov, t_var.op, RamMem(.ax), Imm(8)),
+		MakeMI(.mul, RegMem(.ax), Imm(1), Imm(cd.array_view_struct_info.runtime_size)),
+		MakeMI(.add, t_var.op, t_var.op, RegMem(.ax)),
+		MakeMI(.add, t_var.op, Imm(0)),
+		MakeMI(.mov, RegMem(.r0), t_var.op, Imm(8)),
+		MakeMI(.mov, t_var.op, RamMem(.r0), Imm(cd.int_type_info.runtime_size)),
 
 		MakeMI(.exit),
 	]);
@@ -12828,6 +12905,78 @@ Test_ParseArray :: () {
 	AssertEquals(node.value.token_type, #char ";");
 
 	/*
+			     =
+			/         \
+	  	  :            .	    
+	   /	 \         / \
+	  af     *      [   data
+	         \     / \
+	          [   f   1
+	        /   \
+	      int    3
+	*/	
+	array_reset_keeping_memory(*ptd.cd.lexer.lexer_tokens);
+	LexCodeTokens(*ptd.cd.lexer, "af : *[3] int = f[1].data;");
+	node = ParseExpression(ptd.cd, S64_MIN);
+
+	array_reset_keeping_memory(*ptd.ordered_nodes);
+	DFSPreWithNull(node, *ptd.ordered_nodes, GetOrderedNodesWithNull);
+	ptd.expected_nodes = BinaryNode.[
+		BNode(LCToken(#char "="), .BINARY_OP),
+		//af : *[3] int
+		BNode(LCToken(#char ":"), .BINARY_OP),
+		BNode(LCToken(.IDENT, "af")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(#char "*"), .UNARY_OP), NULL_NODE,
+		BNode(LCToken(#char "["), .DATA_TYPE_INFO),
+		BNode(LCToken(.DATA_TYPE_INT, "int")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(.INTEGER, 3)), NULL_NODE, NULL_NODE,
+		//f[1].data
+		BNode(LCToken(#char "."), .BINARY_OP),
+		BNode(LCToken(#char "["), .BINARY_OP),
+		BNode(LCToken(.IDENT, "f")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(.INTEGER, 1)), NULL_NODE, NULL_NODE,
+		BNode(LCToken(.IDENT, "data")), NULL_NODE, NULL_NODE,
+	];
+	TestNodes(ptd.expected_nodes, ptd.ordered_nodes);
+
+	/*
+			    =
+			/       \
+	  	  :         *	    
+	   /	 \        \
+	  af     *       [   
+	         \      / \
+	          [    f   1
+	        /   \
+	      int    3
+	*/	
+	array_reset_keeping_memory(*ptd.cd.lexer.lexer_tokens);
+	LexCodeTokens(*ptd.cd.lexer, "af : *[3] int = *f[1];");
+	node = ParseExpression(ptd.cd, S64_MIN);
+
+	array_reset_keeping_memory(*ptd.ordered_nodes);
+	DFSPreWithNull(node, *ptd.ordered_nodes, GetOrderedNodesWithNull);
+	ptd.expected_nodes = BinaryNode.[
+		BNode(LCToken(#char "="), .BINARY_OP),
+		//af : *[3] int
+		BNode(LCToken(#char ":"), .BINARY_OP),
+		BNode(LCToken(.IDENT, "af")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(#char "*"), .UNARY_OP), NULL_NODE,
+		BNode(LCToken(#char "["), .DATA_TYPE_INFO),
+		BNode(LCToken(.DATA_TYPE_INT, "int")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(.INTEGER, 3)), NULL_NODE, NULL_NODE,
+		//f[1].data
+		BNode(LCToken(#char "*"), .UNARY_OP), NULL_NODE,
+		BNode(LCToken(#char "["), .BINARY_OP),
+		BNode(LCToken(.IDENT, "f")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(.INTEGER, 1)), NULL_NODE, NULL_NODE,
+	];
+	TestNodes(ptd.expected_nodes, ptd.ordered_nodes);
+
+	node = ParseExpression(ptd.cd, S64_MIN);
+	AssertEquals(node.value.token_type, #char ";");
+
+	/*
             [
            / \
           [   1
@@ -12952,6 +13101,38 @@ Test_ParseArray :: () {
 	];
 	TestNodes(ptd.expected_nodes, ptd.ordered_nodes);
 
+	/*
+		  :
+	   /   \
+     a	  [
+   		 / \
+   		[   ]
+   	  / \
+   	 [   ]
+   	/ \
+	 int	2
+	*/
+	ResetCodeLexer(*ptd.cd.lexer);
+	LexCodeTokens(*ptd.cd.lexer, "a : [][][2] int;");
+	node = ParseExpression(ptd.cd, S64_MIN);
+
+	array_reset_keeping_memory(*ptd.ordered_nodes);
+	DFSPreWithNull(node, *ptd.ordered_nodes, GetOrderedNodesWithNull);
+	ptd.expected_nodes = BinaryNode.[
+		BNode(LCToken(#char ":"), .BINARY_OP),
+		BNode(LCToken(.IDENT, "a")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(#char "["), .DATA_TYPE_INFO),
+		BNode(LCToken(#char "["), .DATA_TYPE_INFO),
+		BNode(LCToken(#char "["), .DATA_TYPE_INFO),
+		BNode(LCToken(.DATA_TYPE_INT, "int")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(.INTEGER, 2)), NULL_NODE, NULL_NODE,
+		BNode(LCToken(#char "]")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(#char "]")), NULL_NODE, NULL_NODE,
+	];
+	TestNodes(ptd.expected_nodes, ptd.ordered_nodes);
+
+	node = ParseExpression(ptd.cd, S64_MIN);
+	AssertEquals(node.value.token_type, #char ";");
 
 
 	/*
@@ -13126,17 +13307,74 @@ Test_ParseArray :: () {
 	TestNodes(ptd.expected_nodes, ptd.ordered_nodes);
 
 
-	/* s.x[a[0]]
+	/*
+			       =
+      	 /		        .[
+   		:		      /    \
+       /   \	     [      ,
+      a		[  	 / \	 /   \
+      	 /	  \  int  ]	.[	   .[
+      	[		]       / \    / \
+        / \		      int  , int  ,
+      int  2	          / \    / \
+      			         +   1  ,   4
+      			        / \    / \
+      			       x   y  2   3
+	*/	
+	ResetCodeLexer(*ptd.cd.lexer);
+	LexCodeTokens(*ptd.cd.lexer, "a : [][2] int = ([] int).[int.[x+y,1],int.[2,3,4]];");
+	node = ParseExpression(ptd.cd, S64_MIN);
+
+	array_reset_keeping_memory(*ptd.ordered_nodes);
+	DFSPreWithNull(node, *ptd.ordered_nodes, GetOrderedNodesWithNull);
+	ptd.expected_nodes = BinaryNode.[
+		BNode(LCToken(#char "="), .BINARY_OP),
+		//a : [1][2]
+		BNode(LCToken(#char ":"), .BINARY_OP),
+		BNode(LCToken(.IDENT, "a")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(#char "["), .DATA_TYPE_INFO),
+		BNode(LCToken(#char "["), .DATA_TYPE_INFO),
+		BNode(LCToken(.DATA_TYPE_INT, "int")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(.INTEGER, 2)), NULL_NODE, NULL_NODE,
+		BNode(LCToken(#char "]")), NULL_NODE, NULL_NODE,
+		// BNode(LCToken(.INTEGER, 2)), NULL_NODE, NULL_NODE,
+		//([] int]).[]
+		BNode(LCToken(.ARRAY_LITERAL), .BINARY_OP),
+		BNode(LCToken(#char "["), .DATA_TYPE_INFO),
+		BNode(LCToken(.DATA_TYPE_INT, "int")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(#char "]")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(#char ","), .BINARY_OP),
+		BNode(LCToken(.ARRAY_LITERAL), .BINARY_OP),
+		BNode(LCToken(.DATA_TYPE_INT, "int")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(#char ","), .BINARY_OP),
+		BNode(LCToken(#char "+"), .BINARY_OP),
+		BNode(LCToken(.IDENT, "x")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(.IDENT, "y")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(.INTEGER, 1)), NULL_NODE, NULL_NODE,
+		BNode(LCToken(.ARRAY_LITERAL), .BINARY_OP),
+		BNode(LCToken(.DATA_TYPE_INT, "int")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(#char ","), .BINARY_OP),
+		BNode(LCToken(#char ","), .BINARY_OP),
+		BNode(LCToken(.INTEGER, 2)), NULL_NODE, NULL_NODE,
+		BNode(LCToken(.INTEGER, 3)), NULL_NODE, NULL_NODE,
+		BNode(LCToken(.INTEGER, 4)), NULL_NODE, NULL_NODE,
+	];
+	TestNodes(ptd.expected_nodes, ptd.ordered_nodes);
+	node = ParseExpression(ptd.cd, S64_MIN);
+	AssertEquals(cast(CodeTokenType) #char ";", node.value.token_type);
+
+
+	/* s.data[a[0]]
 		  .
 		 / \
 		s   [
 		   / \
-		  x   [
+	   data  [
 		     / \
 		    a   0
 	*/
 	ResetCodeLexer(*ptd.cd.lexer);
-	LexCodeTokens(*ptd.cd.lexer, "s.x[a[0]]");
+	LexCodeTokens(*ptd.cd.lexer, "s.data[a[0]]");
 	node = ParseExpression(ptd.cd, S64_MIN);
 
 	array_reset_keeping_memory(*ptd.ordered_nodes);
@@ -13145,10 +13383,92 @@ Test_ParseArray :: () {
 		BNode(LCToken(#char "."), .BINARY_OP),
 		BNode(LCToken(.IDENT, "s")), NULL_NODE, NULL_NODE,
 		BNode(LCToken(#char "["), .BINARY_OP),
+		BNode(LCToken(.IDENT, "data")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(#char "["), .BINARY_OP),
+		BNode(LCToken(.IDENT, "a")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(.INTEGER, 0)), NULL_NODE, NULL_NODE,
+	];
+	TestNodes(ptd.expected_nodes, ptd.ordered_nodes);
+
+	/* 
+					=
+				/		\
+		   .			 5
+		 /    \
+		[       [
+	  / \	    /  \
+	 f   1   .*   2
+            /
+		    data
+	*/
+	ResetCodeLexer(*ptd.cd.lexer);
+	LexCodeTokens(*ptd.cd.lexer, "f[1].data.*[2] = 5;");
+	node = ParseExpression(ptd.cd, S64_MIN);
+
+	array_reset_keeping_memory(*ptd.ordered_nodes);
+	DFSPreWithNull(node, *ptd.ordered_nodes, GetOrderedNodesWithNull);
+	ptd.expected_nodes = BinaryNode.[
+		BNode(LCToken(#char "="), .BINARY_OP),
+		BNode(LCToken(#char "."), .BINARY_OP),
+		BNode(LCToken(#char "["), .BINARY_OP),
+		BNode(LCToken(.IDENT, "f")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(.INTEGER, 1)), NULL_NODE, NULL_NODE,
+		BNode(LCToken(#char "["), .BINARY_OP),
+		BNode(LCToken(.POSTFIX_DEREFERENCE), .BINARY_OP),
+		BNode(LCToken(.IDENT, "data")), NULL_NODE, NULL_NODE,
+		NULL_NODE,
+		BNode(LCToken(.INTEGER, 2)), NULL_NODE, NULL_NODE,
+		BNode(LCToken(.INTEGER, 5)), NULL_NODE, NULL_NODE,
+	];
+	TestNodes(ptd.expected_nodes, ptd.ordered_nodes);
+
+	/*
+										+
+						/     					\
+		  		    .							   [
+		     /			 \					  /  \
+		    [ 		     [				 [    n3
+	   /       \ 		/   \				/ \
+	  [	       [	  x     [		  [   n2
+	 /  \      / \		     / \     /  \
+   s	 +     [   1	  	 a   0   x    n
+	   / \	/ \
+	  y   1 n	2
+	*/
+	ResetCodeLexer(*ptd.cd.lexer);
+	LexCodeTokens(*ptd.cd.lexer, "s[y+1][n[2][1]].x[a[0]] + x[n][n2][n3]");
+	node = ParseExpression(ptd.cd, S64_MIN);
+
+	array_reset_keeping_memory(*ptd.ordered_nodes);
+	DFSPreWithNull(node, *ptd.ordered_nodes, GetOrderedNodesWithNull);
+	ptd.expected_nodes = BinaryNode.[
+		BNode(LCToken(#char "+"), .BINARY_OP),
+		//s[]
+		BNode(LCToken(#char "."), .BINARY_OP),
+		BNode(LCToken(#char "["), .BINARY_OP),
+		BNode(LCToken(#char "["), .BINARY_OP),
+		BNode(LCToken(.IDENT, "s")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(#char "+"), .BINARY_OP),
+		BNode(LCToken(.IDENT, "y")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(.INTEGER, 1)), NULL_NODE, NULL_NODE,
+		BNode(LCToken(#char "["), .BINARY_OP),
+		BNode(LCToken(#char "["), .BINARY_OP),
+		BNode(LCToken(.IDENT, "n")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(.INTEGER, 2)), NULL_NODE, NULL_NODE,
+		BNode(LCToken(.INTEGER, 1)), NULL_NODE, NULL_NODE,
+		BNode(LCToken(#char "["), .BINARY_OP),
 		BNode(LCToken(.IDENT, "x")), NULL_NODE, NULL_NODE,
 		BNode(LCToken(#char "["), .BINARY_OP),
 		BNode(LCToken(.IDENT, "a")), NULL_NODE, NULL_NODE,
 		BNode(LCToken(.INTEGER, 0)), NULL_NODE, NULL_NODE,
+		//x[]
+		BNode(LCToken(#char "["), .BINARY_OP),
+		BNode(LCToken(#char "["), .BINARY_OP),
+		BNode(LCToken(#char "["), .BINARY_OP),
+		BNode(LCToken(.IDENT, "x")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(.IDENT, "n")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(.IDENT, "n2")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(.IDENT, "n3")), NULL_NODE, NULL_NODE,
 	];
 	TestNodes(ptd.expected_nodes, ptd.ordered_nodes);
 
@@ -17160,8 +17480,8 @@ Test_CreateSpace :: () {
 
 } @UnitTest
 
-// Test_GetNextNonMutedMSpace :: () {
-Test_nonmute :: () {
+Test_GetNextNonMutedMSpace :: () {
+// Test_nonmute :: () {
 	all_mspace_data : [..] MusicSpaceData;
 	m0 := array_add(*all_mspace_data);
 	m0.mspace_audio_row_size = 0;

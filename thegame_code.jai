@@ -864,9 +864,10 @@ TypeNameAlreadyExists :: inline (node : *BinaryNode, cd : *CompilationData) -> b
 	}
 	return false;
 }
-
+//TODO Should we pass in a message here for the null case to be more specific?
 CheckValidNode :: inline (node : *BinaryNode, null_check_node : *BinaryNode, cd : *CompilationData) -> bool {
 	//TODO This case should likely be caught by the parser
+	//TODO Should we just assert this?
 	if node == null {
 		CreateCompErr(cd, .EVALUATION, null_check_node, "Node is null. This might be an internal compiler error.");
 		return false;
@@ -1282,6 +1283,8 @@ ParseIncreasingPrecedence :: (
 			// 	//TODO Remove this and also remove as precedence if we don't use it so it's just min prec and stops there.
 			// 	return left;
 			case #char "["; //Array access binary op
+				//If we were just closing and we are opening now, then we return this to close off and continue with the open in parsing
+				if left.value.token_type == #char "]" return left;
 				//TODO If this stays the same as "(" then we can have 1 case
 				EatNextToken(*cd.lexer); //Eat "["
 				//TODO SHOULD LIKELY RETURN COMPILATION ERROR HERE IF NEXT TOKEN IS "]" without anything inside
@@ -1528,7 +1531,13 @@ ParseLeaf :: (cd : *CompilationData, pl : ParserLevel = .STATEMENT) -> *BinaryNo
 		//TODO Could make this into a function to parse the next array expression and then
 		//re-use it in multi-dimensional loop. Although with errors maybe it's not worth it.
 		//Parser first array
-		array_expr := ParseExpression(cd, GetCodePrec(#char "]",pl), pl);
+		array_expr : *BinaryNode;
+		// peek_token, has_peek_token := PeekNextToken(cd.lexer);
+		// if has_peek_token && peek_token.token_type == #char "]" {
+		// 	array_expr = MakeBinaryNode(null,peek_token,null,*cd.binary_tree);
+		// } else {
+			array_expr = ParseExpression(cd, GetCodePrec(#char "]",pl), pl);
+		// }
 		node = MakeBinaryNode(null,next,array_expr,*cd.binary_tree,.DATA_TYPE_INFO);
 		if array_expr.value.token_type != #char "]" {
 			//TODO CompilerError ParserError if we don't have "]" here.
@@ -1544,7 +1553,12 @@ ParseLeaf :: (cd : *CompilationData, pl : ParserLevel = .STATEMENT) -> *BinaryNo
 		while has_next_token && next.token_type == #char "[" {
 			EatNextToken(*cd.lexer); //Eat "["
 			//TODO Should we return on "]" using code_prev instead of min? Does it not matter?
-			array_expr := ParseExpression(cd, GetCodePrec(#char "]",pl), pl);
+			// peek_token, has_peek_token := PeekNextToken(cd.lexer);
+			// if has_peek_token && peek_token.token_type == #char "]" {
+			// 	array_expr = MakeBinaryNode(null,peek_token,null,*cd.binary_tree);
+			// } else {
+				array_expr = ParseExpression(cd, GetCodePrec(#char "]",pl), pl);
+			// }
 			//TODO ParserError can check the array_expr.right here for "]" alone or ".." alone
 			//or otherwise an invalid expression should be returend in the fixed array case.
 			if array_expr.value.token_type != #char "]" {
@@ -1863,9 +1877,9 @@ GetCodePrec :: inline (type : CodeTokenType, pl : ParserLevel = .STATEMENT) -> i
 	case #char "["; return 1003;
 	// a.*[2] -> so we need "[" to be above ".*" I think so that the "[" is above the ".*" on the tree here
 	//Example in Test_ParsePointer if needed
-	case .POSTFIX_DEREFERENCE; return 1004;
+	case .POSTFIX_DEREFERENCE; return 1005;
 	//TODO Test to see if this precedence is ok
-	case .STRUCT_LITERAL; return 1005;
+	case .STRUCT_LITERAL; return 1006;
 	
 
 	//TODO Could put IF, THEN, ELSE here as binary operators for single line if statements.
@@ -2605,7 +2619,7 @@ GetArrayType :: inline (
 	}
 	return null, false;
 }
-
+//TODO Should we create array pointer in here at the same time for convenience? Probably would have to update some tests in that case
 GetOrCreateArrayType :: inline (
 	//TODO Could just pass in all_type_info_array if that seems better
 	cd : *CompilationData, 
@@ -2885,6 +2899,7 @@ GetValueOp :: inline (
 SetAddressReg :: inline (node : *BinaryNode, reg : RegDef, cd : *CompilationData) {
 	SetAddressNode(node, RegMem(reg), cd);
 }
+//TODO Maybe should rename this to make it more clear that we are grabbing address from sbp+n if not temp on stack
 SetAddressNode :: inline (node : *BinaryNode, address_op : MusicOperand, cd : *CompilationData) {
 	assert(node != null && address_op.operand_type != .NONE);
 	if node.code_ir.node_op_type == {
@@ -2927,6 +2942,8 @@ GetArrayAddressOp :: inline (
 {
 	assert(node.code_ir.t_info.type_enum == .ARRAY);
 	array_info := cast(*TypeInfoArray) node.code_ir.t_info;
+	//NOTE : This function deals with the fixed case by getting the array address 
+	//from sbp+n if memory address is not temp on the stack
 	SetAddressNode(node, address_op, cd);
 	if array_info.array_type == .VIEW {
 		//data address comes 8 bytes after count in array struct info
@@ -2937,6 +2954,8 @@ GetArrayAddressOp :: inline (
 	//Store the address of the array position by the index * element_size
 	CreateMInstr(.mul, RegMem(set_reg), index_op, Imm(array_info.element_type.runtime_size), d=cd);
 	CreateMInstr(.add, address_op, address_op, RegMem(set_reg), d=cd);
+	//TODO We can use this actually and update tests. Doesnt really matter though
+	// CreateMInstr(.add, address_op, RegMem(set_reg), d=cd);
 	}
 }
 GetArrayValueOp :: inline (
@@ -5256,12 +5275,19 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 		} else if node.code_ir.ir_type == CodeIRType.BINARY_OP {
 			//Array variables
 			//TODO CompilerError/ParserLevel (probably can check at the parser level for left and right)
-			assert(node.left != null && node.right != null);
+			// assert(node.left != null && node.right != null);
+			right_valid : bool = CheckValidNode(node.right, node, cd);
+			if !right_valid return false;
+			left_valid : bool = CheckValidNode(node.left, node, cd);
+			if !left_valid return false;
 
 			node.code_ir.code_value_type = CodeValueType.L_VALUE;
 
 			//TODO Should this be a separate data_type with its own type info?
 			//It would allow us to do type checking...
+			//TODO WE CAN REMOVE THIS CASE NOW SINCE TANO USES "(" instead of the array access
+			//CLEANUP ONCE EVERYTHING IS WORKING just leaving here for now as a reminder
+			//So this whole DATA_IR_MUNIT code block here is not used with the tano() syntax now
 			if node.left.code_ir.ir_type == .DATA_IR_MUNIT {
 				//TODO CompilerError (only allowed int for now but may allow floats later as well for rhythm... not sure)
 				assert(node.right.code_ir.t_info == *cd.int_type_info);
@@ -5334,6 +5360,60 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 					return false;
 				}
 
+				//TODO Can move this down to have 1 if once everything is working
+				value_type : *TypeInfo;
+				if node.left.code_ir.t_info.type_enum == {
+				case .POINTER;
+					pointer_info := cast(*TypeInfoPointer) node.left.code_ir.t_info;
+					value_type = pointer_info.pointer_to;
+				case .ARRAY;
+					array_info := cast(*TypeInfoArray) node.left.code_ir.t_info;
+					value_type = array_info.element_type;
+				}
+
+				#if 1 {
+				node.code_ir.op = PushStack(8, cd);
+				//TODO Should we pull this out as a function GetDataIndexAccessOp? Maybe if we need to reuse somewhere else
+				address_op : MusicOperand;
+				if node.left.code_ir.t_info.type_enum == {
+				case .POINTER;
+					address_op = GetValueOp(node.left, cd);
+				case .ARRAY;
+					address_op = node.code_ir.op;
+					GetArrayAddressOp(node.left, .ax, address_op, cd, with_index=false);
+				}
+				index_op : MusicOperand = GetValueOp(node.right, cd, .r0);
+				CreateMInstr(.mul, RegMem(.ax), index_op, Imm(value_type.runtime_size), d=cd);
+				CreateMInstr(.add, node.code_ir.op, address_op, RegMem(.ax), d=cd);
+
+				node.code_ir.ir_type = .STACK_VARIABLE; //TODO Change this name to .MEMORY_VARIABLE for heap memory
+				node.code_ir.t_info = value_type;
+				node.code_ir.node_op_type = .ADDRESS_IN_MEMORY;
+				} else #if 0 {
+				index_op : MusicOperand = GetValueOp(node.right, cd, .r0);
+				if node.left.code_ir.node_op_type == .ADDRESS_IN_MEMORY && node.left.value.token_type != .POSTFIX_DEREFERENCE {
+					//NOTE : This is to pass up the address which is already in memory in the case of 
+					//pointers already in memory and multi-dimensional arrays.
+					node.code_ir.op = node.left.code_ir.op;
+					CreateMInstr(.mul, RegMem(.ax), index_op, Imm(value_type.runtime_size), d=cd);
+					CreateMInstr(.add, node.code_ir.op, RegMem(.ax), d=cd);
+				} else {
+					node.code_ir.op = PushStack(8, cd);
+					if node.left.code_ir.t_info.type_enum == {
+					case .POINTER;
+						pointer_op : MusicOperand = GetValueOp(node.left, cd);
+						// CreateMInstr(.mov, node.code_ir.op, pointer_op, Imm(node.left.code_ir.t_info.runtime_size), d=cd);
+						CreateMInstr(.mul, RegMem(.ax), index_op, Imm(value_type.runtime_size), d=cd);
+						CreateMInstr(.add, node.code_ir.op, pointer_op, RegMem(.ax), d=cd);
+					case .ARRAY;
+						GetArrayAddressOp(node.left, .ax, node.code_ir.op, cd, true, index_op);
+					}
+				}
+
+				node.code_ir.ir_type = .STACK_VARIABLE; //TODO Change this name to .MEMORY_VARIABLE for heap memory
+				node.code_ir.t_info = value_type;
+				node.code_ir.node_op_type = .ADDRESS_IN_MEMORY; 
+				} else {
 				//If we already stored the address in memory then we can just keep using that value.
 				//I think this works overall. This was a case found in Test_CompileMultiArray
 				//eg f[1][2], when we get the second array access then the left node is already set
@@ -5371,21 +5451,13 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 					}
 				}
 
-				value_type : *TypeInfo;
-				if node.left.code_ir.t_info.type_enum == {
-				case .POINTER;
-					pointer_info := cast(*TypeInfoPointer) node.left.code_ir.t_info;
-					value_type = pointer_info.pointer_to;
-				case .ARRAY;
-					array_info := cast(*TypeInfoArray) node.left.code_ir.t_info;
-					value_type = array_info.element_type;
-				}
 				CreateMInstr(.mul, RegMem(.ax), node.right.code_ir.op, Imm(value_type.runtime_size), d=cd);
 				CreateMInstr(.add, node.code_ir.op, RegMem(.ax), d=cd);
 				
 				node.code_ir.ir_type = .STACK_VARIABLE; //TODO Change this name to .MEMORY_VARIABLE for heap memory
 				node.code_ir.t_info = value_type;
 				node.code_ir.node_op_type = .ADDRESS_IN_MEMORY; 
+				}
 			}
 		} else if node.code_ir.ir_type == CodeIRType.DATA_TYPE_INFO {
 			//TODO CompilerError (could likely do this at parser level as well).
@@ -5396,6 +5468,7 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 			assert(node.right != null);
 			if node.right.value.token_type == {
 			case #char "]";   array_type = .VIEW;
+			//TODO Remove this since we won't allow resizable arrays for now
 			case .DOUBLE_DOT; array_type = .RESIZABLE;
 			case; {
 				if !(IsConstant(node.right) && node.right.code_ir.t_info.type_enum == .INTEGER) {
@@ -5755,9 +5828,13 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 					assert(node.code_ir.op.values[0].type != .FLOAT && node.code_ir.op.values[1].type != .FLOAT);
 
 					//TODO If we have issues with pointers here maybe we need to get ADDRESS_IN_MEMORY instead
-					//We are doing that so this should work now even if we have ADRESS_IN_MEMORY
+					//We are doing that so this should work now even if we have ADDRESS_IN_MEMORY
+					//TODO ADDRESS_IN_MEMORY just passes the address on without storing it on the stack.
+					//If we have issues eventually we can do that but this seems fine for now.
 					stack_op := PushStack(8, cd);
 					node.code_ir.op = GetAddressOp(node, cd, stack_op);
+					//This is not an address in memory since we actually want to return the address
+					node.code_ir.node_op_type = NodeOpType.DEFAULT;
 					// node.code_ir.op = PushStack(8, cd);
 					// op_0, op_1 := GetMemoryAddressAsOperands(node.right.code_ir.op);
 					// CreateMInstr(.add, node.code_ir.op, op_0, op_1, d=cd);
@@ -6791,14 +6868,18 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 						node.code_ir.op = Imm(array_info.array_count);
 						node.code_ir.t_info = *cd.int_type_info;
 					case "data";
+						//TODO We could create this in GetOrCreateArrayType but maybe that is less clear overall
+						p_type : *TypeInfoPointer = GetOrCreateTypeInfoPointer(array_info.element_type, cd);
+						#if 1 {
+						node.code_ir.op = PushStack(p_type.runtime_size, cd);
+						GetArrayAddressOp(struct_node, .ax, node.code_ir.op, cd, with_index=false);
+						} else {
+						//TODO REMOVE this once above is working and tested
 						if struct_node.code_ir.node_op_type == .ADDRESS_IN_MEMORY {
 							//If we already have an address in memory then continue using it
 							//eg f[1].data[2] in Test_CompileMultiArray
-							node.code_ir = struct_node.code_ir;
+							node.code_ir.op = struct_node.code_ir.op;
 						} else {
-							p_type, found_p_type := GetTypeInfoPointer(array_info.element_type, cd);
-							assert(found_p_type);
-
 							//TODO FROM HERE I think we can just store this value on the stack.
 							//ALSO use new reusable registers for array access and write some
 							//integration tests for that and also something like x.*[0] and x[0].*
@@ -6807,10 +6888,11 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 							stack_op := PushStack(p_type.runtime_size, cd);
 							CreateMInstr(.add, stack_op, op_0, op_1, d=cd);
 
-							node.code_ir.ir_type = .STACK_VARIABLE;
 							node.code_ir.op = stack_op;
-							node.code_ir.t_info = p_type;
 						}
+						}
+						node.code_ir.ir_type = .STACK_VARIABLE;
+						node.code_ir.t_info = *p_type.info;
 					case;
 						//TODO CompilerError
 						assert(false, "Invalid fixed array member : %.\n", node.*);
@@ -6821,6 +6903,7 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 					//We set the struct info and then process the array like a struct below.
 					struct_info = *cd.array_view_struct_info;
 				case .RESIZABLE;
+					//TODO Should remove this since we are not using it for now
 					struct_info = *cd.resizable_array_struct_info;
 				}
 			}
@@ -7926,11 +8009,14 @@ EvaluateAssignment :: inline (node : *BinaryNode, cd : *CompilationData) {
 		else if left_t_info.type_enum == .POINTER {
 			//TODO Have to clear the stack here too since we could add pointers to the stack for multi pointers once we implement that.
 			//If this is the same as the default case other than type check, then we can do this in default case on bottom instead.
+	   	//Pointer can be either a pointer type or null type.
 	   	valid_pointer_type := left_t_info == right_t_info || right_t_info == cd.void_pointer_type_info;
 	   	ResetStack(cd);
-	   	//Pointer can be either a pointer type or null type.
-	   	//TODO CompilerError
-	   	assert(valid_pointer_type, "Invalid pointer assignment left : %, right : %.\n", node.left.*, node.right.*);
+	   	if !valid_pointer_type {
+				CreateCompErr(cd, .EVALUATION, node, 
+				sprint("Invalid pointer assignment left : %, right : %.\n", 
+					TypeToString(node.left.code_ir.t_info), TypeToString(node.right.code_ir.t_info)));
+			}
 	   } 
 	   /*DOC : Special case for function pointers where we copy from the function name.
 		If we have ":=" then we cannot have function overloads to infer the type so only can have 1 function with that name.

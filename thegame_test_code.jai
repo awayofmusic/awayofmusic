@@ -7829,3 +7829,1001 @@ DONE);
 	ContinueTest(*perm.test_data);
 
 } @ITest
+
+Test_CompileArray :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	perm : *Persist = GetPermanentStorage(game_memory);
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+
+		//TODO Use InitAllData here once we remove this
+		perm.all_data = InitAllData();
+		ResetAllRendererData(renderer_data);
+
+		SetupMusicAndRows(perm.all_data, TWO_ROWS);
+
+		//TODO Should we just create generally in here? I guess this makes things consistent across tests.
+		text_file := CreateTestTextFile(*ALL_NEXT_IDS, *perm.all_data.all_text_files);
+		WriteFileString(text_file,
+//TODO Could do sprint if needed to put things in here
+#string DONE
+main :: () {
+	fa : [4] int;
+	fc : int = fa.count;
+	fa[0] = 9;
+	fa.data[1] = 10;
+	fi : int = fa[0];
+	fi = fa.data[1];
+
+	a : [] int = fa;
+	c : int = a.count;
+	a[2] = 4;
+	a.data[3] = 5;
+	i : int = a[2];
+	i = a.data[3];
+}
+DONE);
+
+		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
+			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+	
+		array_resize(*perm.test_data.all_sub_tests, 12+1);
+	} 
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	text_op : *TextOpSpaceData;
+	if perm.all_data.all_text_op_space_data.count > 0 {
+		text_op = *perm.all_data.all_text_op_space_data[0];
+	}
+
+	if perm.test_data.sub_test_index == {
+	case 0; {
+		open_test := MakeTerminalEvent(.open_op, TEST_TEXT_NAME);
+		array_add(*perm.all_data.all_terminal_events, open_test);
+	}
+	case 1; DownUpInputMap(.TEXT_DEBUG_TOGGLE, game_input);
+	case 2; DownUpInputMap(.TEXT_COMPILE, game_input);
+	case 3; {
+		AddWatchDataForTest(.["fc", "fi", "c", "i", "fa"], text_op);
+		CodeBPForTest(6, *text_op.exec_info.debug_info, text_op.text_comp_data);
+		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+	}
+	case 4; DownUpInputMap(.TEXT_WATCH_PANE, game_input);
+	case 5; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 6; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 7; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 8; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 9; DownUpThisFrame(.ENTER, game_input);
+	case 10; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		bp := text_op.exec_info.debug_info.break_points[0];
+		AssertEquals(bp.asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(0, c_frame.function_scope.start_instr_index);
+			AssertEquals(text_op.text_comp_data.all_music_instructions.count-1, c_frame.function_scope.end_instr_index);
+			AssertEquals(6, c_frame.frame_vars.count);
+
+			fc_watch := GetWatch("fc", text_op.watch_data_rows);
+			AssertEquals("4", fc_watch.value_str);
+
+			fi_watch := GetWatch("fi", text_op.watch_data_rows);
+			AssertEquals("9", fi_watch.value_str);
+
+			fa0 := GetWatch("fa[0]", text_op.watch_data_rows);
+			AssertEquals("9", fa0.value_str);
+
+			fa1 := GetWatch("fa[1]", text_op.watch_data_rows);
+			AssertEquals("10", fa1.value_str);
+		}	
+
+		CodeBPForTest(13, *text_op.exec_info.debug_info, text_op.text_comp_data);
+		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);	
+	}
+	case 11; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		bp := text_op.exec_info.debug_info.break_points[1];
+		AssertEquals(bp.asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		fc_watch := GetWatch("fc", text_op.watch_data_rows);
+		AssertEquals("4", fc_watch.value_str);
+
+		fi_watch := GetWatch("fi", text_op.watch_data_rows);
+		AssertEquals("10", fi_watch.value_str);
+
+		i_watch := GetWatch("i", text_op.watch_data_rows);
+		AssertEquals("4", i_watch.value_str);
+
+		fa0 := GetWatch("fa[0]", text_op.watch_data_rows);
+		AssertEquals("9", fa0.value_str);
+
+		fa1 := GetWatch("fa[1]", text_op.watch_data_rows);
+		AssertEquals("10", fa1.value_str);
+
+		fa2 := GetWatch("fa[2]", text_op.watch_data_rows);
+		AssertEquals("4", fa2.value_str);
+
+		fa3 := GetWatch("fa[3]", text_op.watch_data_rows);
+		AssertEquals("5", fa3.value_str);
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 12; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		fc_watch := GetWatch("fc", text_op.watch_data_rows);
+		AssertEquals("4", fc_watch.value_str);
+
+		fi_watch := GetWatch("fi", text_op.watch_data_rows);
+		AssertEquals("10", fi_watch.value_str);
+
+		i_watch := GetWatch("i", text_op.watch_data_rows);
+		AssertEquals("5", i_watch.value_str);
+
+		fa0 := GetWatch("fa[0]", text_op.watch_data_rows);
+		AssertEquals("9", fa0.value_str);
+
+		fa1 := GetWatch("fa[1]", text_op.watch_data_rows);
+		AssertEquals("10", fa1.value_str);
+
+		fa2 := GetWatch("fa[2]", text_op.watch_data_rows);
+		AssertEquals("4", fa2.value_str);
+
+		fa3 := GetWatch("fa[3]", text_op.watch_data_rows);
+		AssertEquals("5", fa3.value_str);
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	}
+
+	ContinueTest(*perm.test_data);
+
+} @ITest
+
+Test_CompileMultiArray :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	perm : *Persist = GetPermanentStorage(game_memory);
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+
+		//TODO Use InitAllData here once we remove this
+		perm.all_data = InitAllData();
+		ResetAllRendererData(renderer_data);
+
+		SetupMusicAndRows(perm.all_data, TWO_ROWS);
+
+		//TODO Should we just create generally in here? I guess this makes things consistent across tests.
+		text_file := CreateTestTextFile(*ALL_NEXT_IDS, *perm.all_data.all_text_files);
+		WriteFileString(text_file,
+//TODO Could do sprint if needed to put things in here
+//TODO FROM HERE Update unit tests and write some simple multi-dimensional unit tests for fixed array and array view
+//and also 1 integration test with a 3d array combination for completion
+//ALSO cleanup code to remove old cases and check pointer case above
+//TODO Then do structs with arrays inside and maybe 1 multidimensional array
+//although honestly multi dimensional arrays should be discouraged due to memory confusion
+#string DONE
+main :: () {
+	f : [3][3] int;
+	f[2][1] = 5;
+	f[1].data[2] = 10;
+
+	t : int = f[1][2];
+	t = f[2].data[1];
+	t = f[1].count;
+
+	f_1 : [3] int = f[1];
+
+	d : *[3] int = f.data;
+	da : *int = f.data[2].data;
+	dp : *[3] int = *f[1];
+}
+DONE);
+
+		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
+			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+	
+		array_resize(*perm.test_data.all_sub_tests, 25+1);
+	} 
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	text_op : *TextOpSpaceData;
+	if perm.all_data.all_text_op_space_data.count > 0 {
+		text_op = *perm.all_data.all_text_op_space_data[0];
+	}
+
+	if perm.test_data.sub_test_index == {
+	case 0; {
+		open_test := MakeTerminalEvent(.open_op, TEST_TEXT_NAME);
+		array_add(*perm.all_data.all_terminal_events, open_test);
+	}
+	case 1; DownUpInputMap(.TEXT_DEBUG_TOGGLE, game_input);
+	case 2; DownUpInputMap(.TEXT_COMPILE, game_input);
+	case 3; {
+		comp_success : bool = AssertEquals(false, IsCompilationFail(text_op.text_comp_data));
+		if !comp_success {
+			EndTest(*perm.test_data);
+		} else {
+			AddWatchDataForTest(.["t", "f_1", "f", "d", "da", "dp"], text_op);
+			CodeBPForTest(6, *text_op.exec_info.debug_info, text_op.text_comp_data);
+			DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+		}
+	}
+	case 4; DownUpInputMap(.TEXT_WATCH_PANE, game_input);
+	case 5; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 6; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 7; DownUpThisFrame(.ENTER, game_input);
+	case 8; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 9; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 10; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 11; DownUpThisFrame(.ENTER, game_input);
+	case 12; DownUpThisFrame(.ARROW_UP, game_input);
+	case 13; DownUpThisFrame(.ENTER, game_input);
+	case 14; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		bp := text_op.exec_info.debug_info.break_points[0];
+		AssertEquals(bp.asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(0, c_frame.function_scope.start_instr_index);
+			AssertEquals(text_op.text_comp_data.all_music_instructions.count-1, c_frame.function_scope.end_instr_index);
+			AssertEquals(6, c_frame.frame_vars.count);
+
+			f := GetWatch("f", text_op.watch_data_rows);
+			AssertEquals("[3][3] int", f.type_str);
+
+			f21 := GetWatch("f[2][1]", text_op.watch_data_rows);
+			AssertEquals("5", f21.value_str);
+			f12 := GetWatch("f[1][2]", text_op.watch_data_rows);
+			AssertEquals("10", f12.value_str);
+
+			t_watch := GetWatch("t", text_op.watch_data_rows);
+			AssertEquals("10", t_watch.value_str);
+		}	
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 15; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		f21 := GetWatch("f[2][1]", text_op.watch_data_rows);
+		AssertEquals("5", f21.value_str);
+		f12 := GetWatch("f[1][2]", text_op.watch_data_rows);
+		AssertEquals("10", f12.value_str);
+
+		t_watch := GetWatch("t", text_op.watch_data_rows);
+		AssertEquals("5", t_watch.value_str);
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 16; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		f21 := GetWatch("f[2][1]", text_op.watch_data_rows);
+		AssertEquals("5", f21.value_str);
+		f12 := GetWatch("f[1][2]", text_op.watch_data_rows);
+		AssertEquals("10", f12.value_str);
+
+		t_watch := GetWatch("t", text_op.watch_data_rows);
+		AssertEquals("3", t_watch.value_str);
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 17; DownUpThisFrame(.ARROW_UP, game_input);
+	case 18; DownUpThisFrame(.ARROW_UP, game_input);
+	case 19; DownUpThisFrame(.ENTER, game_input);
+	case 20; DownUpThisFrame(.ARROW_UP, game_input);
+	case 21; DownUpThisFrame(.ENTER, game_input);
+	case 22; DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	case 23; DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	case 24; DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	case 25; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		f1_2 := GetWatch("f_1[2]", text_op.watch_data_rows);
+		AssertEquals("10", f1_2.value_str);
+		AssertEquals("int", f1_2.type_str);
+
+		d_watch := GetWatch("d", text_op.watch_data_rows);
+		AssertEquals("0", d_watch.value_str);
+		AssertEquals("*[3] int", d_watch.type_str);
+
+		da_watch := GetWatch("da", text_op.watch_data_rows);
+		AssertEquals("48", da_watch.value_str);
+		AssertEquals("*int", da_watch.type_str);
+
+		dp_watch := GetWatch("dp", text_op.watch_data_rows);
+		AssertEquals("24", dp_watch.value_str);
+		AssertEquals("*[3] int", dp_watch.type_str);
+	}
+	}
+
+	ContinueTest(*perm.test_data);
+
+} @ITest
+
+Test_MultiArrayView :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	perm : *Persist = GetPermanentStorage(game_memory);
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+
+		//TODO Use InitAllData here once we remove this
+		perm.all_data = InitAllData();
+		ResetAllRendererData(renderer_data);
+
+		SetupMusicAndRows(perm.all_data, TWO_ROWS);
+
+		//TODO Should we just create generally in here? I guess this makes things consistent across tests.
+		text_file := CreateTestTextFile(*ALL_NEXT_IDS, *perm.all_data.all_text_files);
+		WriteFileString(text_file,
+//Honestly, this is so confusing it should just be banned. Maybe we just allow fixed multi-dimensional arrays
+#string DONE
+main :: () {
+	f : [][] int = NewArray(3, [] int);
+	f[0] = NewArray(3, int);
+	f[1] = NewArray(3, int);
+	f[2] = NewArray(3, int);
+	f[2].data[1] = 5;
+	f[1][2] = 10;
+
+	t : int = f[1][2];
+	t = f[2].data[1];
+	t = f[1].count;
+
+	f_1 : [] int = f[1];
+
+	d : *[] int = f.data;
+	da : *int = f.data[0].data;
+	dp : *[] int = *f[1];
+}
+DONE);
+
+		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
+			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+	
+		array_resize(*perm.test_data.all_sub_tests, 25+1);
+	} 
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	text_op : *TextOpSpaceData;
+	if perm.all_data.all_text_op_space_data.count > 0 {
+		text_op = *perm.all_data.all_text_op_space_data[0];
+	}
+
+	if perm.test_data.sub_test_index == {
+	case 0; {
+		open_test := MakeTerminalEvent(.open_op, TEST_TEXT_NAME);
+		array_add(*perm.all_data.all_terminal_events, open_test);
+	}
+	case 1; DownUpInputMap(.TEXT_DEBUG_TOGGLE, game_input);
+	case 2; DownUpInputMap(.TEXT_COMPILE, game_input);
+	case 3; {
+		comp_success : bool = AssertEquals(false, IsCompilationFail(text_op.text_comp_data));
+		if !comp_success {
+			EndTest(*perm.test_data);
+		} else {
+			AddWatchDataForTest(.["t", "f_1", "f", "d", "da", "dp"], text_op);
+			CodeBPForTest(9, *text_op.exec_info.debug_info, text_op.text_comp_data);
+			DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+		}
+	}
+	case 4; DownUpInputMap(.TEXT_WATCH_PANE, game_input);
+	case 5; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 6; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 7; DownUpThisFrame(.ENTER, game_input);
+	case 8; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 9; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 10; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 11; DownUpThisFrame(.ENTER, game_input);
+	case 12; DownUpThisFrame(.ARROW_UP, game_input);
+	case 13; DownUpThisFrame(.ENTER, game_input);
+	case 14; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		bp := text_op.exec_info.debug_info.break_points[0];
+		AssertEquals(bp.asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(0, c_frame.function_scope.start_instr_index);
+			AssertEquals(text_op.text_comp_data.all_music_instructions.count-1, c_frame.function_scope.end_instr_index);
+			AssertEquals(6, c_frame.frame_vars.count);
+
+			f := GetWatch("f", text_op.watch_data_rows);
+			AssertEquals("[][] int", f.type_str);
+
+			f21 := GetWatch("f[2][1]", text_op.watch_data_rows);
+			AssertEquals("5", f21.value_str);
+			f12 := GetWatch("f[1][2]", text_op.watch_data_rows);
+			AssertEquals("10", f12.value_str);
+
+			t_watch := GetWatch("t", text_op.watch_data_rows);
+			AssertEquals("10", t_watch.value_str);
+		}	
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 15; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		f21 := GetWatch("f[2][1]", text_op.watch_data_rows);
+		AssertEquals("5", f21.value_str);
+		f12 := GetWatch("f[1][2]", text_op.watch_data_rows);
+		AssertEquals("10", f12.value_str);
+
+		t_watch := GetWatch("t", text_op.watch_data_rows);
+		AssertEquals("5", t_watch.value_str);
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 16; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		f21 := GetWatch("f[2][1]", text_op.watch_data_rows);
+		AssertEquals("5", f21.value_str);
+		f12 := GetWatch("f[1][2]", text_op.watch_data_rows);
+		AssertEquals("10", f12.value_str);
+
+		t_watch := GetWatch("t", text_op.watch_data_rows);
+		AssertEquals("3", t_watch.value_str);
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 17; DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	case 18; DownUpThisFrame(.ARROW_UP, game_input);
+	case 19; DownUpThisFrame(.ARROW_UP, game_input);
+	case 20; DownUpThisFrame(.ENTER, game_input);
+	case 21; DownUpThisFrame(.ARROW_UP, game_input);
+	case 22; DownUpThisFrame(.ENTER, game_input);
+	case 23; DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	case 24; DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	case 25; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		f1_2 := GetWatch("f_1[2]", text_op.watch_data_rows);
+		AssertEquals("10", f1_2.value_str);
+
+		d_watch := GetWatch("d", text_op.watch_data_rows);
+		array_address : int = perm.all_data.ram_memory.stack_size;
+		AssertEquals(sprint("%", array_address), d_watch.value_str);
+		AssertEquals("*[] int", d_watch.type_str);
+
+		da_watch := GetWatch("da", text_op.watch_data_rows);
+		//first actual int value
+		array_address = perm.all_data.ram_memory.stack_size + 16*3;
+		AssertEquals(sprint("%", array_address), da_watch.value_str);
+		AssertEquals("*int", da_watch.type_str);
+
+		dp_watch := GetWatch("dp", text_op.watch_data_rows);
+		//second array view
+		array_address = perm.all_data.ram_memory.stack_size+16;
+		AssertEquals(sprint("%", array_address), dp_watch.value_str);
+		AssertEquals("*[] int", dp_watch.type_str);
+	}
+	}
+
+	ContinueTest(*perm.test_data);
+
+} @ITest
+
+Test_MultiArrayViewFixed :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	perm : *Persist = GetPermanentStorage(game_memory);
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+
+		//TODO Use InitAllData here once we remove this
+		perm.all_data = InitAllData();
+		ResetAllRendererData(renderer_data);
+
+		SetupMusicAndRows(perm.all_data, TWO_ROWS);
+
+		//TODO Should we just create generally in here? I guess this makes things consistent across tests.
+		text_file := CreateTestTextFile(*ALL_NEXT_IDS, *perm.all_data.all_text_files);
+		WriteFileString(text_file,
+//Again this is SO confusing in terms of memory location, it should not even be used ever
+#string DONE
+main :: () {
+	f : [][3] int = NewArray(3, [3] int);
+	f[0] = int.[0,0,0];
+	f[1] = int.[0,0,0];
+	f[2] = int.[0,0,0];
+	f[2].data[1] = 5;
+	f[1].data[2] = 10;
+
+	t : int = f[1][2];
+	t = f[2].data[1];
+	t = f[1].count;
+
+	f_1 : [3] int = f[1];
+
+	d : *[3] int = f.data;
+	da : *int = f.data[1].data;
+	dp : *[3] int = *f[1];
+}
+DONE);
+
+		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
+			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+	
+		array_resize(*perm.test_data.all_sub_tests, 25+1);
+	} 
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	text_op : *TextOpSpaceData;
+	if perm.all_data.all_text_op_space_data.count > 0 {
+		text_op = *perm.all_data.all_text_op_space_data[0];
+	}
+
+	if perm.test_data.sub_test_index == {
+	case 0; {
+		open_test := MakeTerminalEvent(.open_op, TEST_TEXT_NAME);
+		array_add(*perm.all_data.all_terminal_events, open_test);
+	}
+	case 1; DownUpInputMap(.TEXT_DEBUG_TOGGLE, game_input);
+	case 2; DownUpInputMap(.TEXT_COMPILE, game_input);
+	case 3; {
+		comp_success : bool = AssertEquals(false, IsCompilationFail(text_op.text_comp_data));
+		if !comp_success {
+			EndTest(*perm.test_data);
+		} else {
+			AddWatchDataForTest(.["t", "f_1", "f", "d", "da", "dp"], text_op);
+			CodeBPForTest(9, *text_op.exec_info.debug_info, text_op.text_comp_data);
+			DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+		}
+	}
+	case 4; DownUpInputMap(.TEXT_WATCH_PANE, game_input);
+	case 5; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 6; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 7; DownUpThisFrame(.ENTER, game_input);
+	case 8; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 9; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 10; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 11; DownUpThisFrame(.ENTER, game_input);
+	case 12; DownUpThisFrame(.ARROW_UP, game_input);
+	case 13; DownUpThisFrame(.ENTER, game_input);
+	case 14; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		bp := text_op.exec_info.debug_info.break_points[0];
+		AssertEquals(bp.asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(0, c_frame.function_scope.start_instr_index);
+			AssertEquals(text_op.text_comp_data.all_music_instructions.count-1, c_frame.function_scope.end_instr_index);
+			AssertEquals(6, c_frame.frame_vars.count);
+
+			f := GetWatch("f", text_op.watch_data_rows);
+			AssertEquals("[][3] int", f.type_str);
+
+			f21 := GetWatch("f[2][1]", text_op.watch_data_rows);
+			AssertEquals("5", f21.value_str);
+			f12 := GetWatch("f[1][2]", text_op.watch_data_rows);
+			AssertEquals("10", f12.value_str);
+
+			t_watch := GetWatch("t", text_op.watch_data_rows);
+			AssertEquals("10", t_watch.value_str);
+		}	
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 15; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		f21 := GetWatch("f[2][1]", text_op.watch_data_rows);
+		AssertEquals("5", f21.value_str);
+		f12 := GetWatch("f[1][2]", text_op.watch_data_rows);
+		AssertEquals("10", f12.value_str);
+
+		t_watch := GetWatch("t", text_op.watch_data_rows);
+		AssertEquals("5", t_watch.value_str);
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 16; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		f21 := GetWatch("f[2][1]", text_op.watch_data_rows);
+		AssertEquals("5", f21.value_str);
+		f12 := GetWatch("f[1][2]", text_op.watch_data_rows);
+		AssertEquals("10", f12.value_str);
+
+		t_watch := GetWatch("t", text_op.watch_data_rows);
+		AssertEquals("3", t_watch.value_str);
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 17; DownUpThisFrame(.ARROW_UP, game_input);
+	case 18; DownUpThisFrame(.ARROW_UP, game_input);
+	case 19; DownUpThisFrame(.ENTER, game_input);
+	case 20; DownUpThisFrame(.ARROW_UP, game_input);
+	case 21; DownUpThisFrame(.ENTER, game_input);
+	case 22; DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	case 23; DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	case 24; DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	case 25; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		f1_2 := GetWatch("f_1[2]", text_op.watch_data_rows);
+		AssertEquals("10", f1_2.value_str);
+
+		d_watch := GetWatch("d", text_op.watch_data_rows);
+		array_address : int = perm.all_data.ram_memory.stack_size;
+		AssertEquals(sprint("%", array_address), d_watch.value_str);
+		AssertEquals("*[3] int", d_watch.type_str);
+
+		da_watch := GetWatch("da", text_op.watch_data_rows);
+		//first actual int value
+		array_address = perm.all_data.ram_memory.stack_size + 8*3;
+		AssertEquals(sprint("%", array_address), da_watch.value_str);
+		AssertEquals("*int", da_watch.type_str);
+
+		dp_watch := GetWatch("dp", text_op.watch_data_rows);
+		//second fixed array
+		array_address = perm.all_data.ram_memory.stack_size+8*3;
+		AssertEquals(sprint("%", array_address), dp_watch.value_str);
+		AssertEquals("*[3] int", dp_watch.type_str);
+	}
+	}
+
+	ContinueTest(*perm.test_data);
+
+} @ITest
+
+Test_MultiArray3D :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	perm : *Persist = GetPermanentStorage(game_memory);
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+
+		//TODO Use InitAllData here once we remove this
+		perm.all_data = InitAllData();
+		ResetAllRendererData(renderer_data);
+
+		SetupMusicAndRows(perm.all_data, TWO_ROWS);
+
+		//TODO Should we just create generally in here? I guess this makes things consistent across tests.
+		text_file := CreateTestTextFile(*ALL_NEXT_IDS, *perm.all_data.all_text_files);
+		WriteFileString(text_file,
+//Again this is SO confusing in terms of memory location, it should not even be used ever
+#string DONE
+main :: () {
+	f : [][2][2] int = NewArray(3, [2][2] int);
+	f[0][0] = int.[1,1];
+	f[1][1][1] = 3;
+	f[2].data[1].data[0] = 5;
+
+	t : int = f[1][1][1];
+	t = f[1][0].count;
+
+	f_1 : [2][2] int = f[1];
+
+	d : *[2][2] int = f.data;
+	da : *[2] int = f.data[0].data;
+	da2 : *int = f.data[0].data[1].data;
+	dp : *[2] int = *(f[0][0]);
+	dp2 : *int = *(f[0][1][0]);
+}
+DONE);
+
+		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
+			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+	
+		array_resize(*perm.test_data.all_sub_tests, 36+1);
+	} 
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	text_op : *TextOpSpaceData;
+	if perm.all_data.all_text_op_space_data.count > 0 {
+		text_op = *perm.all_data.all_text_op_space_data[0];
+	}
+
+	if perm.test_data.sub_test_index == {
+	case 0; {
+		open_test := MakeTerminalEvent(.open_op, TEST_TEXT_NAME);
+		array_add(*perm.all_data.all_terminal_events, open_test);
+	}
+	case 1; DownUpInputMap(.TEXT_DEBUG_TOGGLE, game_input);
+	case 2; DownUpInputMap(.TEXT_COMPILE, game_input);
+	case 3; {
+		comp_success : bool = AssertEquals(false, IsCompilationFail(text_op.text_comp_data));
+		if !comp_success {
+			EndTest(*perm.test_data);
+		} else {
+			AddWatchDataForTest(.["t", "f_1", "f", "d", "da", "dp", "da2", "dp2"], text_op);
+			CodeBPForTest(7, *text_op.exec_info.debug_info, text_op.text_comp_data);
+			DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+		}
+	}
+	case 4; DownUpInputMap(.TEXT_WATCH_PANE, game_input);
+	case 5; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 6; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 7; DownUpThisFrame(.ENTER, game_input);
+	case 9; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 10; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 11; DownUpThisFrame(.ENTER, game_input);
+	case 12; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 13; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 14; DownUpThisFrame(.ENTER, game_input);
+	case 15; DownUpThisFrame(.ARROW_UP, game_input);
+	case 16; DownUpThisFrame(.ARROW_UP, game_input);
+	case 17; DownUpThisFrame(.ARROW_UP, game_input);
+	case 18; DownUpThisFrame(.ENTER, game_input);
+	case 19; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 20; DownUpThisFrame(.ENTER, game_input);
+	case 21; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		bp := text_op.exec_info.debug_info.break_points[0];
+		AssertEquals(bp.asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(0, c_frame.function_scope.start_instr_index);
+			AssertEquals(text_op.text_comp_data.all_music_instructions.count-1, c_frame.function_scope.end_instr_index);
+			AssertEquals(8, c_frame.frame_vars.count);
+
+			f := GetWatch("f", text_op.watch_data_rows);
+			AssertEquals("[][2][2] int", f.type_str);
+
+			f00 := GetWatch("f[0][0]", text_op.watch_data_rows);
+			AssertEquals("[2] int", f00.type_str);
+
+			f000 := GetWatch("f[0][0][0]", text_op.watch_data_rows);
+			AssertEquals("1", f000.value_str);
+			AssertEquals("int", f000.type_str);
+
+			f001 := GetWatch("f[0][0][1]", text_op.watch_data_rows);
+			AssertEquals("1", f001.value_str);
+			AssertEquals("int", f001.type_str);
+
+			f111 := GetWatch("f[1][1][1]", text_op.watch_data_rows);
+			AssertEquals("3", f111.value_str);
+			AssertEquals("int", f111.type_str);
+
+			t_watch := GetWatch("t", text_op.watch_data_rows);
+			AssertEquals("3", t_watch.value_str);
+		}	
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 22; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		f111 := GetWatch("f[1][1][1]", text_op.watch_data_rows);
+		AssertEquals("3", f111.value_str);
+		AssertEquals("int", f111.type_str);
+
+		t_watch := GetWatch("t", text_op.watch_data_rows);
+		AssertEquals("2", t_watch.value_str);
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+	}
+	case 23; DownUpThisFrame(.ARROW_UP, game_input);
+	case 24; DownUpThisFrame(.ARROW_UP, game_input);
+	case 25; DownUpThisFrame(.ENTER, game_input);
+	case 26; DownUpThisFrame(.ARROW_UP, game_input);
+	case 27; DownUpThisFrame(.ENTER, game_input);
+	case 28; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 29; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 30; DownUpThisFrame(.ENTER, game_input);
+	case 31; DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	case 32; DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	case 33; DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	case 34; DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	case 35; DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	case 36; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		f1_1 := GetWatch("f_1[1][1]", text_op.watch_data_rows);
+		AssertEquals("3", f1_1.value_str);
+
+		d_watch := GetWatch("d", text_op.watch_data_rows);
+		array_address : int = perm.all_data.ram_memory.stack_size;
+		AssertEquals(sprint("%", array_address), d_watch.value_str);
+		AssertEquals("*[2][2] int", d_watch.type_str);
+
+		da_watch := GetWatch("da", text_op.watch_data_rows);
+		//first actual int value
+		array_address = perm.all_data.ram_memory.stack_size;
+		AssertEquals(sprint("%", array_address), da_watch.value_str);
+		AssertEquals("*[2] int", da_watch.type_str);
+
+		dp_watch := GetWatch("dp", text_op.watch_data_rows);
+		//second fixed array
+		AssertEquals(sprint("%", array_address), dp_watch.value_str);
+		AssertEquals("*[2] int", dp_watch.type_str);
+
+		da2_watch := GetWatch("da2", text_op.watch_data_rows);
+		//first actual int value
+		array_address = perm.all_data.ram_memory.stack_size + 8*2;
+		AssertEquals(sprint("%", array_address), da2_watch.value_str);
+		AssertEquals("*int", da2_watch.type_str);
+
+		dp2_watch := GetWatch("dp2", text_op.watch_data_rows);
+		//second fixed array
+		AssertEquals(sprint("%", array_address), dp2_watch.value_str);
+		AssertEquals("*int", dp2_watch.type_str);
+	}
+	}
+
+	ContinueTest(*perm.test_data);
+
+} @ITest
+
+Test_PointerArrayAccess :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	perm : *Persist = GetPermanentStorage(game_memory);
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+
+		//TODO Use InitAllData here once we remove this
+		perm.all_data = InitAllData();
+		ResetAllRendererData(renderer_data);
+
+		SetupMusicAndRows(perm.all_data, TWO_ROWS);
+
+		//TODO Should we just create generally in here? I guess this makes things consistent across tests.
+		text_file := CreateTestTextFile(*ALL_NEXT_IDS, *perm.all_data.all_text_files);
+		WriteFileString(text_file,
+//TODO Could do sprint if needed to put things in here
+#string DONE
+main :: () {
+	f : *float;
+	#asm { alloc 32, f; }
+
+	f[0] = 1.1;
+	f[1] = 2.2;
+	f[2] = 3.3;
+	f[3] = 4.4;
+
+	av : [] float;
+	av.data = f;
+	av.count = 4;
+
+	pf : *float = *f[3];
+}
+DONE);
+
+		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
+			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+	
+		array_resize(*perm.test_data.all_sub_tests, 7+1);
+	} 
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	text_op : *TextOpSpaceData;
+	if perm.all_data.all_text_op_space_data.count > 0 {
+		text_op = *perm.all_data.all_text_op_space_data[0];
+	}
+
+	if perm.test_data.sub_test_index == {
+	case 0; {
+		open_test := MakeTerminalEvent(.open_op, TEST_TEXT_NAME);
+		array_add(*perm.all_data.all_terminal_events, open_test);
+	}
+	case 1; DownUpInputMap(.TEXT_DEBUG_TOGGLE, game_input);
+	case 2; DownUpInputMap(.TEXT_COMPILE, game_input);
+	case 3; {
+		comp_success : bool = AssertEquals(false, IsCompilationFail(text_op.text_comp_data));
+		if !comp_success {
+			EndTest(*perm.test_data);
+		} else {
+			AddWatchDataForTest(.["f", "av", "pf"], text_op);
+			CodeBPForTest(14, *text_op.exec_info.debug_info, text_op.text_comp_data);
+			DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+		}
+	}
+	case 4; DownUpInputMap(.TEXT_WATCH_PANE, game_input);
+	case 5; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 6; DownUpThisFrame(.ENTER, game_input);
+	case 7; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		bp := text_op.exec_info.debug_info.break_points[0];
+		AssertEquals(bp.asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
+		if count_equals {
+			c_frame := text_op.exec_info.debug_info.debug_call_stack[0];
+			AssertEquals(ScopeDataType.FUNCTION_SCOPE, c_frame.function_scope.scope_type);
+			AssertEquals(0, c_frame.function_scope.start_instr_index);
+			AssertEquals(text_op.text_comp_data.all_music_instructions.count-1, c_frame.function_scope.end_instr_index);
+			AssertEquals(3, c_frame.frame_vars.count);
+
+			f_watch := GetWatch("f", text_op.watch_data_rows);
+			AssertEquals(sprint("%", perm.all_data.ram_memory.stack_size), f_watch.value_str);
+			AssertEquals("*float", f_watch.type_str);
+
+			f0 : float64 = GetMemValue(perm.all_data.ram_memory.stack_size, float64, perm.all_data.ram_memory);
+			AssertFloat64Equals(1.1, f0);
+			f1 : float64 = GetMemValue(perm.all_data.ram_memory.stack_size+8, float64, perm.all_data.ram_memory);
+			AssertFloat64Equals(2.2, f1);
+			f2 : float64 = GetMemValue(perm.all_data.ram_memory.stack_size+16, float64, perm.all_data.ram_memory);
+			AssertFloat64Equals(3.3, f2);
+			f3 : float64 = GetMemValue(perm.all_data.ram_memory.stack_size+24, float64, perm.all_data.ram_memory);
+			AssertFloat64Equals(4.4, f3);
+
+			av0 := GetWatch("av[0]", text_op.watch_data_rows);
+			AssertEquals("1.1", av0.value_str);
+			AssertEquals("float", av0.type_str);
+			av1 := GetWatch("av[1]", text_op.watch_data_rows);
+			AssertEquals("2.2", av1.value_str);
+			AssertEquals("float", av1.type_str);
+			av2 := GetWatch("av[2]", text_op.watch_data_rows);
+			AssertEquals("3.3", av2.value_str);
+			AssertEquals("float", av2.type_str);
+			av3 := GetWatch("av[3]", text_op.watch_data_rows);
+			AssertEquals("4.4", av3.value_str);
+			AssertEquals("float", av3.type_str);
+
+			pf := GetWatch("pf", text_op.watch_data_rows);
+			array_address : int = perm.all_data.ram_memory.stack_size + 8*3;
+			AssertEquals(sprint("%", array_address), pf.value_str);
+			AssertEquals("*float", pf.type_str);
+		}	
+
+	}
+	}
+
+	ContinueTest(*perm.test_data);
+
+} @ITest

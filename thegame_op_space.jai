@@ -861,9 +861,10 @@ TypeToString :: (input_t_info : *TypeInfo) -> string {
 	case .ARRAY; {
 		a_type := cast(*TypeInfoArray) t_info;
 		if a_type.array_type == {
-		case .VIEW; append(*sb, "[] ");
-		case .FIXED; print_to_builder(*sb, "[%] ", a_type.array_count);
+		case .VIEW; append(*sb, "[]");
+		case .FIXED; print_to_builder(*sb, "[%]", a_type.array_count);
 		}
+		if a_type.element_type.type_enum != .ARRAY append(*sb, " ");
 		//Recurse on TypeToString time in case the array value type is a pointer or array
 		a_type_string : string = TypeToString(a_type.element_type);
 		append(*sb, a_type_string);

@@ -44,11 +44,16 @@ main :: () {
 		x += it;
 	}
 
+	//TODO This should work with autocast for flexible array size creation
 	x = 0;
 	tano(1,0) ~= x;
-	for int.[-3,-3,-3] {
-		tano(1,it_index+1) ~= x+it;
-		x += it;
+	arr := ([] int).[
+		int.[0,4,7],
+		int.[0,5,7],
+		int.[0,6,7]
+	];
+	for arr {
+		tano(1,it_index+1) ~= it;
 	}
 }
 
