@@ -837,6 +837,12 @@ ComputeWatchValueAndType :: inline (watch_data : *WatchData, text_op : *TextOpSp
 }
 //TODO Put this in thegame_code since it is a general type string generator
 TypeToString :: (input_t_info : *TypeInfo) -> string {
+	//TODO Should we crash or is this better so people can report it and the program doesnt crash?
+	if input_t_info == null {
+		print_stack_trace(context.stack_trace, "REPORT THIS ERROR : Invalid Null *TypeInfo pointer.\n");
+		return "error type dne";
+	}
+
 	t_info : *TypeInfo = input_t_info;
 	sb : String_Builder;
 
@@ -928,7 +934,7 @@ VisitWatchNodes :: (node : *BinaryNode, vwd : VisitWatchData) -> is_valid : bool
 		//to process special values like ram(sbp+ax)
 		if node.left.value.token_string == {
 		case "ram"; {
-			if node.right.code_ir.t_info.type_enum != .INTEGER {
+			if node.right == null || node.right.code_ir.t_info == null || node.right.code_ir.t_info.type_enum != .INTEGER {
 				SetWatchError(vwd.watch_data, "ram() requires integer input.");
 				return false;
 			}
@@ -964,20 +970,45 @@ VisitWatchNodes :: (node : *BinaryNode, vwd : VisitWatchData) -> is_valid : bool
 	case #char "."; {
 		//TODO This is likely an InternalError so can possibly leave as an assertions or log.
 		//TODO This can also be checked at the parser level
-		assert(node.left != null && node.right != null);
+		// assert(node.left != null && node.right != null);
+		if node.left == null || node.right == null {
+			SetWatchError(vwd.watch_data, "Invalid expression");
+			return false;
+		}
 		//We only pass the node up now since we compute member access at the member node
 		//so that we can pass up the chain if we have an array or dereference.
 		node.code_ir = node.right.code_ir; 
 		node.code_ir.code_value_type = .L_VALUE;
 		return true;
 	}
+	case .POSTFIX_DEREFERENCE; {
+		if node.left == null || node.left.code_ir.t_info == null || node.left.code_ir.t_info.type_enum != .POINTER {
+			SetWatchError(vwd.watch_data, 
+			tprint("% not a pointer.", node.left.value.token_string));
+			return false;			
+		}
+
+		ram_address : int = ComputeRAMLocation(node.left.code_ir.op, debug_info.debug_all_registers, vwd.all_data.ram_memory);
+		pointer_value := GetMemValue(ram_address, int, vwd.all_data.ram_memory);
+		node.code_ir.op = RamMem(pointer_value);
+		p_type := cast(*TypeInfoPointer) node.left.code_ir.t_info;
+		node.code_ir.t_info = p_type.pointer_to;
+		node.code_ir.code_value_type = CodeValueType.L_VALUE;
+		return true;
+	}
 	case #char "["; {
 		//TODO CompilerError/ParserLevel (probably can check at the parser level for left and right)
-		assert(node.left != null && node.right != null);
-		if node.code_ir.ir_type != CodeIRType.BINARY_OP {
+		// assert(node.left != null && node.right != null);
+		if node.left == null || node.right == null {
+			SetWatchError(vwd.watch_data, "Invalid expression.");
+			return false;			
+		} else if node.code_ir.ir_type != CodeIRType.BINARY_OP {
 			SetWatchError(vwd.watch_data, "\"[\" is a binary op.");
 			return false;
-		} else if node.right.code_ir.t_info.type_enum != .INTEGER {
+		} else if node.left.code_ir.t_info == null {
+			SetWatchError(vwd.watch_data, "Invalid array access type.");
+			return false;						
+		} else if node.right.code_ir.t_info == null || node.right.code_ir.t_info.type_enum != .INTEGER {
 			SetWatchError(vwd.watch_data, "Need an integer offset.");
 			return false;			
 		}
@@ -1001,6 +1032,9 @@ VisitWatchNodes :: (node : *BinaryNode, vwd : VisitWatchData) -> is_valid : bool
 				array_data_address += 8;
 				array_data_address = GetMemValue(array_data_address, int, vwd.all_data.ram_memory);
 			}
+		case;
+			SetWatchError(vwd.watch_data, "Invalid array access type.");
+			return false;						
 		}
 
 		array_offset : int = ComputeOperandInt(node.right.code_ir.op, debug_info.debug_all_registers, vwd.all_data.ram_memory);
@@ -1050,78 +1084,70 @@ VisitWatchNodes :: (node : *BinaryNode, vwd : VisitWatchData) -> is_valid : bool
 			struct_info : *TypeInfoStruct = cast(*TypeInfoStruct) struct_node.code_ir.t_info;
 
 			//TODO if struct_node == ARRAY then check array view and fixed for data and count vars explicitly
-
-			//TODO CAn remove this entirely once we store struct_members in struct_info
-			member_info, found_member_info := GetStructMember(node.value.token_string, struct_info);
-			//TODO this should just put a watch error here member not found
-			assert(found_member_info);
-
-			node.code_ir.op = AddOperandOffset(member_info.offset_in_bytes, struct_node.code_ir.op);
-			node.code_ir.t_info = member_info.t_info;
-
-			#if 0 {
-			node.code_ir.code_value_type = CodeValueType.L_VALUE;
-			node.code_ir.ir_type = .STACK_VARIABLE;
-			if struct_node.code_ir.t_info.type_enum == .ARRAY && member_info.name == "data" {
-				//NOTE : We process this here so it can be the same as other structs except
-				//we just the data member for arrays to the proper pointer type here.
-				//TODO Could use something like this for other auto-casting behavior eventually.
-				t_pointer_info := GetOrCreateTypeInfoPointer(array_info.element_type, cd);
-				node.code_ir.t_info = cast(*TypeInfo) t_pointer_info;
-			} else {
-				node.code_ir.t_info = member_info.t_info;
-			}
-
-			/*TODO Can be do .POINTER auto-dereference in a similar way as arrays here as well?
-			*/
 			array_info : *TypeInfoArray;
 			if struct_node.code_ir.t_info.type_enum == .ARRAY {
-				array_info = cast(*TypeInfoArray) struct_node.code_ir.t_info;
+			array_info = cast(*TypeInfoArray) struct_node.code_ir.t_info;
 				if array_info.array_type == {
 				case .FIXED;
 					if node.value.token_string == {
 					case "count";
-						/*TODO Technically we can remove some instruction in this case since we only need the integer
-						for cases like f[1].count then we would have fetched the array in memory but then we only
-						need the count which is at compile-time. I will leave the superfluous instructions for now,
-						but we could maybe remove them later...
-						*/
-						//TODO Should this ir data be different since it's a compile-time integer?
-						node.code_ir.ir_type = .INTEGER;
-						//TODO Maybe this should be more systematic when we are setting operands up the tree.
-						FreeOperandRegisters(struct_node.code_ir.op, *cd.all_registers);
 						node.code_ir.op = Imm(array_info.array_count);
 						node.code_ir.t_info = *cd.int_type_info;
 					case "data";
-						p_type : *TypeInfoPointer;
-						found_p_type : bool = false;
-						for cd.all_type_info_pointer if it.pointer_to == array_info.element_type {
-							p_type = it;
-							found_p_type = true;
+						//TODO Should we just GetOrCreateTypeInfoPointer? This is the debugger though so maybe
+						//we should check why were not creating it in the compiler if this errors here.
+						p_type, found_p_type := GetTypeInfoPointer(array_info.element_type, cd);
+						if !found_p_type {
+							SetWatchError(vwd.watch_data, 
+							tprint("Pointer type % not found.", TypeToString(p_type)));
+							log_error("Pointer type % not found.\n", array_info.element_type.*);
+							return false;	
 						}
-						assert(found_p_type);
 
-						//TODO Could do this as GetArrayData function in case we change order later.
-						reg, reg_reused := OLDGetOrReuseRegister(struct_node, cd);
-						op_0, op_1 := GetMemoryAddressAsOperands(struct_node.code_ir.op);
-						CreateMInstr(.add, RegMem(reg), op_0, op_1, d=cd);
-
-						node.code_ir.ir_type = .REGISTER;
-						node.code_ir.op = RegMem(reg);
+						ram_address : int = ComputeRAMLocation(struct_node.code_ir.op, debug_info.debug_all_registers, vwd.all_data.ram_memory);
+						array_data_address := GetMemValue(ram_address, int, vwd.all_data.ram_memory);
+						node.code_ir.op = RamMem(array_data_address);
 						node.code_ir.t_info = p_type;
 					case;
-						//TODO CompilerError
-						assert(false, "Invalid fixed array member : %.\n", node.*);
+						SetWatchError(vwd.watch_data, 
+						tprint("\"%\" not a member.", node.value.token_string));
 					}
 					//Return here since we do not process fixed arrays as structs.
-					return;
+					return true;
 				case .VIEW;
 					//We set the struct info and then process the array like a struct below.
 					struct_info = *cd.array_view_struct_info;
 				case .RESIZABLE;
+					//TODO REMOVE THIS since we are not using them
 					struct_info = *cd.resizable_array_struct_info;
 				}
 			}
+
+			//NOTE : We set array view to struct above so we just need to check for struct type here
+			//We also return on fixed arrays above so we don't check that down here at all.
+			if !AllOrEquals(struct_info.type_enum, STRUCT_TYPE_INTERNAL) {
+				SetWatchError(vwd.watch_data, 
+				tprint("\"%\" not a member.", node.value.token_string));
+				return false;				
+			}
+
+			member_info, found_member_info := GetStructMember(node.value.token_string, struct_info);
+			if !found_member_info {
+				SetWatchError(vwd.watch_data, 
+				tprint("\"%\" not a member.", node.value.token_string));
+				return false;
+			}
+
+			node.code_ir.code_value_type = CodeValueType.L_VALUE;
+			node.code_ir.op = AddOperandOffset(member_info.offset_in_bytes, struct_node.code_ir.op);
+			//TODO We could make this a function as we reuse it from the compiler array struct member .data checking
+			if struct_node.code_ir.t_info.type_enum == .ARRAY && member_info.name == "data" {
+				//NOTE : We process this here so it can be the same as other structs except
+				//we just the data member for arrays to the proper pointer type here.
+				t_pointer_info := GetOrCreateTypeInfoPointer(array_info.element_type, cd);
+				node.code_ir.t_info = cast(*TypeInfo) t_pointer_info;
+			} else {
+				node.code_ir.t_info = member_info.t_info;
 			}
 		} else {
 			//We can check in here if we either have a stack var or heap memory or a function name.
@@ -1232,6 +1258,7 @@ VisitWatchNodes :: (node : *BinaryNode, vwd : VisitWatchData) -> is_valid : bool
 	// case .ISNOTEQUAL; #through;
 	// case #char ">"; #through;
 	// case #char "<"; #through;
+	case #char "/"; #through;
 	case #char "*"; #through;
 	case #char "-"; #through;
 	case #char "+"; {
@@ -1319,6 +1346,8 @@ VisitWatchNodes :: (node : *BinaryNode, vwd : VisitWatchData) -> is_valid : bool
 			//Need to do some auto type casting or something i guess
 			if node.value.token_type == {
 			//TODO Logical operators and other arithemtic ops
+			case #char "%"; #through;
+			case #char "/"; #through;
 			case #char "-"; #through;
 			case #char "+"; #through;
 			case #char "*"; {
@@ -1343,6 +1372,8 @@ VisitWatchNodes :: (node : *BinaryNode, vwd : VisitWatchData) -> is_valid : bool
 						case #char "-"; fv = left_f - right_f;
 						case #char "+"; fv = left_f + right_f;
 						case #char "*"; fv = left_f * right_f;
+						case #char "/"; fv = left_f / right_f;
+						case #char "%"; fv = fmod_cycling(left_f, right_f);
 						}
 						node.code_ir.op = FImm(fv);
 						node.code_ir.t_info = *cd.float_type_info;
@@ -1352,6 +1383,8 @@ VisitWatchNodes :: (node : *BinaryNode, vwd : VisitWatchData) -> is_valid : bool
 						case #char "-"; iv = left_value.int_value - right_value.int_value;
 						case #char "+"; iv = left_value.int_value + right_value.int_value;
 						case #char "*"; iv = left_value.int_value * right_value.int_value;
+						case #char "/"; iv = left_value.int_value / right_value.int_value;
+						case #char "%"; iv = left_value.int_value % right_value.int_value;
 						}
 						node.code_ir.op = Imm(iv);
 						node.code_ir.t_info = *cd.int_type_info;

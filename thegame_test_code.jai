@@ -10440,7 +10440,9 @@ DONE,,test_alloc);
 		if IsCompilationFail(text_op.text_comp_data) {
 			EndTest(*perm.test_data);
 		} else {
-			AddWatchDataForTest(.["t", "it", "it_index", "i", "i_ind"], text_op);
+			AddWatchDataForTest(.["t", "it", "it_index", "i", "i_ind", 
+				"t.at2[2].arr.data", "t.at2[2].arr.count", "t.pa.*.data", "t.pa.*.count",
+				"t.parr.*.data", "t.parr.*.count"], text_op);
 			CodeBPForTest(13, *text_op.exec_info.debug_info, text_op.text_comp_data);
 			DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
 		}
@@ -10910,6 +10912,31 @@ DONE,,test_alloc);
 		AssertEquals(true, it_watch.is_error);
 		index_watch := GetWatch("it_index", text_op.watch_data_rows);
 		AssertEquals(true, index_watch.is_error);
+
+		t2_info := GetTypeInfoStructByName("T2", text_op.text_comp_data.all_type_info_struct);
+
+		t_at2_arr_data := GetWatch("t.at2[2].arr.data", text_op.watch_data_rows);
+		array_address : int = perm.all_data.ram_memory.stack_size + 3*t2_info.runtime_size;
+		AssertEquals(sprint("%", array_address), t_at2_arr_data.value_str);
+		AssertEquals("*float", t_at2_arr_data.type_str);
+		t_at2_arr_count := GetWatch("t.at2[2].arr.count", text_op.watch_data_rows); 
+		AssertEquals("2", t_at2_arr_count.value_str);
+		AssertEquals("int", t_at2_arr_count.type_str);
+
+		t_pa_data := GetWatch("t.pa.*.data", text_op.watch_data_rows); 
+		array_address = perm.all_data.ram_memory.stack_size;
+		AssertEquals(sprint("%", array_address), t_pa_data.value_str);
+		AssertEquals("*T2", t_pa_data.type_str);
+		t_pa_count := GetWatch("t.pa.*.count", text_op.watch_data_rows);
+		AssertEquals("3", t_pa_count.value_str);
+		AssertEquals("int", t_pa_count.type_str);
+
+		t_parr_data := GetWatch("t.parr.*.data", text_op.watch_data_rows); 
+		AssertEquals("16", t_parr_data.value_str);
+		AssertEquals("*int", t_parr_data.type_str);
+		t_parr_count := GetWatch("t.parr.*.count", text_op.watch_data_rows);
+		AssertEquals("3", t_parr_count.value_str);
+		AssertEquals("int", t_parr_count.type_str);
 
 		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
 	}
