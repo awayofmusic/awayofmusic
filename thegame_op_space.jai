@@ -1049,15 +1049,11 @@ VisitWatchNodes :: (node : *BinaryNode, vwd : VisitWatchData) -> is_valid : bool
 			struct_node : *BinaryNode = l_node.parent.left;
 			struct_info : *TypeInfoStruct = cast(*TypeInfoStruct) struct_node.code_ir.t_info;
 
+			//TODO if struct_node == ARRAY then check array view and fixed for data and count vars explicitly
+
 			//TODO CAn remove this entirely once we store struct_members in struct_info
-			member_info : TypeInfoStructMember;
-			found_member_info : bool = false;
-			if l_node.value.token_type == .IDENT {
-				member_info, found_member_info = GetStructMember(l_node.value.token_string, struct_info);
-			} else {
-				//This is for both array access "[" and dereference ".*" where the member node will be on the left
-				member_info, found_member_info = GetStructMember(l_node.left.value.token_string, struct_info);
-			}
+			member_info, found_member_info := GetStructMember(node.value.token_string, struct_info);
+			//TODO this should just put a watch error here member not found
 			assert(found_member_info);
 
 			node.code_ir.op = AddOperandOffset(member_info.offset_in_bytes, struct_node.code_ir.op);
