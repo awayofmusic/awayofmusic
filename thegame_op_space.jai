@@ -187,13 +187,23 @@ MakeWatchData :: inline () -> WatchData {
 }
 IsWatchDroppable :: inline (wd : WatchData) -> bool {
 	is_droppable : bool = wd.node != null && wd.node.code_ir.t_info != null &&
-		AllOrEquals(wd.node.code_ir.t_info.type_enum,
-		.[.ARRAY,.STRUCT,.NEUME,.TANO]);
+		(AllOrEquals(wd.node.code_ir.t_info.type_enum, .[.ARRAY,.STRUCT,.NEUME,.TANO])
+		 ||
+		 IsWatchCommaArray(wd.node));
 	return is_droppable;
 }
 IsDroppedRow :: inline (wd : WatchData) -> bool {
 	is_drop_row : bool = wd.watch_indent > 0;
 	return is_drop_row;
+}
+IsWatchCommaArray :: inline (node : *BinaryNode) -> bool {
+	is_watch_array_comma : bool = node.parent == null && 
+		node.value.token_type == #char "," &&
+		node.right != null && node.right.code_ir.t_info != null &&
+		node.right.code_ir.t_info.type_enum == .INTEGER &&
+		node.left != null && node.left.code_ir.t_info != null &&
+		AllOrEquals(node.left.code_ir.t_info.type_enum, .[.ARRAY,.POINTER]);
+	return is_watch_array_comma;
 }
 /*NOTE : This is a convenience function for tests. Maybe we can put it in
 thegame_test instead of here. Maybe the allocators will change later and also
@@ -443,6 +453,12 @@ EvaluateWatchData :: inline (
 		//We don't reset the name because we need to parse based on the name
 		ResetWatchData(watch_data, reset_name=false);
 		ResetCodeLexer(*watch_cd.lexer);
+		//TODO This wasn't getting reset after moving into a struct. We could just create call 
+		//MakeCompilationData(,,new_watch_comp_alloc) and see if that works with a new allocator
+		//OR Make a ResetCompilationData function and put these and lexer reset above in that and then reset
+		//anything else that's needed. We are only using this for lexing and parsing here. No compilation actually happens
+		//so alot of the data is not actually used other than errors and tree creation.
+		ResetCompilationErrors(*watch_cd.comp_errors);
 		//TODO We reset them all for good measure but we could just do the ones we need. 
 		#insert #run SetResizableArrays(CompilationData, 
 		"array_reset_keeping_memory(*watch_cd.%);\n");
@@ -454,6 +470,7 @@ EvaluateWatchData :: inline (
 		//TODO ALSO check that lexer_tokens.count > 0 ie empty string
 		LexCodeTokens(*watch_cd.lexer, watch_data.name,,temp);
 		if watch_cd.lexer.lexer_errors.all_compiler_errors.count > 0 {
+			// SetWatchError(watch_data, INVALID_WATCH_EXPR);
 			SetWatchError(watch_data, watch_cd.lexer.lexer_errors.all_compiler_errors[0].msg);
 			return;
 		}
@@ -476,8 +493,9 @@ EvaluateWatchData :: inline (
 		watch_data.node = ParseExpression(watch_cd,S64_MIN,,watch_alloc);
 		if watch_cd.comp_errors.all_compiler_errors.count > 0 {
 			//TODO We take the first error here. I think that's fine.
-			//Maybe we could just write "Invalid expression" if this does not makes sense.
+			//Maybe we could just write INVALID_WATCH_EXPR if this does not makes sense.
 			SetWatchError(watch_data, watch_cd.comp_errors.all_compiler_errors[0].msg);
+			// SetWatchError(watch_data, INVALID_WATCH_EXPR);
 			return;									
 		}
 	}
@@ -611,19 +629,32 @@ DropWatchRow :: inline (
 		//TODO Could just put an else here but this is explicit.
 		else if !is_dropped {
 			//TODO Should we just make this the same as struct and then output array with count like in remedy
-			if watch_data.node.code_ir.t_info.type_enum == .ARRAY {
+			if watch_data.node.code_ir.t_info.type_enum == .ARRAY || IsWatchCommaArray(watch_data.node) {
 				a_type := cast(*TypeInfoArray) watch_data.node.code_ir.t_info;
 				array_watch_count : int;
-				if a_type.array_type == {
-				case .FIXED;
-					array_watch_count = a_type.array_count;
-				case .VIEW;
-					count_address : int = ComputeRAMLocation(watch_data.node.code_ir.op, all_data.all_register_memory, all_data.ram_memory);
-					array_watch_count = GetMemValue(count_address, int, all_data.ram_memory);
+				array_watch_name : string;
+				if IsWatchCommaArray(watch_data.node) {
+					array_watch_count = ComputeOperandInt(watch_data.node.right.code_ir.op, 
+						text_op.exec_info.debug_info.debug_all_registers, all_data.ram_memory);
+					//Should we have a max here? Just to prevent weird issues in the watch window?
+					//TODO Can make this adjustable through runtime or startup settings
+					MAX_COMMA_COUNT :: 100;
+					array_watch_count = min(MAX_COMMA_COUNT, array_watch_count);
+					comma_split : [] string = String.split(watch_data.name, ",",, temp);
+					array_watch_name = comma_split[0];
+				} else {
+					if a_type.array_type == {
+					case .FIXED;
+						array_watch_count = a_type.array_count;
+					case .VIEW;
+						array_watch_count = ComputeOperandInt(watch_data.node.code_ir.op, 
+							text_op.exec_info.debug_info.debug_all_registers, all_data.ram_memory);
+					}
+					//TODO What should the default max be? The "," node allows us to change this count above
+					MAX_A_COUNT :: 20;
+					array_watch_count = min(MAX_A_COUNT, array_watch_count);
+					array_watch_name = watch_data.name;
 				}
-				//TODO What should the default max be? We need to get the "," node as well
-				MAX_A_COUNT :: 20;
-				array_watch_count = min(MAX_A_COUNT, array_watch_count);
 				//TODO FROM HERE add rows for each array value, this can be limited by a "," value
 				//which maybe we can set in WatchData or it'll be in the node?
 				//TODO We could have a hard limit here of 100 or take from the "," but maybe
@@ -640,14 +671,14 @@ DropWatchRow :: inline (
 					//TODO We can rel_top_index this now since we just do it in the render loop
 					// new_wd.rel_top_index = next_index - text_op.highlighted_name_index;
 					// array_index_str : string = tprint("%[%]", watch_data.node.value.token_string, it);
-					array_index_str : string = tprint("%[%]", watch_data.name, it);
+					array_index_str : string = tprint("%[%]", array_watch_name, it);
 					SetWatchName(*new_wd, array_index_str);
 
 					// display_count : int = array_index_str.count - watch_data.node.value.token_string.count;
 					// new_wd.display_name = String.slice(new_wd.name, watch_data.node.value.token_string.count, display_count);
 					//NOTE : We grab the [%] from the name string above, which comes after the watch_data.name
-					display_count : int = array_index_str.count - watch_data.name.count;
-					new_wd.display_name = String.slice(new_wd.name, watch_data.name.count, display_count);
+					display_count : int = array_index_str.count - array_watch_name.count;
+					new_wd.display_name = String.slice(new_wd.name, array_watch_name.count, display_count);
 					//TODO Doing an array_reserve and memcpy beforehand then we could just set these without
 					//having to move all of them over every time.
 					array_insert_at(*text_op.watch_data_rows, new_wd, next_index);
@@ -790,6 +821,10 @@ ComputeWatchValueAndType :: inline (watch_data : *WatchData, text_op : *TextOpSp
 				value_string = tprint("%", ram_address);
 			}
 		}
+		else if IsWatchCommaArray(watch_data.node) {
+			//TODO Could set this as something different for array and pointer or put the count in there if needed?
+			value_string = "drop(array)";	
+		}
 		else if AllOrEquals(watch_data.node.code_ir.t_info.type_enum, STRUCT_TYPE_INTERNAL) {
 			//TODO Should we set this to the first value or make an "{x,y}" preview string
 			value_string = "drop(struct)";
@@ -911,6 +946,7 @@ is based on lexing so we should just be testing EvaluateWatchData I think makes 
 */
 //TODO Should we call this EvaluateWatchNodes?
 //TODO Should we make this a pointer so we keep pointers going into DFSPost for simplicity and a reminder?
+INVALID_WATCH_EXPR :: "Invalid expression";
 VisitWatchNodes :: (node : *BinaryNode, vwd : VisitWatchData) -> is_valid : bool {
 	//TODO Why don't we input a struct with AllData AND other values like text_op
 	//so we can put some errors in there instead so the errors are specific to Watch window instead of
@@ -972,7 +1008,7 @@ VisitWatchNodes :: (node : *BinaryNode, vwd : VisitWatchData) -> is_valid : bool
 		//TODO This can also be checked at the parser level
 		// assert(node.left != null && node.right != null);
 		if node.left == null || node.right == null {
-			SetWatchError(vwd.watch_data, "Invalid expression");
+			SetWatchError(vwd.watch_data, INVALID_WATCH_EXPR);
 			return false;
 		}
 		//We only pass the node up now since we compute member access at the member node
@@ -980,6 +1016,18 @@ VisitWatchNodes :: (node : *BinaryNode, vwd : VisitWatchData) -> is_valid : bool
 		node.code_ir = node.right.code_ir; 
 		node.code_ir.code_value_type = .L_VALUE;
 		return true;
+	}
+	case #char ","; {
+		if IsWatchCommaArray(node) {
+			//Just in case we set here for the watch dropping row and other watch data that uses the top node
+			node.code_ir = node.left.code_ir;
+			return true;
+		} else if node.parent == null {
+			SetWatchError(vwd.watch_data, INVALID_WATCH_EXPR);
+			return false;			
+		} else {
+			//TODO Generally use NewCommaNodeArray from a parent node if we have a , inside any other tree
+		}
 	}
 	case .POSTFIX_DEREFERENCE; {
 		if node.left == null || node.left.code_ir.t_info == null || node.left.code_ir.t_info.type_enum != .POINTER {
@@ -1405,7 +1453,7 @@ VisitWatchNodes :: (node : *BinaryNode, vwd : VisitWatchData) -> is_valid : bool
 	//since most cases are invalid here.
 	//TODO I think because ParseExpression can handle many things that we don't allow here,
 	//then we can default to an invalid expression and return true on each valid expression node above.
-	SetWatchError(vwd.watch_data, "Invalid expression");
+	SetWatchError(vwd.watch_data, INVALID_WATCH_EXPR);
 	return false;
 }
 ComputeWatchValue :: inline (
@@ -1888,6 +1936,7 @@ CreateTextOpSpace :: inline (
 		text_tab.text_file_id = it;
 	}
 
+	//TODO Should pass in watch_alloc here and then reset it with watch rows?
 	text_op.watch_cd = MakeCompilationData();
 	AddWatchData(text_op);
 

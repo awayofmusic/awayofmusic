@@ -1966,6 +1966,10 @@ InitCompilationErrors :: inline (ce : *CompilationErrors) {
 	ce.all_compiler_errors.allocator = context.allocator;
 	InitDynamicString(*ce.compiler_errors_string, Kilobyte(5));
 }
+ResetCompilationErrors :: inline (ce : *CompilationErrors) {
+	array_reset_keeping_memory(*ce.all_compiler_errors);
+	ce.compiler_errors_string.text_string.count = 0;
+}
 CompilerError :: struct {
 	//TODO Not sure this type is useful... maybe internally
 	type : CompilerErrorType;
@@ -2010,6 +2014,7 @@ CreateCompErr :: inline (cd : *CompilationData, type : CompilerErrorType, token 
 and then grab the string from there to output the string in compiler errors and also to get the file name
 directly instead of storing it in LCodeToken for convenience the way it is now.
 */
+ERROR_COLON :: "Error:";
 CreateCompErr :: inline (
 	// all_compiler_errors : *[..] CompilerError,
 	comp_errors : *CompilationErrors,
@@ -2028,8 +2033,8 @@ CreateCompErr :: inline (
 	sb.allocator = temp;
 	//TODO Should add \n here so we can control it overall and not in the input error msg
 	//TODO Could set "Error :" in here before message or warning if we have warnings later.
-	print_to_builder(*sb, "%:%,%: Error: %\n\n",
-		token.absolute_path_name, token.line_number, token.line_char_index, msg,, temp);
+	print_to_builder(*sb, "%:%,%: % %\n\n",
+		token.absolute_path_name, token.line_number, token.line_char_index, ERROR_COLON, msg,, temp);
 	start_error : string = builder_to_string(*sb, do_reset=false);
 	#if print_lines {
 	line_start : int = LineStartCharPoint(token.total_char_index, file_string);
@@ -7506,6 +7511,7 @@ CompileFunctionCall :: inline (cfcd : CompFuncCallData, cd : *CompilationData) -
 	return true;
 }
 
+#if 0 {
 CommaNodeArray :: inline (node : *BinaryNode, cd : *CompilationData) -> [] *BinaryNode {
 	//TODO Can add struct literals here once we implement that
 	//TODO We could remove this and just assume it is the "," structure
@@ -7543,6 +7549,7 @@ CommaNodeArray :: inline (node : *BinaryNode, cd : *CompilationData) -> [] *Bina
 		//Explicit case where the comma_node_array.count == 0 since we have no values
 	}
 	return cd.comma_node_array;
+}
 }
 
 CommaNodeArrayEmptyToken :: inline (node : *BinaryNode, empty_token : CodeTokenType, cd : *CompilationData) -> [] *BinaryNode {

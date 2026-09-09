@@ -10945,3 +10945,279 @@ DONE,,test_alloc);
 	ContinueTest(*perm.test_data);
 
 } @ITest
+
+Test_WatchCommaArrays :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	perm : *Persist = GetPermanentStorage(game_memory);
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+
+		//TODO Use InitAllData here once we remove this
+		perm.all_data = InitAllData();
+		ResetAllRendererData(renderer_data);
+
+		SetupMusicAndRows(perm.all_data, TWO_ROWS);
+
+		text_file := CreateTestTextFile(*ALL_NEXT_IDS, *perm.all_data.all_text_files);
+		WriteFileString(text_file,
+//TODO Could do sprint if needed to put things in here
+#string DONE
+main :: () {
+	t : Test;
+	t.arr[1] = 2;
+	t.at2 = NewArray(3, T2);
+	t.at2[0].arr = NewArray(2, float);
+	t.at2[0].arr[0] = 3.14;
+	t.at2[0].m2[1][0] = 7;
+
+	t.parr = *t.arr; 
+	t.parr.*[2] = 14;
+	t.pa = *t.at2;
+	t.pa.*[0].arr[1] = 1.79;
+}
+Test :: struct {
+  parr : *[3] int;
+  pa : *[] T2;
+  arr : [3] int;
+  at2 : [] T2;
+}
+T2 :: struct {
+	arr : [] float;
+	//Might remove this later but I am keeping fixed multi-dimensional arrays for now
+	m2 : [2][2] int;
+}
+DONE,,test_alloc);	
+
+		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
+			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+
+		array_resize(*perm.test_data.all_sub_tests, 63+1);
+	} 
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	text_op : *TextOpSpaceData;
+	if perm.all_data.all_text_op_space_data.count > 0 {
+		text_op = *perm.all_data.all_text_op_space_data[0];
+	}
+
+	if perm.test_data.sub_test_index == {
+	case 0; {
+		open_test := MakeTerminalEvent(.open_op, TEST_TEXT_NAME);
+		array_add(*perm.all_data.all_terminal_events, open_test);
+	} 
+	case 1; DownUpInputMap(.TEXT_DEBUG_TOGGLE, game_input);
+	case 2; DownUpInputMap(.TEXT_COMPILE, game_input);
+	case 3; {
+		if IsCompilationFail(text_op.text_comp_data) {
+			EndTest(*perm.test_data);
+		} else {
+			AddWatchDataForTest(.["t.parr.*,t.arr[1]", "t.arr, t.arr[1]", "t.arr.data,0", "t.parr.*.data, t.parr.*.count",
+				"t.pa.*.data,t.arr[1]", "t.at2,2", "t.at2, 0", "t,2", "t,", ",0", "t.parr.data,t.parr.count"], text_op);
+			CodeBPForTest(12, *text_op.exec_info.debug_info, text_op.text_comp_data);
+			DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+		}
+	}
+	case 4; DownUpInputMap(.TEXT_WATCH_PANE, game_input);
+	case 5; {
+		RunSubTestNTimes(6, *perm.test_data);
+		DownUpThisFrame(.ARROW_DOWN, game_input);
+	}
+	case 6; {
+		AssertEquals(12, text_op.watch_data_rows.count);
+
+		//Test we add no rows when count is 0
+		DownUpThisFrame(.ENTER, game_input);
+	}
+	case 7; {
+		AssertEquals(12, text_op.watch_data_rows.count);
+
+		//Test we 2 rows when count is 2
+		DownUpThisFrame(.ARROW_UP, game_input);	
+	}
+	case 8; DownUpThisFrame(.ENTER, game_input);
+	case 9; {
+		AssertEquals(14, text_op.watch_data_rows.count);
+
+		//Test updated struct data
+		DownUpThisFrame(.ARROW_DOWN, game_input);	
+	}
+	case 10; DownUpThisFrame(.ENTER, game_input);
+	case 11; {
+		AssertEquals(16, text_op.watch_data_rows.count);
+
+		//Test updated struct data
+		DownUpThisFrame(.ARROW_DOWN, game_input);	
+	}
+	case 12; DownUpThisFrame(.ENTER, game_input);
+	case 13; {
+		AssertEquals(18, text_op.watch_data_rows.count);
+
+		t_at2_arr_0 := GetWatch("t.at2[0].arr[0]", text_op.watch_data_rows);
+		AssertEquals("3.14", t_at2_arr_0.value_str);
+		AssertEquals("float", t_at2_arr_0.type_str);
+		t_at2_arr_1 := GetWatch("t.at2[0].arr[1]", text_op.watch_data_rows);
+		AssertEquals("1.79", t_at2_arr_1.value_str);
+		AssertEquals("float", t_at2_arr_1.type_str);
+
+		DownUpThisFrame(.ENTER, game_input);
+	}
+	case 14; DownUpThisFrame(.ARROW_UP, game_input);	
+	case 15; DownUpThisFrame(.ENTER, game_input);	
+	case 16; DownUpThisFrame(.ARROW_UP, game_input);	
+	case 19; {
+		AssertEquals(14, text_op.watch_data_rows.count);
+
+		//Test updated struct data
+		DownUpThisFrame(.ENTER, game_input);	
+	}
+	case 20; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 21; {
+		AssertEquals(12, text_op.watch_data_rows.count);
+
+		//Test updated struct data
+		DownUpThisFrame(.ENTER, game_input);	
+	}
+	case 22; DownUpThisFrame(.ARROW_UP, game_input);
+	case 23; DownUpThisFrame(.ENTER, game_input);
+	case 24; {
+		AssertEquals(14, text_op.watch_data_rows.count);
+
+		DownUpThisFrame(.ENTER, game_input);
+	}
+	case 26; DownUpThisFrame(.ENTER, game_input);	
+	case 27; DownUpThisFrame(.ARROW_DOWN, game_input);	
+	case 28; DownUpThisFrame(.ENTER, game_input);	
+	case 29; DownUpThisFrame(.ARROW_DOWN, game_input);	
+	case 30; DownUpThisFrame(.ARROW_DOWN, game_input);	
+	case 31; DownUpThisFrame(.ENTER, game_input);	
+	case 32; DownUpThisFrame(.ARROW_DOWN, game_input);	
+	case 33; DownUpThisFrame(.ARROW_DOWN, game_input);	
+	case 34; DownUpThisFrame(.ENTER, game_input);	
+	case 35; {
+		AssertEquals(20, text_op.watch_data_rows.count);
+
+		t_at2_m2_0 := GetWatch("t.at2[0].m2[1][0]", text_op.watch_data_rows);
+		AssertEquals("7", t_at2_m2_0.value_str);
+		AssertEquals("int", t_at2_m2_0.type_str);
+		t_at2_m2_1 := GetWatch("t.at2[0].m2[1][1]", text_op.watch_data_rows);
+		AssertEquals("0", t_at2_m2_1.value_str);
+		AssertEquals("int", t_at2_m2_1.type_str);
+
+		DownUpThisFrame(.ENTER, game_input);
+	}
+	case 36; {
+		AssertEquals(18, text_op.watch_data_rows.count);
+
+		//Test updated struct data
+		DownUpThisFrame(.ARROW_UP, game_input);	
+	}
+	case 37; DownUpThisFrame(.ARROW_UP, game_input);
+	case 38; DownUpThisFrame(.ENTER, game_input);
+	case 39; {
+		AssertEquals(16, text_op.watch_data_rows.count);
+
+		//Test updated struct data
+		DownUpThisFrame(.ARROW_UP, game_input);	
+	}
+	case 40; DownUpThisFrame(.ARROW_UP, game_input);
+	case 41; DownUpThisFrame(.ENTER, game_input);
+	case 42; DownUpThisFrame(.ARROW_UP, game_input);
+	case 43; DownUpThisFrame(.ENTER, game_input);
+	case 44; DownUpThisFrame(.ARROW_UP, game_input);	
+	case 45; DownUpThisFrame(.ENTER, game_input);	
+	case 46; DownUpThisFrame(.ARROW_DOWN, game_input);	
+	case 47; DownUpThisFrame(.ENTER, game_input);	
+	case 48; DownUpThisFrame(.ARROW_DOWN, game_input);	
+	case 49; DownUpThisFrame(.ENTER, game_input);	
+	case 50; {
+		AssertEquals(18, text_op.watch_data_rows.count);
+
+		t_pa_data_arr_0 := GetWatch("t.pa.*.data[0].arr[0]", text_op.watch_data_rows);
+		AssertEquals("3.14", t_pa_data_arr_0.value_str);
+		AssertEquals("float", t_pa_data_arr_0.type_str);
+		t_pa_data_arr_1 := GetWatch("t.pa.*.data[0].arr[1]", text_op.watch_data_rows);
+		AssertEquals("1.79", t_pa_data_arr_1.value_str);
+		AssertEquals("float", t_pa_data_arr_1.type_str);
+
+		DownUpThisFrame(.ENTER, game_input);
+	}
+	case 51; DownUpThisFrame(.ARROW_UP, game_input);	
+	case 52; DownUpThisFrame(.ENTER, game_input);	
+	case 53; DownUpThisFrame(.ARROW_UP, game_input);	
+	case 54; {
+		AssertEquals(14, text_op.watch_data_rows.count);
+
+		//Test using pointer and count var
+		DownUpThisFrame(.ARROW_UP, game_input);	
+	}
+	case 55; DownUpThisFrame(.ENTER, game_input);	
+	case 56; {
+		AssertEquals(17, text_op.watch_data_rows.count);
+		t_par_data_0 := GetWatch("t.parr.*.data[0]", text_op.watch_data_rows);
+		AssertEquals("0", t_par_data_0.value_str);
+		AssertEquals("int", t_par_data_0.type_str);
+		t_par_data_1 := GetWatch("t.parr.*.data[1]", text_op.watch_data_rows);
+		AssertEquals("2", t_par_data_1.value_str);
+		AssertEquals("int", t_par_data_1.type_str);
+		t_par_data_2 := GetWatch("t.parr.*.data[2]", text_op.watch_data_rows);
+		AssertEquals("14", t_par_data_2.value_str);
+		AssertEquals("int", t_par_data_2.type_str);
+
+		//Test 0 count on pointer has no rows
+		DownUpThisFrame(.ARROW_UP, game_input);	
+	}
+	case 57; DownUpThisFrame(.ENTER, game_input);
+	case 58; {
+		AssertEquals(17, text_op.watch_data_rows.count);
+
+		//t.arr, t.arr[1]
+		DownUpThisFrame(.ARROW_UP, game_input);	
+	}
+	case 59; DownUpThisFrame(.ENTER, game_input);
+	case 60; {
+		AssertEquals(19, text_op.watch_data_rows.count);
+
+		t_arr_0 := GetWatch("t.arr[0]", text_op.watch_data_rows);
+		AssertEquals("0", t_arr_0.value_str);
+		AssertEquals("int", t_arr_0.type_str);
+		t_arr_1 := GetWatch("t.arr[1]", text_op.watch_data_rows);
+		AssertEquals("2", t_arr_1.value_str);
+		AssertEquals("int", t_arr_1.type_str);
+
+		DownUpThisFrame(.ENTER, game_input);	
+	}
+	case 61; DownUpThisFrame(.ARROW_UP, game_input);
+	case 62; DownUpThisFrame(.ENTER, game_input);
+	case 63; {
+		AssertEquals(19, text_op.watch_data_rows.count);
+
+		t_parr_0 := GetWatch("t.parr.*[0]", text_op.watch_data_rows);
+		AssertEquals("0", t_parr_0.value_str);
+		AssertEquals("int", t_parr_0.type_str);
+		t_parr_1 := GetWatch("t.parr.*[1]", text_op.watch_data_rows);
+		AssertEquals("2", t_parr_1.value_str);
+		AssertEquals("int", t_parr_1.type_str);
+
+
+		//Check some error cases are invalid
+		t_2 := GetWatch("t,2", text_op.watch_data_rows);
+		AssertEquals(true, t_2.is_error);
+		t_comma := GetWatch("t,", text_op.watch_data_rows);
+		AssertEquals(true, t_comma.is_error);
+		comma_0 := GetWatch(",0", text_op.watch_data_rows);
+		AssertEquals(true, comma_0.is_error);
+		parr := GetWatch("t.parr.data,t.parr.count", text_op.watch_data_rows);
+		AssertEquals(true, parr.is_error);
+	}
+	}
+	//TODO Add a few error nodes at the end to test out like "t.pa.data" since we are not dereferencing
+
+	ContinueTest(*perm.test_data);
+} @ITest

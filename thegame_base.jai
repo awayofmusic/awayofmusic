@@ -8159,12 +8159,17 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 			watch_render_end : int = min(text_op.watch_data_rows.count-1, text_op.end_watch_index+1);
 
 			//NOTE : We use this to keep track of the top_index for each drop_down
-			top_index : int = 0;
+			top_index : int = watch_render_start;
+			while IsWatchSubRow(top_index, text_op, 0) {
+				top_index -= 1;
+			}
 			for ri : watch_render_start..watch_render_end {
 				//Render top watch data first
 				row_pos : Vector2F = cam_top_watch_pos;
 				row_pos.y -= (ri-watch_render_start) * TEXT_LINE_HEIGHT;
-				PushText(row_pos+watch_margin, text_op.watch_data_rows[ri].display_name, LIGHT_BROWN, op_space.render_groups.scissor_group, name_text_order);
+				text_pos : Vector2F = row_pos + watch_margin;
+				text_pos.x += 1.5 * text_op.watch_data_rows[ri].watch_indent * perm.text_editor_data.code_font_1_char_width_world;
+				PushText(text_pos, text_op.watch_data_rows[ri].display_name, LIGHT_BROWN, op_space.render_groups.scissor_group, name_text_order);
 				//TODO Could convert this if_statement into an array and just grab based on index but since
 				//one is black we just don't render a rectangle for now of them which might be better.
 				is_odd_index : bool = top_index % 2 == 1;
@@ -8179,7 +8184,7 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 				while ri + 1 <= watch_render_end && IsDroppedRow(text_op.watch_data_rows[ri + 1]) {
 					ri += 1;
 					row_pos.y -= TEXT_LINE_HEIGHT;
-					text_pos : Vector2F = row_pos + watch_margin;
+					text_pos = row_pos + watch_margin;
 					text_pos.x += 1.5 * text_op.watch_data_rows[ri].watch_indent * perm.text_editor_data.code_font_1_char_width_world;
 					PushText(text_pos, text_op.watch_data_rows[ri].display_name, LIGHT_BROWN, op_space.render_groups.scissor_group, name_text_order);
 					//TODO Could pass in color here or have 2 loops for efficiency but I think branch prediction deals with that

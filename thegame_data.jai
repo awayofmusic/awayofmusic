@@ -7678,6 +7678,8 @@ GetMemValue :: inline (location : int, $type : Type, ram : RAMMemory) -> type, C
 	rm, err := GetMemPtr(location, type, ram);
 	//TODO This is a sanity check, we should never be returning null as this should be
 	//checked beforehand that it is in bounds for GetMemory.
+	//TODO I am pretty sure this can return a null so we should be checking the error whenever we call this
+	//which makes sense anyways since memory out of bounds will be dealt with in different ways for different contexts.
 	assert(rm != null);
 	return rm.*, err;
 }
