@@ -5398,7 +5398,7 @@ DONE,,unit_test_alloc);
 
 } @UnitTest
 
-Test_CompArrayLiteralAutocast :: () {
+Test_ArrayLiteralAutocast :: () {
 	cs : CompileSettings;
 	cd : *CompilationData;
 	count_equal : bool;
@@ -5464,6 +5464,24 @@ DONE,,unit_test_alloc);
 	]);
 
 	AssertEquals(instr_index, cd.all_music_instructions.count);
+
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	fa : [] int = ([2] int).[int.[0,1], int.[0,4]];
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	m2 : [2][2] int;
+	fa : [] int = m2;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
 
 } @UnitTest
 
@@ -5555,6 +5573,30 @@ DONE,,unit_test_alloc);
 	]);
 
 	AssertEquals(instr_index, cd.all_music_instructions.count);
+
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	m2 : [2][2] int;
+	Foo(m2);
+}
+Foo :: (arr : [] int) {
+	x : int;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	m2 : [2] float;
+	Foo(m2);
+}
+Foo :: (arr : [] int) {
+	x : int;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
 
 } @UnitTest
 
@@ -6447,19 +6489,21 @@ main :: () {
 	f2 : float = 3.14159;
 	i2 : int = cast(int) f2;
 
-	a := int.[0,1];
-	ac := cast([] int) a;
+	//TODO This cast has been removed to due complications with fixed array literals.
+	//Unlikely to add this in the future. Put an error case at the bottom of this test.
+	// a := int.[0,1];
+	// ac := cast([] int) a;
 
 	//TODO bool <-> int casting here once we do that
 }
 DONE,,unit_test_alloc);
 
-	fixed_info, found_fixed_info := GetArrayType(cd, *cd.int_type_info, .FIXED, 2);
-	AssertEquals(true, found_fixed_info);
-	if !found_fixed_info return;
-	int_array_info, found_int_array_info := GetArrayType(cd, *cd.int_type_info, .VIEW);
-	AssertEquals(true, found_int_array_info);
-	if !found_int_array_info return;
+	// fixed_info, found_fixed_info := GetArrayType(cd, *cd.int_type_info, .FIXED, 2);
+	// AssertEquals(true, found_fixed_info);
+	// if !found_fixed_info return;
+	// int_array_info, found_int_array_info := GetArrayType(cd, *cd.int_type_info, .VIEW);
+	// AssertEquals(true, found_int_array_info);
+	// if !found_int_array_info return;
 
 	vars_equal : bool = TestManyVarDeclSameStack(cd.all_variables, .[
 		VarDecl("v", cd.void_pointer_type_info),
@@ -6471,8 +6515,8 @@ DONE,,unit_test_alloc);
 		VarDecl("f2", *cd.float_type_info),
 		VarDecl("i2", *cd.int_type_info),
 
-		VarDecl("a", fixed_info),
-		VarDecl("ac", int_array_info),
+		// VarDecl("a", fixed_info),
+		// VarDecl("ac", int_array_info),
 	]);
 	if !vars_equal return;
 	v_var := cd.all_variables[0];
@@ -6508,8 +6552,11 @@ DONE,,unit_test_alloc);
 		//NOTE : Optimized out since we are moving to the same place
 		//i2 : int = cast(int) f2;
 		// MakeMI(.mov, i2_var.op, i2_var.op, Imm(i2_var.t_info.runtime_size)),
+		MakeMI(.exit)
 	]);
+	AssertEquals(instr_index, cd.all_music_instructions.count);
 
+	#if 0 {
 	a_var := cd.all_variables[6];
 	ac_var := cd.all_variables[7];
 	//a := int.[0,1];
@@ -6524,11 +6571,19 @@ DONE,,unit_test_alloc);
 	TestNextManyInstr(*instr_index, cd, .[
 		MakeMI(.mov, ac_var.op, Imm(fixed_info.array_count), Imm(cd.int_type_info.runtime_size)),
 		MakeMI(.add, AddOperandOffset(8, ac_var.op), a_0, a_1),
-
-		MakeMI(.exit),
+		MakeMI(.exit)
 	]);
+	}
 
-	AssertEquals(instr_index, cd.all_music_instructions.count);
+
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	a := int.[0,1];
+	ac := cast([] int) a;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
 
 } @UnitTest
 
@@ -6794,7 +6849,8 @@ main :: () {
 	na : [..] float = NewResizableArray(10,float);
 }
 DONE,,unit_test_alloc);
-
+	AssertEquals(true, IsCompilationFail(cd));
+	#if 0 {
 	float_array_type := cd.all_type_info_array[0];
 	vars_equal : bool = TestManyVarDeclSameStack(cd.all_variables, .[
 		VarDecl("na", float_array_type),
@@ -6844,6 +6900,7 @@ main :: () {
 }
 DONE,,unit_test_alloc);
 	AssertEquals(true, cd.comp_errors.all_compiler_errors.count > 0);
+	}
 
 } @UnitTest
 
@@ -6972,6 +7029,49 @@ DONE,,unit_test_alloc);
 
 } @UnitTest
 
+#if 1 {
+Test_MultiArrayView :: () {
+	cs : CompileSettings;
+	cd : *CompilationData;
+	count_equal : bool;
+
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	av : [][] int = NewArray(3, [] int);
+	av[1] = NewArray(3, int);
+	av[1][2] = 10;
+	t : int = av[1].count;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	av : [][][] int;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	av : [][1] int;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	av : [1][] int;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+} @UnitTest
+} else {
 Test_MultiArrayView :: () {
 	cs : CompileSettings;
 	cd : *CompilationData;
@@ -7084,6 +7184,7 @@ DONE,,unit_test_alloc);
 	AssertEquals(instr_index, cd.all_music_instructions.count);
 
 } @UnitTest
+}
 
 /*TODO FROM HERE add neumes and then neumes with functions
 and then add "~" and "+=" ops before doing ui

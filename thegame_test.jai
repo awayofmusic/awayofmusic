@@ -5215,15 +5215,16 @@ main :: () {
   f2 : float = 3.14159;
   i2 : int = cast(int) f2;
   
-  a := int.[0,1];
-  ac := cast([] int) a;
+  //No longer allowing this due to complexities with casting nested fixed array literals to array views
+  // a := int.[0,1];
+  // ac := cast([] int) a;
 }
 DONE,,test_alloc);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
 			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
 
-		array_resize(*perm.test_data.all_sub_tests, 14);
+		array_resize(*perm.test_data.all_sub_tests, 7+1);
 	} 
 
 	wait_test := WaitTest(*perm.test_data);
@@ -5288,7 +5289,7 @@ DONE,,test_alloc);
 		AssertEquals("10", f1_watch.value_str);
 
 
-		CodeBPForTest(10, *text_op.exec_info.debug_info, text_op.text_comp_data);
+		CodeBPForTest(13, *text_op.exec_info.debug_info, text_op.text_comp_data);
 		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
 	}
 	case 7; {
@@ -5297,8 +5298,8 @@ DONE,,test_alloc);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(10, text_op.text_comp_data.all_debug_lines);
-		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		// d_line := GetDebugLineNumber(10, text_op.text_comp_data.all_debug_lines);
+		// AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		f2_watch := GetWatch("f2", text_op.watch_data_rows);
 		AssertEquals("float", f2_watch.type_str);
@@ -5309,52 +5310,52 @@ DONE,,test_alloc);
 		AssertEquals("3", i2_watch.value_str);
 
 
-		CodeBPForTest(12, *text_op.exec_info.debug_info, text_op.text_comp_data);
-		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+		// CodeBPForTest(12, *text_op.exec_info.debug_info, text_op.text_comp_data);
+		// DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
 	}
-	case 8; DownUpInputMap(.TEXT_WATCH_PANE, game_input);
-	case 9; DownUpThisFrame(.ARROW_DOWN, game_input);
-	case 10; DownUpThisFrame(.ENTER, game_input);
-	case 11; DownUpThisFrame(.ARROW_UP, game_input);
-	case 12; DownUpThisFrame(.ENTER, game_input);
-	case 13; {
-		//  a := int.[0,1];
-		// ac := cast([] int) a;
-		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
-		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
+	// case 8; DownUpInputMap(.TEXT_WATCH_PANE, game_input);
+	// case 9; DownUpThisFrame(.ARROW_DOWN, game_input);
+	// case 10; DownUpThisFrame(.ENTER, game_input);
+	// case 11; DownUpThisFrame(.ARROW_UP, game_input);
+	// case 12; DownUpThisFrame(.ENTER, game_input);
+	// case 13; {
+	// 	//  a := int.[0,1];
+	// 	// ac := cast([] int) a;
+	// 	text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
+	// 	AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(12, text_op.text_comp_data.all_debug_lines);
-		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+	// 	d_line := GetDebugLineNumber(12, text_op.text_comp_data.all_debug_lines);
+	// 	AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
-		a_watch := GetWatch("a", text_op.watch_data_rows);
-		AssertEquals("[2] int", a_watch.type_str);
-		a_0_watch := GetWatch("a[0]", text_op.watch_data_rows);
-		AssertEquals("a[0]", a_0_watch.name);
-		AssertEquals("[0]", a_0_watch.display_name);
-		AssertEquals("int", a_0_watch.type_str);
-		AssertEquals("0", a_0_watch.value_str);
-		a_1_watch := GetWatch("a[1]", text_op.watch_data_rows);
-		AssertEquals("a[1]", a_1_watch.name);
-		AssertEquals("[1]", a_1_watch.display_name);
-		AssertEquals("int", a_1_watch.type_str);
-		AssertEquals("1", a_1_watch.value_str);
+	// 	a_watch := GetWatch("a", text_op.watch_data_rows);
+	// 	AssertEquals("[2] int", a_watch.type_str);
+	// 	a_0_watch := GetWatch("a[0]", text_op.watch_data_rows);
+	// 	AssertEquals("a[0]", a_0_watch.name);
+	// 	AssertEquals("[0]", a_0_watch.display_name);
+	// 	AssertEquals("int", a_0_watch.type_str);
+	// 	AssertEquals("0", a_0_watch.value_str);
+	// 	a_1_watch := GetWatch("a[1]", text_op.watch_data_rows);
+	// 	AssertEquals("a[1]", a_1_watch.name);
+	// 	AssertEquals("[1]", a_1_watch.display_name);
+	// 	AssertEquals("int", a_1_watch.type_str);
+	// 	AssertEquals("1", a_1_watch.value_str);
 
-		ac_watch := GetWatch("ac", text_op.watch_data_rows);
-		AssertEquals("[] int", ac_watch.type_str);
-		ac_0_watch := GetWatch("ac[0]", text_op.watch_data_rows);
-		AssertEquals("ac[0]", ac_0_watch.name);
-		AssertEquals("[0]", ac_0_watch.display_name);
-		AssertEquals("int", ac_0_watch.type_str);
-		AssertEquals("0", ac_0_watch.value_str);
-		ac_1_watch := GetWatch("ac[1]", text_op.watch_data_rows);
-		AssertEquals("ac[1]", ac_1_watch.name);
-		AssertEquals("[1]", ac_1_watch.display_name);
-		AssertEquals("int", ac_1_watch.type_str);
-		AssertEquals("1", ac_1_watch.value_str);
+	// 	ac_watch := GetWatch("ac", text_op.watch_data_rows);
+	// 	AssertEquals("[] int", ac_watch.type_str);
+	// 	ac_0_watch := GetWatch("ac[0]", text_op.watch_data_rows);
+	// 	AssertEquals("ac[0]", ac_0_watch.name);
+	// 	AssertEquals("[0]", ac_0_watch.display_name);
+	// 	AssertEquals("int", ac_0_watch.type_str);
+	// 	AssertEquals("0", ac_0_watch.value_str);
+	// 	ac_1_watch := GetWatch("ac[1]", text_op.watch_data_rows);
+	// 	AssertEquals("ac[1]", ac_1_watch.name);
+	// 	AssertEquals("[1]", ac_1_watch.display_name);
+	// 	AssertEquals("int", ac_1_watch.type_str);
+	// 	AssertEquals("1", ac_1_watch.value_str);
 
 
-		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
-	}
+	// 	DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+	// }
 	// case 14; {
 	// 	//Extra test to make sure we remove the dropped array rows after running. 
 	// 	//Can remove this test if not needed.

@@ -1144,6 +1144,7 @@ VisitWatchNodes :: (node : *BinaryNode, vwd : VisitWatchData) -> is_valid : bool
 					case "data";
 						//TODO Should we just GetOrCreateTypeInfoPointer? This is the debugger though so maybe
 						//we should check why were not creating it in the compiler if this errors here.
+						//Can we create values that don't exist in watch window? Technically yes like ****x or something weird
 						p_type, found_p_type := GetTypeInfoPointer(array_info.element_type, cd);
 						if !found_p_type {
 							SetWatchError(vwd.watch_data, 

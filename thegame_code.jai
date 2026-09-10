@@ -2628,13 +2628,14 @@ GetArrayType :: inline (
 GetOrCreateArrayType :: inline (
 	//TODO Could just pass in all_type_info_array if that seems better
 	cd : *CompilationData, 
+	node : *BinaryNode,
 	element_type : *TypeInfo, 
 	array_type : ArrayInfoType,
 	array_count : int = -1) 
--> *TypeInfoArray 
+-> *TypeInfoArray, is_error : bool
 {
 	a_type, found_type := GetArrayType(cd, element_type, array_type, array_count);
-	if found_type return a_type;
+	if found_type return a_type, false;
 
 	//TODO Could make this into a function to create array types unless this is the only place we do it
 	array_info : *TypeInfoArray = New(TypeInfoArray,,context.allocator);
@@ -2651,7 +2652,21 @@ GetOrCreateArrayType :: inline (
 	case .FIXED;
 		array_info.info.runtime_size = array_count * array_info.element_type.runtime_size;
 	}
-	return array_info;
+
+	//For multi-dimensional arrays which we allow for fixed arrays (eg [2][2] int). Will remove if it's too complicated.
+	//Better to have this in here since we create array types in several places and this ensures sub-array data pointers everywhere.
+	element_type_info : *TypeInfo = element_type;
+	while element_type_info.type_enum == .ARRAY {
+		array_element_type := cast(*TypeInfoArray) element_type_info;
+		if array_info.array_type != .FIXED || array_element_type.array_type != .FIXED {
+			CreateCompErr(cd, .EVALUATION, node, "Multi-dimensional arrays must be fixed arrays.");
+			return null, true;
+		}
+		GetOrCreateTypeInfoPointer(element_type_info, cd);
+		element_type_info = array_element_type.element_type;
+	}
+
+	return array_info, false;
 }
 
 CompileIDs :: struct {
@@ -3104,6 +3119,21 @@ IsArrayInfoType :: inline (array_type : ArrayInfoType, t_info : *TypeInfo) -> bo
 	is_array_type : bool = t_info != null && t_info.type_enum == .ARRAY && 
 		(cast(*TypeInfoArray) t_info).array_type == array_type;
 	return is_array_type;
+}
+FixedArrayTotalCount :: inline (array_info : *TypeInfoArray) -> int {
+	if array_info.element_type.type_enum == .ARRAY {
+		total_array_count : int = array_info.array_count;
+		next_info : *TypeInfo = array_info.element_type;
+		while next_info.type_enum == .ARRAY {
+			next_array_info := cast(*TypeInfoArray) next_info;
+			total_array_count *= next_array_info.array_count;
+			next_info = next_array_info.element_type;
+		}
+		return total_array_count;
+	} 
+	else {
+		return array_info.array_count;
+	}
 }
 
 //NOTE : No name here since we can have a function pointer which would not have a name.
@@ -3611,9 +3641,9 @@ SameFuncArgs :: inline (fd : FunctionDeclaration, argument_nodes : [] *BinaryNod
 ValidFuncArgs :: inline (proc_type : *TypeInfoProcedure, argument_nodes : [] *BinaryNode) -> bool {
 	if proc_type.argument_types.count != argument_nodes.count return false;
 	for proc_type.argument_types {
-		if IsArrayInfoType(.VIEW, it) && IsArrayInfoType(.FIXED, argument_nodes[it_index].code_ir.t_info) &&
-			(cast(*TypeInfoArray) it).element_type == (cast(*TypeInfoArray) argument_nodes[it_index].code_ir.t_info).element_type
-		{
+		// if IsArrayInfoType(.VIEW, it) && IsArrayInfoType(.FIXED, argument_nodes[it_index].code_ir.t_info) &&
+		// 	(cast(*TypeInfoArray) it).element_type == (cast(*TypeInfoArray) argument_nodes[it_index].code_ir.t_info).element_type
+		if IsArrayFixedToViewAutocast(it, argument_nodes[it_index].code_ir.t_info) {
 			//Converting from fixed array to array view with same element type is valid
 			continue;
 		}
@@ -3623,7 +3653,11 @@ ValidFuncArgs :: inline (proc_type : *TypeInfoProcedure, argument_nodes : [] *Bi
 	}
 	return true;
 }
-
+IsArrayFixedToViewAutocast :: inline (to_type : *TypeInfo, from_type : *TypeInfo) -> bool {
+	is_autocast : bool = IsArrayInfoType(.VIEW, to_type) && IsArrayInfoType(.FIXED, from_type) &&
+		(cast(*TypeInfoArray) to_type).element_type == (cast(*TypeInfoArray) from_type).element_type;
+	return is_autocast;
+}
 
 FunctionVariable :: struct {
 	function_id : int;
@@ -4717,7 +4751,9 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 
 		node.code_ir.op = RamMem(.sbp, cd.byte_offset_from_sbp);
 		node.code_ir.code_value_type = CodeValueType.R_VALUE;
-		node.code_ir.t_info = GetOrCreateArrayType(cd, array_data_type, ArrayInfoType.VIEW);
+		array_info, is_error := GetOrCreateArrayType(cd, node.right.right, array_data_type, ArrayInfoType.VIEW);
+		if is_error return false;
+		node.code_ir.t_info = array_info;
 
 		//TODO UPDATE THIS TO USE .struct_members[i] in order once we do that in array_view_struct_info
 		//Store (count,data) to pass up directly
@@ -4751,7 +4787,8 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 
 		node.code_ir.op = RamMem(.sbp, cd.byte_offset_from_sbp);
 		node.code_ir.code_value_type = CodeValueType.R_VALUE;
-		array_type : *TypeInfoArray = GetOrCreateArrayType(cd, array_data_type, ArrayInfoType.RESIZABLE); 
+		array_type, is_error := GetOrCreateArrayType(cd, node.right.right, array_data_type, ArrayInfoType.RESIZABLE); 
+		if is_error return false;
 		node.code_ir.t_info = *array_type.info;
 
 		//TODO UPDATE THIS TO USE .struct_members[i] in order once we do that in resizable_array_struct_info
@@ -4948,19 +4985,6 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 		if node.left.code_ir.t_info == node.right.code_ir.t_info {
 			//Explicitly do nothing since we have the same type
 		}
-		// else if cast_type == .ARRAY && value_type == .ARRAY &&
-		// 	(cast(*TypeInfoArray) node.left.code_ir.t_info).array_type == .VIEW &&
-		// 	(cast(*TypeInfoArray) node.right.code_ir.t_info).array_type == .FIXED
-		else if IsArrayInfoType(.VIEW, node.left.code_ir.t_info) && IsArrayInfoType(.FIXED, node.right.code_ir.t_info){
-			//We push an array view of the fixed array on the stack and set this node to that array view.
-			//NOTE : We could make this a function with other fixed to array view casting but maybe it's
-			//not worth it if we only do it here and when we assign the variable from fixed to view.
-			//I think autocasting to array view should ONLY be done for function input vars.
-			fixed_array_type := cast(*TypeInfoArray) node.right.code_ir.t_info;
-			node.code_ir.op = PushStackMov(Imm(fixed_array_type.array_count), cd.int_type_info.runtime_size, cd);
-			array_data_op := PushStack(cd.void_pointer_type_info.runtime_size, cd);
-			SetAddressNode(node.right, array_data_op, cd);
-		}
 		else if cast_type == .INTEGER && value_type == .FLOAT {
 			node.code_ir.op = PushStack(node.code_ir.t_info.runtime_size, cd);
 			CreateMInstr(.ftoi, node.code_ir.op, node.right.code_ir.op, d=cd);
@@ -4969,6 +4993,14 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 			node.code_ir.op = PushStack(node.code_ir.t_info.runtime_size, cd);
 			CreateMInstr(.itof, node.code_ir.op, node.right.code_ir.op, d=cd);
 		} 
+		else if cast_type == .ARRAY && value_type == .ARRAY &&
+			node.left.code_ir.t_info != node.right.code_ir.t_info 
+		{
+			//Explicit case for casting between different array types which is not allowed
+			CreateCompErr(cd, .EVALUATION, node,
+			sprint("Cannot cast from % to %.", value_type, cast_type));
+			return false;
+		}
 		else if (cast_type == value_type) ||
 			(cast_type == .POINTER && value_type == .POINTER) ||
 			(cast_type == .INTEGER && value_type == .BOOL) ||
@@ -4983,6 +5015,25 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 			sprint("Cannot cast from % to %.", value_type, cast_type));
 			return false;
 		}
+		// else if cast_type == .ARRAY && value_type == .ARRAY &&
+		// 	(cast(*TypeInfoArray) node.left.code_ir.t_info).array_type == .VIEW &&
+		// 	(cast(*TypeInfoArray) node.right.code_ir.t_info).array_type == .FIXED
+		/*Removing this case for now because if we have nested array literals eg ([] int).[int.[0],int.[1]]
+		then the values need to be reorganized in memory because they are not sequentially stored since
+		each node will store (array_view,array_literal) which requires a large change in the compiler.
+		This can be done with arrays in structs anyways. Fixed arrays will only autocast on instantiation and in functions
+		because then the data gets copied over easily from wherever it is.
+		*/
+		// else if IsArrayInfoType(.VIEW, node.left.code_ir.t_info) && IsArrayInfoType(.FIXED, node.right.code_ir.t_info){
+		// 	//We push an array view of the fixed array on the stack and set this node to that array view.
+		// 	//NOTE : We could make this a function with other fixed to array view casting but maybe it's
+		// 	//not worth it if we only do it here and when we assign the variable from fixed to view.
+		// 	//I think autocasting to array view should ONLY be done for function input vars.
+		// 	fixed_array_type := cast(*TypeInfoArray) node.right.code_ir.t_info;
+		// 	node.code_ir.op = PushStackMov(Imm(fixed_array_type.array_count), cd.int_type_info.runtime_size, cd);
+		// 	array_data_op := PushStack(cd.void_pointer_type_info.runtime_size, cd);
+		// 	SetAddressNode(node.right, array_data_op, cd);
+		// }
 	}
 	case #char "."; {
 		//TODO This is likely an InternalError so can possibly leave as an assertions or log.
@@ -5131,7 +5182,8 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 		}
 
 		//TODO Maybe we should make this array view and remove fixed altogether.
-		array_info : *TypeInfoArray = GetOrCreateArrayType(cd, array_element_info, ArrayInfoType.FIXED, array_count);
+		array_info, is_error := GetOrCreateArrayType(cd, node, array_element_info, ArrayInfoType.FIXED, array_count);
+		if is_error return false;
 		node.code_ir.t_info = *array_info.info;
 		//TODO Could set the code_ir_type here as well but I think we have enough info the type info and op
 	}
@@ -5474,7 +5526,7 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 			if node.right.value.token_type == {
 			case #char "]";   array_type = .VIEW;
 			//TODO Remove this since we won't allow resizable arrays for now
-			case .DOUBLE_DOT; array_type = .RESIZABLE;
+			// case .DOUBLE_DOT; array_type = .RESIZABLE;
 			case; {
 				if !(IsConstant(node.right) && node.right.code_ir.t_info.type_enum == .INTEGER) {
 					CreateCompErr(cd, .EVALUATION, node, "Fixed array requires constant integer size.");
@@ -5485,7 +5537,8 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 			}
 			}
 
-			array_info : *TypeInfoArray = GetOrCreateArrayType(cd, node.left.code_ir.t_info, array_type, array_count);
+			array_info, is_error := GetOrCreateArrayType(cd, node, node.left.code_ir.t_info, array_type, array_count);
+			if is_error return false;
 			node.code_ir.t_info = *array_info.info;
 		}
 	}
@@ -8134,6 +8187,13 @@ EvaluateAssignment :: inline (node : *BinaryNode, cd : *CompilationData) {
 		   	}
 
 				if ArraysFixedEqual(array_types, .[.VIEW, .FIXED]) {
+					if !IsArrayFixedToViewAutocast(left_t_info, right_t_info) {
+						CreateCompErr(cd, .EVALUATION, node, 
+						sprint("Invalid array fixed to view for types LHS : % and RHS : %.\n", 
+							TypeToString(left_t_info), TypeToString(right_t_info)));
+						return;
+					}
+
 			   	//TODO Could make a function if AfterStack
 					//IF we just stored the fixed array on the stack, then we want to keep it
 					//This is indeed an edge case that only happens when we convert fixed array to array view
@@ -8147,8 +8207,11 @@ EvaluateAssignment :: inline (node : *BinaryNode, cd : *CompilationData) {
 					{
 						right_op = PushStackMov(node.right, cd);
 			   	}
+
+			   	// fixed_array_total_count : int = FixedArrayTotalCount(right_array_info);
 					//Set array view count from fixed array
 					CreateMInstr(.mov, left_op, Imm(right_array_info.array_count), Imm(cd.int_type_info.runtime_size), d=cd);
+
 					//Set array view data from fixed array
 					//NOTE : right and left op deal with address in memory case from above
 					data_op := AddOperandOffset(8, left_op);
@@ -8173,7 +8236,8 @@ EvaluateAssignment :: inline (node : *BinaryNode, cd : *CompilationData) {
 				} 
 				else {
 					CreateCompErr(cd, .EVALUATION, node, 
-					sprint("Invalid array assignment for types LHS : % and RHS : %.\n", array_types[0], array_types[1]));
+					sprint("Invalid array assignment for types LHS : % and RHS : %.\n", 
+						TypeToString(left_t_info), TypeToString(right_t_info)));
 					return;
 				}
 				//TODO Maybe better to explicitly use certain registers for GetValueOp
