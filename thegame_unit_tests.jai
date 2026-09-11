@@ -2730,6 +2730,17 @@ DONE,, unit_test_alloc);
 
 	AssertEquals(instr_index, cd.all_music_instructions.count);
 
+
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	p : *int;
+	x : int = p[0][0];
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+
 } @UnitTest
 
 Test_PointerArithmetic :: () {
