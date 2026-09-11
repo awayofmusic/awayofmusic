@@ -711,6 +711,8 @@ InputMapType :: enum {
 	DEBUG_STEP_INTO;
 	DEBUG_STEP_OUT;
 
+	DEBUG_DELETE_ALL_BREAKPOINTS;
+
 	DEBUG_WATCH_EDIT;
 
 
@@ -814,6 +816,9 @@ CopyDefaultInputMappings :: inline () -> [] InputMapping {
 MIDIKeyMap :: struct {
 	// midi_message : MIDI_Message;
 }
+//TODO Likely remove descriptions and just but comments once
+//we only allow input mappings through dynamic libraries and
+//remove the json input mappings file
 DEFAULT_INPUT_MAPPINGS, IM_DESCRIPTIONS :: #run () -> 
 [] InputMapping,        [] string 
 {
@@ -1015,6 +1020,11 @@ DEFAULT_INPUT_MAPPINGS, IM_DESCRIPTIONS :: #run () ->
 		k_maps := NewArray(1, KeyboardMap);
 		k_maps[0] = .{.F9, .{}};
 		d[it] = .{it, k_maps};
+	}
+	case .DEBUG_DELETE_ALL_BREAKPOINTS; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "B", .{ctrl_pressed=true,shift_pressed=true}};
+		d[it] = .{it, k_maps};		
 	}
 	case .DEBUG_WATCH_EDIT; {
 		k_maps := NewArray(1, KeyboardMap);

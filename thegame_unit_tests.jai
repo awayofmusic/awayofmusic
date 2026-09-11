@@ -6843,6 +6843,7 @@ Test_NewResizableArray :: () {
 
 //TODO We can add array_add here and test that out
 //when we do functions.
+//TODO FROM HERE remove NewResizable array with some tests here
 	cd = CompileCode(cs,
 #string DONE
 main :: () {
@@ -6850,6 +6851,16 @@ main :: () {
 }
 DONE,,unit_test_alloc);
 	AssertEquals(true, IsCompilationFail(cd));
+
+	cd = CompileCode(cs,
+#string DONE
+main :: () {
+	na := NewResizableArray(10,float);
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+
 	#if 0 {
 	float_array_type := cd.all_type_info_array[0];
 	vars_equal : bool = TestManyVarDeclSameStack(cd.all_variables, .[

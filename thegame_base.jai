@@ -2694,6 +2694,12 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 			ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
 				perm.text_editor_data);
 	   }
+	   else if text_op.exec_info.exec_mode == .DEBUG && 
+	   	IsInputMapPress(.DEBUG_DELETE_ALL_BREAKPOINTS, .DOWN_THIS_FRAME, game_input) 
+   	{
+   		array_reset_keeping_memory(*text_op.exec_info.debug_info.break_points);
+			SetTextStatus("Deleted all breakpoints", text_op);
+	   }
 	   /*DOC : This shortcut allows a refresh of the text op space and all the file tab cursors.
 	   This way if there are any strange issues with the cursor in the wrong place, then hard reset should fix it.
 	   Maybe it's not good for debugging though, hopefully people can still report the issues.
@@ -5409,12 +5415,20 @@ for compile_event : perm.all_data.all_compile_code_events {
 		//to a separate array for execution, but that could lead to unknown issues and also that would interfere with the text op messages.
 		//WE DO ALLOW compiling from a separate text op however while another process is executing
 		text_op_is_executing : bool = TextOpIsExecuting(compile_event.op_space_id, perm.all_data.all_process_instruction_events);
-		if text_op_is_executing continue;
+		// if text_op_is_executing continue;
 
 		text_op, found_text_op := ArrayFindFirstByNameId(perm.all_data.all_text_op_space_data, 
 			compile_event.op_space_id, "op_space_id");
 		if !found_text_op {
 			log_error("Not found text op with id %.\n", compile_event.op_space_id);
+			continue compile_event;
+		}
+		else if text_op_is_executing || text_op.exec_info.exec_state != .NOT_RUNNING {	
+			//This prevents having asm instructions out of sync with the code text.
+			CANNOT_COMPILE_DURING_EXECUTION :: "Cannot compile while code is executing or debugging in this text op.";
+			print(CANNOT_COMPILE_DURING_EXECUTION);
+			SetTextOpConsoleMessage(CANNOT_COMPILE_DURING_EXECUTION, text_op);
+			text_op.l_bottom_pane_type = TextPaneType.COMPILER_CONSOLE;
 			continue compile_event;
 		}
 
@@ -5439,6 +5453,9 @@ for compile_event : perm.all_data.all_compile_code_events {
 			text_op.exec_info.main_instr_index = text_op.text_comp_data.main_function_instr_index;
 			//We can update break_points even if we are not in DEBUG mode so it is ready once we switch.
 			//We only update BP_CODE because BP_ASM is not dependent on line numbers
+			//TODO We could set this on execution as well if that helps
+			//WE can also delete any points that are out of bounds if needed but right now they either
+			//just dont get hit or they get hit and we just cant see them which is what remedybg does so its an arbitrary decision
 			for * break_pt : text_op.exec_info.debug_info.break_points {
 				if break_pt.bp_type == .BP_CODE {
 					//TODO Can likely index this or do binary search to speed this up.
@@ -5533,23 +5550,32 @@ if found_text_op {
 	//TODO We either have to copy the instructions or take a pointer. Maybe copying is best and we only
 	//copy 1 time when we start the execution to not affect the text op instructions during execution.
 	if text_op.exec_info.exec_state == .NOT_RUNNING {
-		//We copy the instructions here since we add a HALT instruction during execution each frame
-		//so this avoids changing the data pointer of the original text_op comp data which would remove the
-		//pointer from the text op compilation allocator. We only do this when going from not running to running.
-		//NOTE THAT we cant pass it in through exec info only because currently we are using this
-		//during execution to check instruction bounds for jmp instructions.
-		array_reset_keeping_memory(*perm.all_data.all_music_instructions);
-		array_copy(*perm.all_data.all_music_instructions, text_op.text_comp_data.all_music_instructions);
-		perm.all_data.comp_data = text_op.text_comp_data;
+		if IsCompilationFail(text_op.text_comp_data) {
+			//TODO We could set to not running here and remove the process instruction event if needed
+			array_reset_keeping_memory(*perm.all_data.all_music_instructions);
+			msg := "Cannot execute with a failed compilation.";
+			SetTextOpConsoleMessage(msg, text_op);
+			SetTextStatus(msg, text_op);
+			print("%\n", msg);
+		} else {
+			//We copy the instructions here since we add a HALT instruction during execution each frame
+			//so this avoids changing the data pointer of the original text_op comp data which would remove the
+			//pointer from the text op compilation allocator. We only do this when going from not running to running.
+			//NOTE THAT we cant pass it in through exec info only because currently we are using this
+			//during execution to check instruction bounds for jmp instructions.
+			array_reset_keeping_memory(*perm.all_data.all_music_instructions);
+			array_copy(*perm.all_data.all_music_instructions, text_op.text_comp_data.all_music_instructions);
+			perm.all_data.comp_data = text_op.text_comp_data;
 
-		//TODO We can't put this in ResetCodeMemory because we set memory in tests and then run.
-		//Maybe this should be an option in ProcessInstructionEvent reset_ram_memory
-		//so we can reset by default but then not if we want to use it for tests.
-		//In general though it seems that all our text op space tests setup their own memory anyways.
-		//We reset the ram memory here before running so we can keep the memory we had before.
-		//If that is an issue then we can reset the ram memory once execution terminates.
-		//TODO Could make a function SetZeroRamMem
-		memset(perm.all_data.ram_memory.bytes.data, 0, perm.all_data.ram_memory.bytes.count);
+			//TODO We can't put this in ResetCodeMemory because we set memory in tests and then run.
+			//Maybe this should be an option in ProcessInstructionEvent reset_ram_memory
+			//so we can reset by default but then not if we want to use it for tests.
+			//In general though it seems that all our text op space tests setup their own memory anyways.
+			//We reset the ram memory here before running so we can keep the memory we had before.
+			//If that is an issue then we can reset the ram memory once execution terminates.
+			//TODO Could make a function SetZeroRamMem
+			memset(perm.all_data.ram_memory.bytes.data, 0, perm.all_data.ram_memory.bytes.count);
+		}
 	}
 }
 if perm.all_data.all_music_instructions.count > 0 {

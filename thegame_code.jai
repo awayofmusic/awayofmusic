@@ -4768,6 +4768,13 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 		AddByteOffsetFromSbp(cd.void_pointer_type_info.runtime_size, cd);
 	} 
 	else if node.left.value.token_type == .KEYWORD_NEW_RESIZABLE_ARRAY {
+		#if 1 {
+		//TODO Maybe we can remove it everywhere if we don't end up having a resizable array in game but for now
+		//it does not work so we remove it anyways. This makes that function call unavailable if someone wants to use it
+		//I guess I can just change the enum string name value to like NewResizableArray129038123 or something
+		CreateCompErr(cd, .EVALUATION, node.left, "NewResizableArray not available.");
+		return false;
+		} else {
 		//TODO Could also have NewResizableArray with a different start count for efficiency maybe.
 		if node.right.value.token_type != #char "," {
 			CreateCompErr(cd, .EVALUATION, node.left, "NewResizableArray takes 2 arguments : NewResizableArray(count:int,data_type).");
@@ -4810,7 +4817,9 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 
 		//array.element_size
 		PushStackMov(Imm(array_type.element_type.runtime_size), cd.int_type_info.runtime_size, cd);
-	} else {
+		}
+	} 
+	else {
 		//TODO Be careful with main function, although we should never call it anyways and end on a HALT instruction.
 		/*NOTE We push all the function arguments sequentially before arriving here in the "," evaluation 
 		unless we have 1 argument and then we do it here. This way if we have a variable or expression we push
