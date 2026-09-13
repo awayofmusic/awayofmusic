@@ -1,0 +1,109 @@
+/*Try this out:
+ctrl+alt+d for debug mode
+ctrl+alt+c to compile
+put a breakpoint next to "mov ax, 5" with mouse on left or f9 
+run the code using f5 and step over each instruction with f10
+ctrl+shift+g to move between code and asm lines
+try putting registers and variables in the upper right watch window
+ctrl+f7 toggles the status bar below for general info
+ctrl+alt+1 text pane
+ctrl+alt+2 watch pane
+ctrl+alt+3 disassembly pane
+*/
+main :: () {
+	/*Registers can be int (integer) or float (real number).
+	Each register is 8 bytes (64 bits).
+	All register names can be found in thegame_data.jai in the RegDef :: enum.
+	Use ax, bx, cx, dx, r0, r1, r2, r3 for general assembly code.
+	Other registers may be used by the compiler and cpu.
+	*/
+	#asm {
+		mov ax, 5; //move integer 5 into register ax
+		mov.f bx, 3.14159; //move real number 3.14159 into register bx
+		mov cx, bx; //move register bx into register cx
+	}
+
+	/*Random-access memory (ram) is a sequence of bytes.
+	1 byte == 8 bits and 8 bytes == 64 bits.
+	Square brackets are used to represent ram values.
+	So ram data at address 0 is [0].
+	Ram can be accessed in the top-right watch pane with ram(0) or ram(x).
+
+	address  data
+	     24    12
+	     16    12
+	      8    1.618033
+	      0    12
+	*/
+	#asm {
+		mov [0], 12; //move integer 12 to [0]
+		mov.f [8], 1.618033; //move real number 1.618033 to [8]
+		//the third operand defaults to 8 if not set
+		mov [16], [0], 8; //move [0] to [16] for 8 bytes
+		mov ax, 24;
+		//registers can be used to access ram
+		mov [ax], [16], 8;
+		//1 addition can be used as an offset for ram access
+		mov [ax+8], [ax], 8;
+	}
+
+	/*sbp (stack base pointer) register can be used to place values 
+	relative to the current function stack in memory.
+	*/
+	#asm {
+		mov [sbp+0], 10, 8;
+		mov [sbp+8], [sbp+0], 8;
+	}
+	/*Variables are stored on the stack by the compiler using the sbp register.
+	Each value is put on top of the previous one like a physical stack:
+
+	address    data
+	 sbp+16      ...
+	  sbp+8      10
+	  sbp+0      10
+
+	Variables on the stack are only accessible in this function.
+	Compile with ctrl+alt+c to ensure code and asm match up.
+	Press ctrl+shift+g to jump to the corresponding asm instruction below.
+	The following is equivalent to the sbp asm above.
+	*/
+	x : int = 10;
+	y : int = x;
+
+	/*Each variable is represent by name and data type known at compile time.
+	Variables are declared with 
+	variable_name : data_type;
+	x : int;
+
+	A value can be set with
+	variable_name : data_type = value;
+	x : int = 10;
+
+	The data type can be inferred by the value with 
+	variable_name := value;
+	x := 10;
+	*/
+
+	/*Each value in memory is associated to a corresponding memory address.
+	Addresses can be accessed for any variable by the unary operator "*".
+	Try putting px and *x in the watch window.
+	*/
+	px : *int = *x;
+	py : *int = *y;
+
+	/*To access a specific address' data, the address data operator ".*" can be used.
+	Notice that this changes the data in x because px is the memory address to the data in x.
+	*/
+	px.* = 5;
+
+	/*Heap memory is accessible outside of this function.
+	The New function is used to get some heap memory by data type.
+	New always returns an address to heap memory.
+	*/
+	h : *int = New(int);
+	f : *float = New(float);
+
+	/*To learn about arrays
+	load_op arrays guides/programming/arrays
+	*/
+}

@@ -1,0 +1,78 @@
+/*Try this out :
+- ctrl+alt+d to toggle debug mode
+- Set a breakpoint on line "mov ax, 5"
+Either click the left column next to that line
+or put your cursor on that line and press f9 
+- ctrl+alt+c to compile
+Always compile before executing
+- f5 to execute and stop on the breakpoint
+- Add watch variables ax, bx and i in the top-right pane
+Click the top-right watch pane with the mouse or press ctrl+alt+2.
+Type in "ax" and press enter to watch data.
+Do the same for "bx" and "i".
+- f10 to step over each instruction
+Watch the data change in the top-right watch pane
+as you step over each instruction.
+*/
+main :: () {
+	//The assembly gets converted directly below.
+	#asm {
+		mov ax, 5;
+		add bx, ax, 1;
+	}
+	//Declare an integer as follows, which
+	//compiles to an mset instruction below.
+	i : int = 2;
+
+	/*To learn more memory
+	load_op memory guides/programming/memory
+	*/
+
+	/*To learn about assembly
+	load_op assembly guides/programming/assembly
+	*/
+}
+
+//This is a line comment.
+/*This is a block comment.
+Comments are not executable.
+Evetyhing outside of comments is code that runs/executes.
+All shortcuts can be found in thegame_input.jai at DEFAULT_INPUT_MAPPINGS initialization.
+
+Top-right pane is the watch window.
+Variables can be set there to view data during execution.
+Bottom-left pane is the disassembler.
+Bottom-right pane is the call stack.
+
+ctrl+alt+c compiles the code.
+Compiling code means converting from a programming language
+into executable instructions. Executable instructions are 
+are shown as assembly instructions in the pane below.
+
+ctrl+f7 toggles the status bar on the bottom of the text op.
+Status bar shows file_name, line_number, text_messages
+
+In debug mode, breakpoints can be set with 
+the mouse on the left or from the cursor line with f9.
+Breakpoints will not stop on commented lines.
+
+f5 will run/continue the compiled code.
+Execution will pause if it reaches a breakpoint.
+shift+f5 will stop execution.
+ctrl+shift+f5 will restart execution.
+Always compile before execution.
+f10 will step over a line of code in top-left text pane.
+f10 will run a single assembly instruction in bottom-left disassembly pane.
+f11 will debug step into a function in top-left text pane.
+shift+f11 will debug step out of a function.
+
+ctrl+alt+o toggles text op messages in debug mode.
+ctrl+alt+i toggles disassembly in debug mode.
+
+Every program requires a main function.
+Main function declaration is 
+main :: ()
+Everything within the curly braces {  }
+represents the scope of that function.
+Execution always starts at the main function.
+*/
