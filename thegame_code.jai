@@ -2153,44 +2153,85 @@ DebugLine :: struct {
 	absolute_path_name : string;
 }
 //TODO Can likely do a binary search on this since it is sorted by line_number
+//TODO I Think we can just return invalid debug line and then assert externally if that should not be allowed
+//or if we want to catch the error with a crash
 GetDebugLineAsm :: inline (
 	asm_index : int, 
 	//Passing this in here in case we want better error messages for
 	//not finding a debug line.
 	comp_data : *CompilationData) 
--> DebugLine //, found_debug_line : bool
+-> DebugLine, found_debug_line : bool
 {
+	if comp_data == null || comp_data.all_debug_lines.data == null || comp_data.all_debug_lines.count <= 0 {
+		log("No debug line found for asm_index %.\n", asm_index);
+		return INVALID_DEBUG_LINE, false;		
+	}
+
 	for comp_data.all_debug_lines {
 		if asm_index >= it.start_asm_index &&
 			asm_index <= it.end_asm_index
 		{
-			return it;
+			return it, true;
 		}
 	}
+
+	//REMINDER this used to be an assertion and was not getting hit anywhere
+	// assert(false, "No debug line found for asm_index %.\n", asm_index);
+	log("No debug line found for asm_index %.\n", asm_index);
+	return INVALID_DEBUG_LINE, false;
+}
+//This should be used in game and the other ones for tests
+GetDebugLineNumber :: inline (
+	line_number : int, 
+	comp_data : *CompilationData,
+	abs_path_name : string) 
+-> DebugLine, found_debug_line : bool
+{
+	if comp_data == null || comp_data.all_debug_lines.data == null || comp_data.all_debug_lines.count <= 0 {
+		log("No debug line found for line_number %.\n", line_number);
+		return INVALID_DEBUG_LINE, false;
+	}
+
+	for comp_data.all_debug_lines if line_number == it.line_number && it.absolute_path_name == abs_path_name {
+		return it, true;
+	}
+
 	//TODO Maybe we coudl just return if it was found or not but this
 	//should have been created in any case
-	assert(false, "No debug line found for asm_index %.\n", asm_index);
-	return .{};
+	log("No debug line found for line_number %.\n", line_number);
+	return INVALID_DEBUG_LINE, false;
+}
+//WE have this for tests since the default abs path is empty so if we change that later we don't have to change it everywhere.
+GetDebugLineForTest :: inline (
+	line_number : int, 
+	comp_data : *CompilationData,
+	abs_path_name : string = "") 
+-> DebugLine, found_debug_line : bool
+{
+	d_line, found_d_line := GetDebugLineNumber(line_number, comp_data, abs_path_name);
+	return d_line, found_d_line;
 }
 //NOTE : Likely just use these for tests since in-game we have other considerations for finding lines
 /*DOC : This assumes that we are getting the debug line from the main test file with no name.
 This avoids possible attempts to load a file with no name path.
 */
+#if 0 {
 GetDebugLineNumber :: inline (
 	line_number : int, 
 	//Passing this in here in case we want better error messages for
 	//not finding a debug line.
 	all_debug_lines : [] DebugLine,
 	abs_path_name : string = "") 
--> DebugLine //, found_debug_line : bool
+-> DebugLine, found_debug_line : bool
 {
 	for all_debug_lines if line_number == it.line_number && it.absolute_path_name == abs_path_name {
-		return it;
+		return it, true;
 	}
 	//TODO Maybe we coudl just return if it was found or not but this
 	//should have been created in any case
-	assert(false, "No debug line found for line_number %.\n", line_number);
-	return .{};
+	log("No debug line found for line_number %.\n", line_number);
+	return INVALID_DEBUG_LINE, false;
+}
 }
 INVALID_DEBUG_LINE :: DebugLine.{-1,-1,-1,""};
 GetDebugLineNumberInFile :: inline (
@@ -12079,7 +12120,10 @@ ExecuteManyInstructions :: inline (exec : *ExecutionInfo, ad : *AllData) -> CPUE
 				case .STEP_INTO; #through;
 				case .STEP_OVER; {
 					// d_step.step_control = exec.debug_info.debug_control;
-					d_line := GetDebugLineAsm(ad.all_register_memory[RegDef.pc].int_value, ad.comp_data);
+					d_line, found_d_line := GetDebugLineAsm(ad.all_register_memory[RegDef.pc].int_value, ad.comp_data);
+					//We used to have an assertion in GetDebugLineAsm here and it would not get hit so if it does then we should look into it
+					//This should always be valid since pc register should be valid
+					assert(found_d_line);
 					d_step.start_asm_index = d_line.start_asm_index;
 					d_step.end_asm_index = d_line.end_asm_index;
 				}

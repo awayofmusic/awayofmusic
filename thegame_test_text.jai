@@ -10346,7 +10346,7 @@ Test_GoToLine :: (
 	case 39; {
 		AssertEquals(TextFirstBarType.GOTO_LINE, text_op.text_first_bar_type);
 		AssertEquals(true, text_op.text_status_timer > 0);
-		AssertEquals("Invalid goto line number.", text_op.text_status_message);
+		AssertEquals("Invalid line number", text_op.text_status_message);
 
 		//Test closing gotoline text bar
 		DownUpThisFrame(.ESCAPE, game_input);

@@ -2613,7 +2613,7 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 			//if we have a selection it unselects it and moves the cursor which is definitely wrong and unexpected behavior.
 			#if 0 {
 			if tab_cursor.cursor_line_number > tab_cursor.end_file_line_index {
-				MoveToLine(tab_cursor.cursor_line_number, text_file.file_string, tab_cursor, center_line=false);
+				MoveToLine(tab_cursor.cursor_line_number, text_file.file_string, tab_cursor);
 			}
 			}
 		}
@@ -2723,6 +2723,31 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 				perm.text_editor_data);
 			//TODO We coudl reset the cursor and update the line char bounds again here for good measure if needed
 	   }
+	   //TODO We could allow these to be pressed anywhere and pull it out and that would be ok since they woudl
+		//be before the selection ones. Leaving in here so we can use commands in other panes as well but maybe
+		//that is more convenient outside and then we also would switch the pane to text pane in here too.
+		//THIS IS MOVED OUT NOW AND SEEMS TO BE WORKING FINE SO WE CAN GOTOLINE from asm pane as well
+		else if IsInputMapPress(.TEXT_FILE_GOTO_LINE_BAR, .DOWN_THIS_FRAME, game_input) {
+			ChangeTextPane(.TEXT, text_op, perm.all_data);
+			//TODO Should we make this happen even if we are not selecting the text pane?
+			if text_op.text_first_bar_type == TextFirstBarType.GOTO_LINE &&
+				text_op.selected_text_bar == SelectedTextBarType.SELECTED_FIRST_BAR
+			{
+				text_op.text_first_bar_type = TextFirstBarType.NONE;
+				text_op.selected_text_bar = SelectedTextBarType.NONE;
+			} else {
+				text_op.text_first_bar_type = TextFirstBarType.GOTO_LINE;
+				text_op.selected_text_bar = SelectedTextBarType.SELECTED_FIRST_BAR;
+				//We always reset with goto line so itll reset from the find and also if we close and re-open.
+				//This is the same behavior as sublime text
+				text_op.first_bar_input_text.text_string.count = 0;
+				ResetTextCursor(*text_op.first_bar_cursor);
+				//TODO We could highlight the text if we go back to it if that is more convenient
+			}
+			text_op.text_second_bar_type = TextSecondBarType.NONE;
+			ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
+				perm.text_editor_data);
+		}
 	   /*TODO We could prevent this from happening if we hit any of the above hotkeys to avoid unknown overlapping
 	   key stroke issues. We could also make some actions event based and do them later like we do with compilation.
 	   This allows us to order or not process certain events if they conflict with others.
@@ -2791,6 +2816,21 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 						}
 					}
 				}
+				}
+			}
+			else if text_op.exec_info.exec_mode == ExecutionMode.DEBUG && 
+				IsInputMapPress(.DEBUG_CODE_GOTO_ASM, .DOWN_THIS_FRAME, game_input)
+			{
+				d_line, found_d_line := GetDebugLineNumber(text_op.file_tabs[text_op.ftab_i].tab_cursor.cursor_line_number, 
+					text_op.text_comp_data, text_file.absolute_path_name);
+				if found_d_line {
+					MoveToAsmIndex(d_line.start_asm_index, text_op);
+					ChangeTextPane(SelectedTextPane.DISASSEMBLY, text_op, perm.all_data);
+					//TODO We could put this as a setting if needed, or also a setting to always show both
+					//I like that with just the line number it feels cleaner since we remember the number that was just there anyways
+					// SetTextStatus(tprint("Line %", text_op.file_tabs[text_op.ftab_i].tab_cursor.cursor_line_number), text_op);
+				} else {
+					SetTextStatus("Not a code line", text_op);
 				}
 			}
 			//REMINDER : IF we just have settings later and everything else is dynamic libraries, then we can just do this on save
@@ -2997,29 +3037,6 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 					text_op.ftab_i = next_tab_i;
 				}
 			}
-			//TODO We could allow these to be pressed anywhere and pull it out and that would be ok since they woudl
-			//be before the selection ones. Leaving in here so we can use commands in other panes as well but maybe
-			//that is more convenient outside and then we also would switch the pane to text pane in here too.
-			else if IsInputMapPress(.TEXT_FILE_GOTO_LINE_BAR, .DOWN_THIS_FRAME, game_input) {
-				//TODO Should we make this happen even if we are not selecting the text pane?
-				if text_op.text_first_bar_type == TextFirstBarType.GOTO_LINE &&
-					text_op.selected_text_bar == SelectedTextBarType.SELECTED_FIRST_BAR
-				{
-					text_op.text_first_bar_type = TextFirstBarType.NONE;
-					text_op.selected_text_bar = SelectedTextBarType.NONE;
-				} else {
-					text_op.text_first_bar_type = TextFirstBarType.GOTO_LINE;
-					text_op.selected_text_bar = SelectedTextBarType.SELECTED_FIRST_BAR;
-					//We always reset with goto line so itll reset from the find and also if we close and re-open.
-					//This is the same behavior as sublime text
-					text_op.first_bar_input_text.text_string.count = 0;
-					ResetTextCursor(*text_op.first_bar_cursor);
-					//TODO We could highlight the text if we go back to it if that is more convenient
-				}
-				text_op.text_second_bar_type = TextSecondBarType.NONE;
-				ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
-					perm.text_editor_data);
-			}
 			else if IsInputMapPress(.TEXT_FILE_FIND_TEXT_BAR, .DOWN_THIS_FRAME, game_input) {
 				//TODO Should we make this happen even if we are not selecting the text pane?
 				if text_op.text_first_bar_type == TextFirstBarType.FIND_TEXT &&
@@ -3086,12 +3103,29 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 						We reset the cursor in MoveToLine now explicitly in this case to remember here.
 						*/
 						// ResetTextCursor(tab_cursor);
-						MoveToLine(line_number, text_file.file_string, tab_cursor, center_line=true);
+						MoveToLine(line_number, text_file.file_string, tab_cursor);
 						CloseTextBars(text_op, op_space, perm.text_editor_data);
-					} else {
+					} 
+					else if text_op.exec_info.exec_mode == .DEBUG &&
+						//TODO Maybe pull out the start string here for tests. 
+						//"a" feels better than "asm" since its 1 char instead of 3
+						String.starts_with(text_op.first_bar_input_text.text_string, "a")
+					{
+						asm_index_string : string = String.slice(text_op.first_bar_input_text.text_string, 1, 
+							text_op.first_bar_input_text.text_string.count-1);
+						asm_index_int, asm_is_int := string_to_int(asm_index_string);
+						if asm_is_int {
+							MoveToAsmIndex(asm_index_int, text_op);
+							CloseTextBars(text_op, op_space, perm.text_editor_data);
+							ChangeTextPane(SelectedTextPane.DISASSEMBLY, text_op, perm.all_data);
+						} else {
+							SetTextStatus("Invalid asm index", text_op);
+						}
+					}
+					else {
 						//TODO We could write an error to the text data bar here somehow saying that is not a line number
 						//It would need a timer for a few seconds so it goes away like in sublime text
-						SetTextStatus("Invalid goto line number.", text_op);
+						SetTextStatus("Invalid line number", text_op);
 					}
 				}
 				else if (IsKeyboardPress(.ENTER, .DOWN_THIS_FRAME, game_input) ||
@@ -3453,7 +3487,26 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 						*text_op.start_disasm_index, *text_op.end_disasm_index);
 				}
 			}
-			// if text_op.exec_info.exec_mode == ExecutionMode.DEBUG && keyboard.f9.down_this_frame {
+			else if IsKeyboardPress(.ARROW_UP, .{ctrl_pressed=true}, .IS_DOWN_WITH_PAUSE, game_input) {
+				if text_op.start_disasm_index - 1 >= 0 {
+					text_op.start_disasm_index -= 1;
+					text_op.end_disasm_index -= 1;
+					if text_op.highlighted_disasm_index > text_op.end_disasm_index {
+						text_op.highlighted_disasm_index -= 1;
+					}
+				}
+			}
+			else if IsKeyboardPress(.ARROW_DOWN, .{ctrl_pressed=true}, .IS_DOWN_WITH_PAUSE, game_input) {
+				if text_op.text_comp_data != null && text_op.text_comp_data.disassembly_loc.count > 0 && 
+					text_op.end_disasm_index + 1 <= text_op.text_comp_data.disassembly_loc.count-1 
+				{
+					text_op.start_disasm_index += 1;
+					text_op.end_disasm_index += 1;
+					if text_op.highlighted_disasm_index < text_op.start_disasm_index {
+						text_op.highlighted_disasm_index += 1;
+					}
+				}
+			}
 			else if text_op.exec_info.exec_mode == ExecutionMode.DEBUG && 
 				IsInputMapPress(.DEBUG_SET_BREAKPOINT, .DOWN_THIS_FRAME, game_input)
 			{
@@ -3493,6 +3546,19 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 					// 	break_point.line_number = debug_line.line_number;
 					// }
 				}
+				}
+			}
+			else if text_op.exec_info.exec_mode == ExecutionMode.DEBUG && 
+				IsInputMapPress(.DEBUG_ASM_GOTO_CODE, .DOWN_THIS_FRAME, game_input)
+			{
+				stop_d_line, found_d_line := GetDebugLineAsm(text_op.highlighted_disasm_index, text_op.text_comp_data);
+				if found_d_line {
+					ChangeTextPane(SelectedTextPane.TEXT, text_op, perm.all_data);
+					MoveToLine(stop_d_line.line_number, text_file.file_string, *text_op.file_tabs[text_op.ftab_i].tab_cursor);
+					//TODO We could put this as a setting if needed
+					// SetTextStatus(tprint("asm %", text_op.highlighted_disasm_index), text_op);
+				} else {
+					SetTextStatus("Invalid asm index", text_op);
 				}
 			}
 
@@ -5649,7 +5715,10 @@ if perm.all_data.all_music_instructions.count > 0 {
 			//If we moved the stop_line while executing, then we want to adjust where we are in the editor here.
 			//TODO Technically we can get this stop_line from .ip reg as well like disasm below.
 			//That might be better for consistency overall
-			stop_d_line := GetDebugLineAsm(perm.all_data.all_register_memory[RegDef.pc].int_value, text_op.text_comp_data);
+			stop_d_line, found_d_line := GetDebugLineAsm(perm.all_data.all_register_memory[RegDef.pc].int_value, text_op.text_comp_data);
+			//We used to have an assertion in GetDebugLineAsm here and it would not get hit so if it does then we should look into it
+			//This should always be valid since pc register should be valid
+			assert(found_d_line); 
 	    	edit_text_file, found_edit_text_file := ArrayFindFirstConstByNameId(perm.all_data.all_text_files,
     			text_op.file_tabs[text_op.ftab_i].text_file_id, "id");
 	    	assert(found_edit_text_file);
@@ -5728,18 +5797,9 @@ if perm.all_data.all_music_instructions.count > 0 {
 			//DOCU : This moves the disassembly so we are in the right place in the disasm pane.
 			//TODO Should we put this in the input so that is adjusts itself no matter what?
 			//Maybe not since there are no other cases unless we want to specifically jump which would be a separate action.
-			ip_reg : int = perm.all_data.all_register_memory[RegDef.pc].int_value;
-			if ip_reg < text_op.start_disasm_index || ip_reg > text_op.end_disasm_index {
-				viewable_disasm_count : int = text_op.end_disasm_index - text_op.start_disasm_index;
-				top_count : int = viewable_disasm_count / 2;
-				text_op.start_disasm_index = ip_reg - top_count;
-				if text_op.start_disasm_index < 0 {
-					text_op.start_disasm_index = 0;
-				}
-				text_op.end_disasm_index = text_op.start_disasm_index + viewable_disasm_count;
-				assert(text_op.end_disasm_index - text_op.start_disasm_index == viewable_disasm_count); //sanity check
-
-				text_op.highlighted_disasm_index = ip_reg;
+			pc_reg : int = perm.all_data.all_register_memory[RegDef.pc].int_value;
+			if pc_reg < text_op.start_disasm_index || pc_reg > text_op.end_disasm_index {
+				MoveToAsmIndex(pc_reg, text_op);
 			}
 
 			if cpu_err.is_error {
@@ -7796,13 +7856,17 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 			//TODO Can add char here is as well if needed
 			//TODO Can also add info here like Saved "file_name" and other info if needed like copied or pasted or something else similar to sublime text
 			//TODO SETTINGS could have a formatting for how people want to put their data and also have data options
+			//TODO Should we make this toggleable or just goto asm for a line or when we are in debug mode?
+			//I like that with just 1 number it feels cleaner since we remember the number that was just there anyways
+			// status_bar_text = tprint("%, Line %, asm %", text_file.file_short_name, tab_cursor.cursor_line_number, text_op.highlighted_disasm_index);
 			status_bar_text : string;
-			if text_op.text_status_timer > 0 {
-				status_bar_text = tprint("%, Line %; %", text_file.file_short_name, tab_cursor.cursor_line_number, text_op.text_status_message);
-			} else {
+			if text_op.selected_pane == .TEXT {
 				status_bar_text = tprint("%, Line %", text_file.file_short_name, tab_cursor.cursor_line_number);
-				//TODO Should we make this toggleable or just goto asm for a line or when we are in debug mode?
-				// status_bar_text = tprint("%, Line %, asm %", text_file.file_short_name, tab_cursor.cursor_line_number, text_op.highlighted_disasm_index);
+			} else if text_op.selected_pane == .DISASSEMBLY {
+				status_bar_text = tprint("%, asm %", text_file.file_short_name, text_op.highlighted_disasm_index);
+			}
+			if text_op.text_status_timer > 0 {
+				status_bar_text = tprint("%; %", status_bar_text, text_op.text_status_message);
 			}
 			PushText(start_status_bar_cam_pos, status_bar_text, GREY_DARK_V, op_space.render_groups.scissor_group, left_bottom_bar_text_order);
 		}
@@ -7981,7 +8045,10 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 				// hit_instr := text_op.exec_info.debug_info.break_points[text_op.exec_info.debug_info.current_break_point_index].line_number;
 				//TODO Technically we can compute this from start_asm_index
 				//TODO ACTUALLY we should just get this from ip register like we do for disassembly pane
-				stop_d_line := GetDebugLineAsm(perm.all_data.all_register_memory[RegDef.pc].int_value, text_op.text_comp_data);
+				stop_d_line, found_d_line := GetDebugLineAsm(perm.all_data.all_register_memory[RegDef.pc].int_value, text_op.text_comp_data);
+				//We used to have an assertion in GetDebugLineAsm here and it would not get hit so if it does then we should look into it
+				//This should always be valid since pc register should be valid
+				assert(found_d_line);
 				// stop_index : int = text_op.exec_info.debug_info.stop_line - text_op.file_tabs[text_op.ftab_i].tab_cursor.start_file_line_index;
 				stop_index : int = stop_d_line.line_number - text_op.file_tabs[text_op.ftab_i].tab_cursor.start_file_line_index;
 				//TODO Hardcoded for now since we always have asm starting on first line
@@ -8551,6 +8618,25 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 							PushQuadArrowViewport(cam_pos,cam_pos+Vector2F.{0.85,0},YELLOW_V,0.1,op_space.render_groups.scissor_group,order=l_bottom_order+5);
 						}
 
+						stop_d_line, found_d_line := GetDebugLineAsm(perm.all_data.all_register_memory[RegDef.pc].int_value, text_op.text_comp_data);
+						//We used to have an assertion in GetDebugLineAsm here and it would not get hit so if it does then we should look into it
+						//This should always be valid since pc register should be valid
+						assert(found_d_line);
+						for asm_index : stop_d_line.start_asm_index..stop_d_line.end_asm_index {
+							if asm_index >= text_op.start_disasm_index && asm_index <= end_disasm_render { 
+								op_pos := Vector2F.{LOC_BOTTOM_START_X, LOC_BOTTOM_START_Y};
+								op_pos.y -= (asm_index-text_op.start_disasm_index) * TEXT_LINE_HEIGHT;
+								cam_pos : Vector2F = OpSpaceToCameraSpace(op_pos, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
+								rect_dim := Vector2F.{GetWidth(l_bottom_rect), TEXT_LINE_HEIGHT};
+								cam_rect : Rectangle2 = RectLeftCenterDim(cam_pos, rect_dim);
+								//TODO Make this color adjustable in settings since it depends on visual preference
+								// PushRectangle(cam_rect, 0.45*Lerp(LIGHT_BROWN,0.85,YELLOW_V), op_space.render_groups.scissor_group, order = l_bottom_order+3);
+								// PushRectangle(cam_rect, BG_GREEN_V, op_space.render_groups.scissor_group, order = l_bottom_order+3);
+								PushRectangle(cam_rect, 0.91*GREY_BLACK_V, op_space.render_groups.scissor_group, order = l_bottom_order+3);
+								// PushRectangle(cam_rect, GREY_DARKEST2_V, op_space.render_groups.scissor_group, order = l_bottom_order+3);
+							}
+						}
+
 						//TODO Can use this code for line highlighting or also cursor highlighting.
 						//Can highlight all the disasm associated to the current line here as well.
 						#if 0 {
@@ -8575,7 +8661,8 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 					cam_pos : Vector2F = OpSpaceToCameraSpace(op_pos, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
 					rect_dim := Vector2F.{GetWidth(l_bottom_rect), TEXT_LINE_HEIGHT};
 					cam_rect : Rectangle2 = RectLeftCenterDim(cam_pos, rect_dim);
-					PushRectangle(cam_rect, DBLUE_V, op_space.render_groups.scissor_group, order = l_bottom_order+3);
+					//Slightly lower alpha to see the difference with the highlighted asm while debugging
+					PushRectangle(cam_rect, MakeV4F(DBLUE_V.xyz, 0.9), op_space.render_groups.scissor_group, order = l_bottom_order+4);
 				}
 			}
 			}

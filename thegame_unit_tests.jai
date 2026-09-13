@@ -17797,21 +17797,24 @@ DONE,,unit_test_alloc);
 	bp0 : *DebugBreakpoint = array_add(*exec_info.debug_info.break_points);
 	bp0.bp_type = .BP_CODE;
 	bp0.asm_index = 0;
-	d_line := GetDebugLineAsm(bp0.asm_index, ad.comp_data);
+	d_line, found_d_line := GetDebugLineAsm(bp0.asm_index, ad.comp_data);
+	AssertEquals(true, found_d_line);
 	bp0.end_asm_index = d_line.end_asm_index;
 	bp0.line_number = d_line.line_number;
 
 	bp1 := array_add(*exec_info.debug_info.break_points);
 	bp1.bp_type = .BP_CODE;
 	bp1.asm_index = 6;
-	d_line = GetDebugLineAsm(bp1.asm_index, ad.comp_data);
+	d_line, found_d_line = GetDebugLineAsm(bp1.asm_index, ad.comp_data);
+	AssertEquals(true, found_d_line);
 	bp1.end_asm_index = d_line.end_asm_index;
 	bp1.line_number = d_line.line_number;
 
 	bp_asm := array_add(*exec_info.debug_info.break_points);
 	bp_asm.bp_type = .BP_ASM;
 	bp_asm.asm_index = 10;
-	d_line = GetDebugLineAsm(bp_asm.asm_index, ad.comp_data);
+	d_line, found_d_line = GetDebugLineAsm(bp_asm.asm_index, ad.comp_data);
+	AssertEquals(true, found_d_line);
 	bp_asm.end_asm_index = d_line.end_asm_index;
 	bp_asm.line_number = d_line.line_number;
 
@@ -17819,7 +17822,8 @@ DONE,,unit_test_alloc);
 	ExecuteManyInstructions(*exec_info, ad);
 	AssertEquals(exec_info.exec_state, .IS_DEBUG_STOP);
 	AssertEquals(bp0.asm_index, ad.all_register_memory[RegDef.pc].int_value);
-	stop_d_line := GetDebugLineAsm(ad.all_register_memory[RegDef.pc].int_value, ad.comp_data);
+	stop_d_line, found_stop_d_line := GetDebugLineAsm(ad.all_register_memory[RegDef.pc].int_value, ad.comp_data);
+	AssertEquals(true, found_stop_d_line);
 	AssertEquals(bp0.line_number, stop_d_line.line_number);
 
 
@@ -17827,7 +17831,8 @@ DONE,,unit_test_alloc);
 	ExecuteManyInstructions(*exec_info, ad);
 	AssertEquals(exec_info.exec_state, .IS_DEBUG_STOP);
 	AssertEquals(bp0.asm_index+1, ad.all_register_memory[RegDef.pc].int_value);
-	stop_d_line = GetDebugLineAsm(ad.all_register_memory[RegDef.pc].int_value, ad.comp_data);
+	stop_d_line, found_stop_d_line = GetDebugLineAsm(ad.all_register_memory[RegDef.pc].int_value, ad.comp_data);
+	AssertEquals(true, found_stop_d_line);
 	AssertEquals(bp0.line_number+1, stop_d_line.line_number);
 
 
@@ -17835,7 +17840,8 @@ DONE,,unit_test_alloc);
 	ExecuteManyInstructions(*exec_info, ad);
 	AssertEquals(exec_info.exec_state, .IS_DEBUG_STOP);
 	AssertEquals(bp1.asm_index, ad.all_register_memory[RegDef.pc].int_value);
-	stop_d_line = GetDebugLineAsm(ad.all_register_memory[RegDef.pc].int_value, ad.comp_data);
+	stop_d_line, found_stop_d_line = GetDebugLineAsm(ad.all_register_memory[RegDef.pc].int_value, ad.comp_data);
+	AssertEquals(true, found_stop_d_line);
 	AssertEquals(bp1.line_number, stop_d_line.line_number);
 
 
@@ -17843,7 +17849,8 @@ DONE,,unit_test_alloc);
 	ExecuteManyInstructions(*exec_info, ad);
 	AssertEquals(exec_info.exec_state, .IS_DEBUG_STOP);
 	AssertEquals(bp1.asm_index+1, ad.all_register_memory[RegDef.pc].int_value);
-	stop_d_line = GetDebugLineAsm(ad.all_register_memory[RegDef.pc].int_value, ad.comp_data);
+	stop_d_line, found_stop_d_line = GetDebugLineAsm(ad.all_register_memory[RegDef.pc].int_value, ad.comp_data);
+	AssertEquals(true, found_stop_d_line);
 	AssertEquals(bp1.line_number+2, stop_d_line.line_number);
 
 
@@ -17851,14 +17858,16 @@ DONE,,unit_test_alloc);
 	ExecuteManyInstructions(*exec_info, ad);
 	AssertEquals(exec_info.exec_state, .IS_DEBUG_STOP);
 	AssertEquals(bp_asm.asm_index, ad.all_register_memory[RegDef.pc].int_value);
-	stop_d_line = GetDebugLineAsm(ad.all_register_memory[RegDef.pc].int_value, ad.comp_data);
+	stop_d_line, found_stop_d_line = GetDebugLineAsm(ad.all_register_memory[RegDef.pc].int_value, ad.comp_data);
+	AssertEquals(true, found_stop_d_line);
 	AssertEquals(bp_asm.line_number, stop_d_line.line_number);
 
 	exec_info.debug_info.debug_control = .STEP_OVER;
 	ExecuteManyInstructions(*exec_info, ad);
 	AssertEquals(exec_info.exec_state, .IS_DEBUG_STOP);
 	AssertEquals(bp_asm.asm_index+1, ad.all_register_memory[RegDef.pc].int_value);
-	stop_d_line = GetDebugLineAsm(ad.all_register_memory[RegDef.pc].int_value, ad.comp_data);
+	stop_d_line, found_stop_d_line = GetDebugLineAsm(ad.all_register_memory[RegDef.pc].int_value, ad.comp_data);
+	AssertEquals(true, found_stop_d_line);
 	AssertEquals(bp_asm.line_number+2, stop_d_line.line_number);
 
 	exec_info.debug_info.debug_control = .STEP_OVER;
@@ -17878,7 +17887,8 @@ DONE,,unit_test_alloc);
 	ExecuteManyInstructions(*exec_info, ad);
 	AssertEquals(exec_info.exec_state, .IS_DEBUG_STOP);
 	AssertEquals(bp0.asm_index, ad.all_register_memory[RegDef.pc].int_value);
-	stop_d_line = GetDebugLineAsm(ad.all_register_memory[RegDef.pc].int_value, ad.comp_data);
+	stop_d_line, found_stop_d_line = GetDebugLineAsm(ad.all_register_memory[RegDef.pc].int_value, ad.comp_data);
+	AssertEquals(true, found_stop_d_line);
 	AssertEquals(bp0.line_number, stop_d_line.line_number);
 
 } @UnitTest
@@ -18682,7 +18692,7 @@ Test_MoveToLine :: () {
 
 
 	//TEST out of bounds center line == false
-	MoveToLine(26, text_file.file_string, *cursor, center_line=false);
+	MoveToLine(26, text_file.file_string, *cursor, force_center_line=false, center_out_of_bounds=false);
 	test_cursor.char_point = 198;
 	test_cursor.cursor_line_char = 0;
 	test_cursor.cursor_line_number = 25;

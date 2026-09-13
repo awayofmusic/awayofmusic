@@ -2137,24 +2137,24 @@ MoveToLine :: inline (
 	file_string : FileString,
 	cursor : *TextCursor,
 	$move_cursor : bool = true,
-	$center_line : bool = true)
+	$force_center_line : bool = false,
+	//Only center if we are out of bounds, otherwise just move to that line
+	$center_out_of_bounds : bool = true)
 {
 	//TODO I think this should be mandatory to avoid cursor selecting issues
 	#if move_cursor ResetTextCursor(cursor);
 
-	//TODO Should we adjust so that the new cursor_line_number is in between?
 	line_bound_diff : int = cursor.end_file_line_index - cursor.start_file_line_index;
-	// top_count : int = line_bound_diff / 2;
-	// top_count : int = line_bound_diff;
-	// bottom_count : int = line_bound_diff - top_count;
-	// line_diff : int = line_number - cursor.cursor_line_number;
-	// cursor.start_file_line_index = line_number;
-	clamp_line_number := Clamp(0, line_number, file_string.file_loc.count-1);
-	cursor.start_file_line_index = clamp_line_number;
-	#if center_line {
-		cursor.start_file_line_index -= line_bound_diff/2;
+	clamp_line_number : int = Clamp(0, line_number, file_string.file_loc.count-1);
+	#if force_center_line {
+		cursor.start_file_line_index = clamp_line_number - line_bound_diff/2;
+	} else #if center_out_of_bounds {
+		if !InRange(cursor.start_file_line_index, clamp_line_number, cursor.end_file_line_index) {
+			cursor.start_file_line_index = clamp_line_number - line_bound_diff/2;
+		}
 	} else {
-		cursor.start_file_line_index -= line_bound_diff;
+		//TODO I am not sure this case is used anymore, maybe we can remove it if not
+		cursor.start_file_line_index = clamp_line_number - line_bound_diff;
 	}
 	if cursor.start_file_line_index < 0 {
 		cursor.start_file_line_index = 0;
@@ -2173,12 +2173,12 @@ MoveToLine :: inline (
 	}
 
 	#if move_cursor {
-		char_bound_diff : int = cursor.right_char_bound - cursor.left_char_bound;
-		cursor.left_char_bound = 0;
-		cursor.right_char_bound = char_bound_diff;
-		cursor.cursor_line_number = clamp_line_number;
-		cursor.cursor_line_char = 0;
-		cursor.char_point = StartCharPointOfLineNumber(cursor.cursor_line_number, file_string);
+	char_bound_diff : int = cursor.right_char_bound - cursor.left_char_bound;
+	cursor.left_char_bound = 0;
+	cursor.right_char_bound = char_bound_diff;
+	cursor.cursor_line_number = clamp_line_number;
+	cursor.cursor_line_char = 0;
+	cursor.char_point = StartCharPointOfLineNumber(cursor.cursor_line_number, file_string);
 	}
 }
 
@@ -2730,6 +2730,30 @@ UnselectCursorWithSameFixedCharPoint :: inline (cursor : *TextCursor) {
 		cursor.cursor_is_selecting = false;
 	}	
 }
+
+MoveToAsmIndex :: inline (asm_index : int, text_op : *TextOpSpaceData) {
+	clamp_asm_index : int = 0;
+	if text_op == null || text_op.text_comp_data == null || text_op.text_comp_data.disassembly_loc.data == null ||
+		text_op.text_comp_data.disassembly_loc.count <= 0
+	{
+		//keep asm index at 0 since this is invalid
+	} else {
+		clamp_asm_index = Clamp(0, asm_index, text_op.text_comp_data.disassembly_loc.count-1);
+	}
+
+	text_op.highlighted_disasm_index = clamp_asm_index;
+	if clamp_asm_index < text_op.start_disasm_index || clamp_asm_index > text_op.end_disasm_index {
+		viewable_count : int = text_op.end_disasm_index - text_op.start_disasm_index;
+		top_count : int = viewable_count / 2;
+		text_op.start_disasm_index = clamp_asm_index - top_count;
+		if text_op.start_disasm_index < 0 {
+			text_op.start_disasm_index = 0;
+		}
+		text_op.end_disasm_index = text_op.start_disasm_index + viewable_count;
+		assert(text_op.end_disasm_index - text_op.start_disasm_index == viewable_count); //sanity check
+	}
+}
+
 
 EqualsChosenEntity :: inline (
 	c1 : ChosenEntity, c2 : ChosenEntity) 

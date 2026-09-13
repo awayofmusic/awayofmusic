@@ -712,6 +712,8 @@ InputMapType :: enum {
 	DEBUG_STEP_OUT;
 
 	DEBUG_DELETE_ALL_BREAKPOINTS;
+	DEBUG_CODE_GOTO_ASM;
+	DEBUG_ASM_GOTO_CODE;
 
 	DEBUG_WATCH_EDIT;
 
@@ -1014,6 +1016,16 @@ DEFAULT_INPUT_MAPPINGS, IM_DESCRIPTIONS :: #run () ->
 	case .TEXT_SHOW_STATUS_BAR; {
 		k_maps := NewArray(1, KeyboardMap);
 		k_maps[0] = .{.F7, .{ctrl_pressed=true}};
+		d[it] = .{it, k_maps};
+	}
+	case .DEBUG_CODE_GOTO_ASM; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "G", .{ctrl_pressed=true,shift_pressed=true}};
+		d[it] = .{it, k_maps};
+	}
+	case .DEBUG_ASM_GOTO_CODE; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "G", .{ctrl_pressed=true,shift_pressed=true}};
 		d[it] = .{it, k_maps};
 	}
 	case .DEBUG_SET_BREAKPOINT; {

@@ -3776,7 +3776,8 @@ DONE);
 		count_equal := AssertEquals(2, ei.debug_info.break_points.count);
 		if count_equal {
 			AssertEquals(ei.debug_info.break_points[0].asm_index, perm.all_data.all_register_memory[RegDef.ir].int_value);
-			stop_d_line := GetDebugLineAsm(perm.all_data.all_register_memory[RegDef.ir].int_value, text_op.text_comp_data);
+			stop_d_line, found_d_line := GetDebugLineAsm(perm.all_data.all_register_memory[RegDef.ir].int_value, text_op.text_comp_data);
+			AssertEquals(true, found_d_line);
 			AssertEquals(ei.debug_info.break_points[0].line_number, stop_d_line.line_number);
 
 			AssertEquals(6, ei.debug_info.break_points[1].asm_index);
@@ -5253,7 +5254,7 @@ DONE,,test_alloc);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(4, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(4, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		v_watch := GetWatch("v", text_op.watch_data_rows);
@@ -5277,7 +5278,7 @@ DONE,,test_alloc);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(7, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(7, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		i1_watch := GetWatch("i1", text_op.watch_data_rows);
@@ -5298,7 +5299,7 @@ DONE,,test_alloc);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		// d_line := GetDebugLineNumber(10, text_op.text_comp_data.all_debug_lines);
+		// d_line := GetDebugLineForTest(10, text_op.text_comp_data);
 		// AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		f2_watch := GetWatch("f2", text_op.watch_data_rows);
@@ -5324,7 +5325,7 @@ DONE,,test_alloc);
 	// 	text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 	// 	AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-	// 	d_line := GetDebugLineNumber(12, text_op.text_comp_data.all_debug_lines);
+	// 	d_line := GetDebugLineForTest(12, text_op.text_comp_data);
 	// 	AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 	// 	a_watch := GetWatch("a", text_op.watch_data_rows);
@@ -5441,7 +5442,7 @@ DONE,,test_alloc);
 	case 5; {
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(4, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(4, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		//TEST bt || bf == true
@@ -6221,7 +6222,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
 
-		d_line : DebugLine = GetDebugLineNumber(4, text_op.text_comp_data.all_debug_lines);
+		d_line : DebugLine = GetDebugLineForTest(4, text_op.text_comp_data);
 		//NOTE : Need to +2 because of the "}" close scope asm instruction.
 		//TODO We can change to +1 when we remove the closing scope instructions
 		else_if_index : int = d_line.start_asm_index + 1;
@@ -6260,9 +6261,9 @@ DONE);
 				AssertEquals(ScopeDataType.CONTROL_SCOPE, if_scope.scope_type);
 				AssertEquals(CodeTokenType.KEYWORD_ELSE, if_scope.scope_token.token_type);
 
-				d_line := GetDebugLineNumber(5, text_op.text_comp_data.all_debug_lines);
+				d_line := GetDebugLineForTest(5, text_op.text_comp_data);
 				AssertEquals(d_line.start_asm_index, if_scope.start_instr_index);
-				// d_line = GetDebugLineNumber(6, text_op.text_comp_data.all_debug_lines);
+				// d_line = GetDebugLineForTest(6, text_op.text_comp_data);
 				AssertEquals(d_line.end_asm_index, if_scope.end_instr_index);
 			}
 		}
@@ -6313,7 +6314,7 @@ CodeBPForTest :: inline (
 	break_point : *DebugBreakpoint = array_add(*d_info.break_points);
 	//TODO Could make one for BP_ASM if needed
 	break_point.bp_type = .BP_CODE;
-	d_line : DebugLine = GetDebugLineNumber(line_number, comp_data.all_debug_lines, abs_path_name);
+	d_line : DebugLine = GetDebugLineForTest(line_number, *comp_data, abs_path_name);
 	break_point.line_number = d_line.line_number;
 	break_point.asm_index = d_line.start_asm_index;
 	break_point.end_asm_index = d_line.end_asm_index;
@@ -7076,7 +7077,8 @@ DONE);
 			bp0 = text_op.exec_info.debug_info.break_points[0];
 		}
 
-		d_line := GetDebugLineAsm(perm.all_data.all_register_memory[RegDef.pc].int_value, text_op.text_comp_data);
+		d_line, found_d_line := GetDebugLineAsm(perm.all_data.all_register_memory[RegDef.pc].int_value, text_op.text_comp_data);
+		AssertEquals(true, found_d_line);
 		AssertEquals(3, d_line.line_number);
 
 		count_equals = AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -7402,7 +7404,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(4, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(4, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -7432,7 +7434,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(1, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(1, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(2, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -7467,7 +7469,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(5, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(5, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		x_watch := GetWatch("x", text_op.watch_data_rows);
@@ -7566,7 +7568,7 @@ DONE);
 		//We step into the functioncal and make sure we are in the function
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
-		d_line := GetDebugLineNumber(1, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(1, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		DownUpInputMap(.DEBUG_STEP_OUT, game_input);
@@ -7576,7 +7578,7 @@ DONE);
 		//We step out of the function and make sure we are back at the instruction after the call instruction
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
-		d_line := GetDebugLineNumber(4, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(4, text_op.text_comp_data);
 		after_call_index : int;
 		for d_line.start_asm_index..d_line.end_asm_index {
 			if perm.all_data.all_music_instructions[it].op_code == OpCode.call {
@@ -7611,7 +7613,7 @@ DONE);
 		//Repeat the step over until the end so we make sure that we skip over the call instruction
 		if perm.test_data.all_sub_tests[perm.test_data.sub_test_index].run_index == 0 {
 			text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
-			d_line := GetDebugLineNumber(4, text_op.text_comp_data.all_debug_lines);
+			d_line := GetDebugLineForTest(4, text_op.text_comp_data);
 			instr_count : int = d_line.end_asm_index - d_line.start_asm_index + 1;
 			perm.test_data.all_sub_tests[perm.test_data.sub_test_index] = SubT(instr_count);
 		}
@@ -7628,14 +7630,14 @@ DONE);
 	case 15; {
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
-		d_line := GetDebugLineNumber(4, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(4, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);		
 	}
 	case 16; {
 		//TEST : ASM_STEP_INTO
 		if perm.test_data.all_sub_tests[perm.test_data.sub_test_index].run_index == 0 {
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
-			d_line := GetDebugLineNumber(4, text_op.text_comp_data.all_debug_lines);
+			d_line := GetDebugLineForTest(4, text_op.text_comp_data);
 			for d_line.start_asm_index..d_line.end_asm_index {
 				if perm.all_data.all_music_instructions[it].op_code == OpCode.call {
 					count_to_call : int = it - d_line.start_asm_index + 1;
@@ -7650,7 +7652,7 @@ DONE);
 	case 17; {
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
-		d_line := GetDebugLineNumber(1, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(1, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);		
 
 		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
@@ -7674,7 +7676,7 @@ DONE);
 	case 21; {
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
-		d_line := GetDebugLineNumber(4, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(4, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);				
 	}
 	}
@@ -8022,7 +8024,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(4, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(4, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -8053,7 +8055,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(7, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(7, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(2, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -8090,7 +8092,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(1, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(1, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(3, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -8129,7 +8131,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(7, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(7, text_op.text_comp_data);
 		after_call_index : int;
 		for d_line.start_asm_index..d_line.end_asm_index {
 			if perm.all_data.all_music_instructions[it].op_code == .call {
@@ -8173,7 +8175,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(1, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(1, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(3, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -8204,7 +8206,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(7, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(7, text_op.text_comp_data);
 		after_call2_index : int;
 		call_2 : int;
 		for d_line.start_asm_index..d_line.end_asm_index {
@@ -8253,7 +8255,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(4, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(4, text_op.text_comp_data);
 		after_call_index : int;
 		for d_line.start_asm_index..d_line.end_asm_index {
 			if perm.all_data.all_music_instructions[it].op_code == .call {
@@ -8284,7 +8286,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(5, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(5, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -8314,7 +8316,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(7, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(7, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(2, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -8344,7 +8346,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(4, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(4, text_op.text_comp_data);
 		after_call_index : int;
 		for d_line.start_asm_index..d_line.end_asm_index {
 			if perm.all_data.all_music_instructions[it].op_code == .call {
@@ -8377,7 +8379,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(4, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(4, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -8401,7 +8403,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(5, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(5, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -8510,7 +8512,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(2, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(2, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -8539,7 +8541,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(6, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(6, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(2, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -8577,7 +8579,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(2, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(2, text_op.text_comp_data);
 		after_call_index := GetAfterCallIndex(d_line, perm.all_data.all_music_instructions);
 		AssertEquals(after_call_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
@@ -8591,7 +8593,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(3, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(3, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -8619,7 +8621,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(9, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(9, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(2, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -8658,7 +8660,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(4, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(4, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -8757,7 +8759,7 @@ Test_FuncRecurse :: (
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(1, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(1, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		AssertEquals(false, text_op.exec_info.debug_info.chose_other_call_frame);
 		AssertEquals(0, text_op.exec_info.debug_info.selected_call_frame_index);
@@ -8803,7 +8805,7 @@ Test_FuncRecurse :: (
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(1, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(1, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		AssertEquals(true, text_op.exec_info.debug_info.chose_other_call_frame);
 		AssertEquals(0, text_op.exec_info.debug_info.selected_call_frame_index);
@@ -8826,7 +8828,7 @@ Test_FuncRecurse :: (
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(2, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(2, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		AssertEquals(false, text_op.exec_info.debug_info.chose_other_call_frame);
 
@@ -8867,7 +8869,7 @@ Test_FuncRecurse :: (
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(2, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(2, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		AssertEquals(1, text_op.highlighted_call_stack_index);
 		AssertEquals(true, text_op.exec_info.debug_info.chose_other_call_frame);
@@ -8889,7 +8891,7 @@ Test_FuncRecurse :: (
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(2, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(2, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		//Selected call frame is array index BUT highlighted is rendering from the top so they should be inversed
 		AssertEquals(true, text_op.exec_info.debug_info.chose_other_call_frame);
@@ -8912,7 +8914,7 @@ Test_FuncRecurse :: (
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(2, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(2, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		//Selected call frame is array index BUT highlighted is rendering from the top so they should be inversed
 		AssertEquals(true, text_op.exec_info.debug_info.chose_other_call_frame);
@@ -8949,7 +8951,7 @@ Test_FuncRecurse :: (
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(4, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(4, text_op.text_comp_data);
 		after_call_index : int;
 		for d_line.start_asm_index..d_line.end_asm_index if perm.all_data.all_music_instructions[it].op_code == .call {
 			after_call_index = it + 1;
@@ -8980,7 +8982,7 @@ Test_FuncRecurse :: (
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(8, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(8, text_op.text_comp_data);
 		after_call_index : int;
 		for d_line.start_asm_index..d_line.end_asm_index if perm.all_data.all_music_instructions[it].op_code == .call {
 			after_call_index = it + 1;
@@ -9005,7 +9007,7 @@ Test_FuncRecurse :: (
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(9, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(9, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		//Selected call frame is array index BUT highlighted is rendering from the top so they should be inversed
 		AssertEquals(false, text_op.exec_info.debug_info.chose_other_call_frame);
@@ -9035,7 +9037,7 @@ Test_FuncRecurse :: (
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(1, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(1, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		AssertEquals(false, text_op.exec_info.debug_info.chose_other_call_frame);
 
@@ -9062,7 +9064,7 @@ Test_FuncRecurse :: (
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(8, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(8, text_op.text_comp_data);
 		after_call_index : int;
 		for d_line.start_asm_index..d_line.end_asm_index if perm.all_data.all_music_instructions[it].op_code == .call {
 			after_call_index = it + 1;
@@ -9084,7 +9086,7 @@ Test_FuncRecurse :: (
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(9, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(9, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		AssertEquals(false, text_op.exec_info.debug_info.chose_other_call_frame);
 
@@ -9111,7 +9113,7 @@ Test_FuncRecurse :: (
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(9, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(9, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		AssertEquals(false, text_op.exec_info.debug_info.chose_other_call_frame);
 
@@ -9201,7 +9203,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(7, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(7, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(2, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -9227,7 +9229,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(4, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(4, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(3, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -9251,7 +9253,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(7, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(7, text_op.text_comp_data);
 		after_call_index : int;
 		for d_line.start_asm_index..d_line.end_asm_index {
 			if perm.all_data.all_music_instructions[it].op_code == OpCode.call {
@@ -9279,7 +9281,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(8, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(8, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(2, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -9305,7 +9307,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(2, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(2, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -9399,7 +9401,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(7, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(7, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(2, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -9437,7 +9439,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(3, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(3, text_op.text_comp_data);
 		after_call_index : int;
 		for d_line.start_asm_index..d_line.end_asm_index {
 			if perm.all_data.all_music_instructions[it].op_code == OpCode.call {
@@ -9460,7 +9462,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(4, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(4, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -9479,7 +9481,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(10, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(10, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(2, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -9507,7 +9509,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(4, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(4, text_op.text_comp_data);
 		after_call_index : int;
 		for d_line.start_asm_index..d_line.end_asm_index {
 			if perm.all_data.all_music_instructions[it].op_code == OpCode.call {
@@ -9529,7 +9531,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(5, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(5, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -9614,7 +9616,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(2, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(2, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -9638,7 +9640,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(2, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(2, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -9667,7 +9669,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(6, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(6, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(2, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -9706,7 +9708,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(10, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(10, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(2, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -9736,7 +9738,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(4, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(4, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -9763,7 +9765,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(4, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(4, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -9792,7 +9794,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(4, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(4, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -9816,7 +9818,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(4, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(4, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -9839,7 +9841,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(4, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(4, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -9941,7 +9943,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(3, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(3, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(1, text_op.exec_info.debug_info.debug_call_stack.count);
@@ -10065,7 +10067,7 @@ DONE);
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);	
 
-		d_line := GetDebugLineNumber(4, text_op.text_comp_data.all_debug_lines);
+		d_line := GetDebugLineForTest(4, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		count_equals := AssertEquals(2, perm.all_data.all_text_files.count);
