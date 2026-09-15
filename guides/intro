@@ -31,7 +31,6 @@ Music is stopped with "ctrl+shift+p".
 
 Text status bar is toggled with "ctrl+F7".
 Text file tabs are toggled with "ctrl+F8".
-More details can be found in guides/text_op.
 New tabs can be opened with "ctrl+o".
 
 If there are any issues, "ctrl+alt+F12" will refresh the text op space.

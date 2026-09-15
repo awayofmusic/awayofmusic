@@ -5801,6 +5801,7 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 	case .GREATER_EQUALS; #through;
 	case #char ">"; #through;
 	case #char "<"; #through;
+	case #char "!"; #through;
 	case #char "%"; #through;
 	case #char "/"; #through;
 	case #char "*"; #through;
@@ -5835,6 +5836,9 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 				return true;
 			}
 			case #char "-"; {
+				valid_node : bool = CheckValidNode(node.right, node, cd);
+				if !valid_node return false;
+
 				right_op := GetValueOpReuseReg(node.right,cd,true);
 				node.code_ir = node.right.code_ir;
 				if node.right.code_ir.op.operand_type == {
@@ -5954,6 +5958,18 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 					CreateCompErr(cd, .EVALUATION, node, 
 					sprint("Invalid pointer type : %.\n", node.right,,context.allocator));
 				}
+			}
+			case #char "!"; {
+				valid_node : bool = CheckValidNode(node.right, node, cd);
+				if !valid_node return false;
+				if node.right.code_ir.t_info.type_enum != .BOOL {
+					CreateCompErr(cd, .EVALUATION, node.right, "Unary op \"!\" requires bool value.");
+					return false;
+				}
+
+				node.code_ir = node.right.code_ir;
+				node.code_ir.op = PushStack(cd.all_type_info.bool_type_info.runtime_size, cd);
+				CreateMInstr(.not, node.code_ir.op, node.right.code_ir.op, d=cd);
 			}
 			case;
 				CreateCompErr(cd, .EVALUATION, node, "Invalid unary op.");
@@ -9470,7 +9486,7 @@ CompileCode :: inline (cs : CompileSettings, code : string) -> *CompilationData 
 						//TODO Do we need to push and pop registers here? Maybe not and we just make them reset it if they
 						//do it otherwise it can get messed up. What about if they update the instruction pointer?
 						//I think it's fine and if they want to mess with fixed registers then they just do push and pop reg asm call.
-						Assembler(asm_lexer_tokens, asm_start_index, cd);
+						Assembler(asm_lexer_tokens, cd.all_music_instructions.count, cd);
 						if cd.comp_errors.all_compiler_errors.count > 0 break third_pass;
 						//We could pop later but we pop here for convenience to avoid the next loop.
 						//TODO Maybe better to pop this later and check for "}" so we can close it properly
@@ -10335,6 +10351,7 @@ Assembler :: (asm_tokens : [] LCodeToken, total_asm_start_index : int, cd : *Com
 	label_symbol_table : [..] LabelSymbol;
 	label_symbol_table.allocator = context.allocator;
 
+	asm_instr_index : int = 0;
 	fi : int = 0; //First pass index
 	while fi < asm_tokens.count {
 		//TODO There are no tests for labels. Should probably make some to make sure this actually works...
@@ -10351,17 +10368,21 @@ Assembler :: (asm_tokens : [] LCodeToken, total_asm_start_index : int, cd : *Com
 			if !is_label_symbol {
 				new_label : *LabelSymbol = array_add(*label_symbol_table);
 				new_label.label_string = label_string;
-				new_label.instr_index = total_asm_start_index + fi;
+				new_label.instr_index = total_asm_start_index + asm_instr_index;
 
-				asm_tokens[fi].token_type = CodeTokenType.FIRST_PASS_SKIP;
-				asm_tokens[fi+1].token_type = CodeTokenType.FIRST_PASS_SKIP;
+				// asm_tokens[fi].token_type = CodeTokenType.FIRST_PASS_SKIP;
+				// asm_tokens[fi+1].token_type = CodeTokenType.FIRST_PASS_SKIP;
 			} else {
 				CreateCompErr(cd, .ASSEMBLY_ERROR, asm_tokens[fi],
 				sprint("Label already exists : %.", label_string,, context.allocator));
 			}
 	   } else {
 			// Not processing on the first pass so we skip for now
-			fi += 1;
+			while fi < asm_tokens.count && asm_tokens[fi].token_type != #char ";" {
+		    	fi += 1;
+			}
+			fi += 1; //add the ";"
+			asm_instr_index += 1;
 		}
 	}
 
@@ -10423,8 +10444,17 @@ Assembler :: (asm_tokens : [] LCodeToken, total_asm_start_index : int, cd : *Com
 		c_index : int = 0;
 		while c_index < c_tokens.count {
 			if c_tokens[c_index].token_type == CodeTokenType.FIRST_PASS_SKIP {
+				//TODO Maybe we can remove FIRST_PASS_SKIP since we don't use it anymore.
        		c_index += 1;
-	      } else if c_tokens[c_index].token_type == CodeTokenType.IDENT {
+       	}
+			else if c_index + 1 < c_tokens.count && c_tokens[c_index].token_type == CodeTokenType.IDENT &&
+    	   	c_tokens[c_index+1].token_type == #char ":"
+ 	   	{
+ 	   		//We can only have labels before an opcode so reset the array here so the op_code can
+ 	   		//always be c_index == 0 so we can check it separately from other variable names
+ 	   		c_tokens = array_view(c_tokens, 2);
+	      } 
+	      else if c_tokens[c_index].token_type == CodeTokenType.IDENT {
 				//TODO We could do this in the OpCode lexer if we remove this first pass. Can just check for #asm
 				//and then check for op_codes when we're in an asm_directive. Can also do this on the second pass
 				//if we remove the first pass if we don't have labels. Only necessarily need first pass if we have labels.
@@ -10435,6 +10465,8 @@ Assembler :: (asm_tokens : [] LCodeToken, total_asm_start_index : int, cd : *Com
 				//but we are also checking at the bottom when creating OldMusicInstruction so it would be a double check...
 				//Leaving here for now in case we decide to allow instructions to start with something else... but
 				//i doubt it as all other functionality should be passable from code to asm.
+				//CHECKING 0 here allows us to have variables with same name as op code
+				//Maybe that's not clear but we can differentiate by position so we do.
 				if c_index == 0 {
 					l_string : string = c_tokens[c_index].token_string;
 					is_op_code, op_code_index := ArrayFindByValue(op_code_names, l_string);
@@ -10459,8 +10491,8 @@ Assembler :: (asm_tokens : [] LCodeToken, total_asm_start_index : int, cd : *Com
 							}
 						} 
 					} else {
-	   				CreateCompErr(cd, .ASSEMBLY_ERROR, c_tokens[0],
-						sprint("Invalid op code : %.", c_tokens[0].token_string,,context.allocator));
+	   				CreateCompErr(cd, .ASSEMBLY_ERROR, c_tokens[c_index],
+						sprint("Invalid op code : %.", c_tokens[c_index].token_string,,context.allocator));
 						break;
 					}
 				} else {

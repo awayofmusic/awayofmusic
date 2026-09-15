@@ -7860,10 +7860,10 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 			//I like that with just 1 number it feels cleaner since we remember the number that was just there anyways
 			// status_bar_text = tprint("%, Line %, asm %", text_file.file_short_name, tab_cursor.cursor_line_number, text_op.highlighted_disasm_index);
 			status_bar_text : string;
-			if text_op.selected_pane == .TEXT {
-				status_bar_text = tprint("%, Line %", text_file.file_short_name, tab_cursor.cursor_line_number);
-			} else if text_op.selected_pane == .DISASSEMBLY {
+			if text_op.selected_pane == .DISASSEMBLY {
 				status_bar_text = tprint("%, asm %", text_file.file_short_name, text_op.highlighted_disasm_index);
+			} else {
+				status_bar_text = tprint("%, Line %", text_file.file_short_name, tab_cursor.cursor_line_number);
 			}
 			if text_op.text_status_timer > 0 {
 				status_bar_text = tprint("%; %", status_bar_text, text_op.text_status_message);

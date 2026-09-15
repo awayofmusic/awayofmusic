@@ -14644,7 +14644,7 @@ Test_ParseOps :: () {
 	 /   \
 	b    <=
        /  \   
-      i    2
+      i    x
 	*/	
 	ResetCodeLexer(*cd.lexer);
 	LexCodeTokens(*cd.lexer, "b = i <= x;");
@@ -14661,9 +14661,55 @@ Test_ParseOps :: () {
 	];
 	TestNodes(expected_nodes, ordered_nodes);
 
-	// node = ParseExpression(cd, S64_MIN);
-	// AssertEquals(cast(CodeTokenType) #char ";", node.value.token_type);
+	node = ParseExpression(cd, S64_MIN);
+	AssertEquals(cast(CodeTokenType) #char ";", node.value.token_type);
 
+	/*
+	   !
+	     \
+	      !
+          \   
+           x
+	*/	
+	ResetCodeLexer(*cd.lexer);
+	LexCodeTokens(*cd.lexer, "!!x");
+	node = ParseExpression(cd, S64_MIN);
+
+	array_reset_keeping_memory(*ordered_nodes);
+	DFSPreWithNull(node, *ordered_nodes, GetOrderedNodesWithNull);
+	expected_nodes = BinaryNode.[
+		BNode(LCToken(#char "!"), .UNARY_OP), NULL_NODE,
+		BNode(LCToken(#char "!"), .UNARY_OP), NULL_NODE,
+		BNode(LCToken(.IDENT, "x")), NULL_NODE, NULL_NODE,
+	];
+	TestNodes(expected_nodes, ordered_nodes);
+
+
+	/*
+	       =
+	     /   \
+	    :     !
+      / \     \   
+     a  bool   b
+	*/	
+	ResetCodeLexer(*cd.lexer);
+	LexCodeTokens(*cd.lexer, "a : bool = !b;");
+	node = ParseExpression(cd, S64_MIN);
+
+	array_reset_keeping_memory(*ordered_nodes);
+	DFSPreWithNull(node, *ordered_nodes, GetOrderedNodesWithNull);
+	expected_nodes = BinaryNode.[
+		BNode(LCToken(#char "="), .BINARY_OP),
+		BNode(LCToken(#char ":"), .BINARY_OP),
+		BNode(LCToken(.IDENT, "a")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(.DATA_TYPE_BOOL, "bool")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(#char "!"), .UNARY_OP), NULL_NODE,
+		BNode(LCToken(.IDENT, "b")), NULL_NODE, NULL_NODE,
+	];
+	TestNodes(expected_nodes, ordered_nodes);
+
+	node = ParseExpression(cd, S64_MIN);
+	AssertEquals(cast(CodeTokenType) #char ";", node.value.token_type);
 
 } @UnitTest
 

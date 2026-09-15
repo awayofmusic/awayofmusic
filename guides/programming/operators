@@ -1,0 +1,58 @@
+/*ctrl+alt+d for debug mode
+ctrl+alt+c to compile
+set a breakpoint with mouse on left or f9 at the cursor
+run with f5
+ctrl+shift+g moves between code and asm instructions
+*/
+main :: () {
+	//ctrl+shift+g to move between the code and corresponding asm instructions
+	x : int = 2 + 2; //integer addition
+	y : int = 3 - 1; //integer subtraction
+	z : int = 2 * x; //integer multiplication
+	w : int = x / y; //integer division
+	m : int = x % y; //integer modulo
+
+	fx : float = 2.5 + 2.5; //float addition
+	fy : float = 3.1 - 1.0; //float subtraction
+	fz : float = 2. * fx; //float multiplication
+	fw : float = fx / fy; //float division
+	fm : float = x % y; //float modulo
+
+	//Operators can also be applied directly on values
+	//ctrl+shift+g to move between the code and corresponding asm instructions
+	x += 1;
+	x -= 1;
+	fx *= 2.;
+	fx /= 2.;
+
+	//The bool data type is either false(0) or true(not 0)
+	a : bool = true;
+	b : bool = false;
+	c : bool = a && b; //logical and
+	d : bool = a || b; //logical not
+	n : bool = !a; //logical not
+
+	a = x == y; //equals
+	a = x != y; //not equals
+	a = x < y; //less than
+	a = x > y; //greater than
+	a = x <= y; //less than or equals
+	a = x >= y; //greater than or equals
+
+	//Operators can be used in any expression
+	d = (x < y) || c;
+
+	if d {
+		x = 1;
+	}
+	else if y == z {
+		y = 7 + z;
+	}
+	else {
+		w += 10;
+	}
+
+	while (7 > y) && (m != 100) {
+		y = 7;
+	}
+}

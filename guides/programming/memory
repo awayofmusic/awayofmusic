@@ -13,6 +13,7 @@ ctrl+alt+3 disassembly pane
 main :: () {
 	/*Registers can be int (integer) or float (real number).
 	Each register is 8 bytes (64 bits).
+	Integers and floats are 8 bytes (64 bytes).
 	All register names can be found in thegame_data.jai in the RegDef :: enum.
 	Use ax, bx, cx, dx, r0, r1, r2, r3 for general assembly code.
 	Other registers may be used by the compiler and cpu.
@@ -105,5 +106,9 @@ main :: () {
 
 	/*To learn about arrays
 	load_op arrays guides/programming/arrays
+	*/
+
+	/*To learn about conditionals
+	load_op conditionals guides/programming/conditionals
 	*/
 }

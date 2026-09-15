@@ -20,8 +20,8 @@ main :: () {
 		mov ax, 5;
 		add bx, ax, 1;
 	}
-	//Declare an integer as follows, which
-	//compiles to an mset instruction below.
+	//This declares an integer, which compiles to a mov instruction.
+	//ctrl+shift+g to go to the corresponding asm instruction.
 	i : int = 2;
 
 	/*To learn more memory

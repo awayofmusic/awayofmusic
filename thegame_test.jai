@@ -6097,7 +6097,7 @@ DONE);
 if x == 0 x = 1;
 else if x == 1 x = 2;
 */
-Test_ElseIf :: (
+Test_IfElseIf :: (
 	test_name : string,
 	game_memory : *GameMemory, 
 	renderer_data : *RendererData, 
@@ -12271,6 +12271,11 @@ DONE);
 	wait_test := WaitTest(*perm.test_data);
 	if wait_test return;
 
+	text_op : *TextOpSpaceData;
+	if perm.all_data.all_text_op_space_data.count > 0 {
+		text_op = *perm.all_data.all_text_op_space_data[0];
+	}
+
 	if perm.test_data.sub_test_index == {
 	case 0; {
 		open_test := MakeTerminalEvent(.open_op, TEST_TEXT_NAME);
@@ -12279,10 +12284,14 @@ DONE);
 	case 1; DownUpInputMap(.TEXT_DEBUG_TOGGLE, game_input);
 	case 2; DownUpInputMap(.TEXT_COMPILE, game_input);
 	case 3; {
-		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
-		// AddWatchDataForTest(.["x", "y", "xp", "yp", "xyp", "x1p", "xpp", "*y", "*xp", "*xpp"], text_op);
-		CodeBPForTest(7, *text_op.exec_info.debug_info, text_op.text_comp_data);
-		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+		comp_success : bool = AssertEquals(false, IsCompilationFail(text_op.text_comp_data));
+		if !comp_success {
+			EndTest(*perm.test_data);
+		} else {
+			// AddWatchDataForTest(.["x", "y", "xp", "yp", "xyp", "x1p", "xpp", "*y", "*xp", "*xpp"], text_op);
+			CodeBPForTest(7, *text_op.exec_info.debug_info, text_op.text_comp_data);
+			DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+		}
 	}
 	case 4; {
 		count_equals := AssertEquals(1, perm.all_data.all_closed_op_spaces.count);
