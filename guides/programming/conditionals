@@ -1,10 +1,13 @@
-//ctrl+f7 toggles the status bar
-//ctrl+alt+c compiles the code
-//f5 runs the code
-//set a breakpoint with mouse on left or f9 at the cursor
-//When the lower-left pane is selected, the asm index of the currently
-//highlighted asm instruction will be shown in the status bar.
-//Press ctrl+shift+g to move between a code line and its corresponding asm instruction.
+Try this out:
+- ctrl+f7 toggles the status bar
+- ctrl+alt+c compiles the code
+- f5 runs the code
+- set a breakpoint with mouse on left or f9 at the cursor
+- When the lower-left pane is selected, the asm index of the currently
+highlighted asm instruction will be shown in the status bar.
+- Press ctrl+shift+g to move between a code line and its corresponding asm instruction.
+- ctrl+alt+o toggles text op messages in debug mode.
+- ctrl+alt+i toggles disassembly in debug mode.
 main :: () {
 	#asm {
 		//The jmp instructions allows you to jump to a specific instruction by asm index.

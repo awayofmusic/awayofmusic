@@ -7,6 +7,8 @@ or f9 sets a breakpoint at the text cursor line
 - run the code using f5 and step over each instruction with f10
 - ctrl+shift+g to move between code and asm lines
 - try putting registers and variables in the upper right watch window
+ctrl+alt+o toggles text op messages in debug mode.
+ctrl+alt+i toggles disassembly in debug mode.
 ctrl+alt+1 text pane
 ctrl+alt+2 watch pane
 ctrl+alt+3 disassembly pane

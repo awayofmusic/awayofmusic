@@ -11457,7 +11457,22 @@ DONE,,test_alloc);
 		AssertEquals("3", t_parr_count.value_str);
 		AssertEquals("int", t_parr_count.type_str);
 
-		DownUpInputMap(.DEBUG_STEP_OVER, game_input);	
+		t_arr := GetWatch("t.arr", text_op.watch_data_rows); 
+		AssertEquals("array(3,16)", t_arr.value_str);
+		AssertEquals("[3] int", t_arr.type_str);
+		t_at2 := GetWatch("t.at2", text_op.watch_data_rows);
+		AssertEquals(sprint("array(%,%)", 3, array_address), t_at2.value_str);
+		AssertEquals("[] T2", t_at2.type_str);
+		t_at2_2_m2 := GetWatch("t.at2[2].m2", text_op.watch_data_rows);
+		array_address = perm.all_data.ram_memory.stack_size + 2*t2_info.runtime_size + 16;
+		AssertEquals(sprint("array(%,%)", 2, array_address), t_at2_2_m2.value_str);
+		AssertEquals("[2][2] int", t_at2_2_m2.type_str);
+		t_at2_2_m2_1 := GetWatch("t.at2[2].m2[1]", text_op.watch_data_rows);
+		array_address = perm.all_data.ram_memory.stack_size + 2*t2_info.runtime_size + 16 + 8*2;
+		AssertEquals(sprint("array(%,%)", 2, array_address), t_at2_2_m2_1.value_str);
+		AssertEquals("[2] int", t_at2_2_m2_1.type_str);
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
 	}
 	}
 
@@ -11578,6 +11593,10 @@ DONE,,test_alloc);
 	case 13; {
 		AssertEquals(18, text_op.watch_data_rows.count);
 
+		t_at2 := GetWatch("t.at2,2", text_op.watch_data_rows);
+		array_address : int = perm.all_data.ram_memory.stack_size;
+		AssertEquals(sprint("array(%,%)", 2, array_address), t_at2.value_str);
+		AssertEquals("[] T2", t_at2.type_str);
 		t_at2_arr_0 := GetWatch("t.at2[0].arr[0]", text_op.watch_data_rows);
 		AssertEquals("3.14", t_at2_arr_0.value_str);
 		AssertEquals("float", t_at2_arr_0.type_str);
@@ -11657,7 +11676,10 @@ DONE,,test_alloc);
 	case 49; DownUpThisFrame(.ENTER, game_input);	
 	case 50; {
 		AssertEquals(18, text_op.watch_data_rows.count);
-
+		t_pa_data := GetWatch("t.pa.*.data,t.arr[1]", text_op.watch_data_rows);
+		array_address : int = perm.all_data.ram_memory.stack_size;
+		AssertEquals(sprint("array(%,%)", 2, array_address), t_pa_data.value_str);
+		AssertEquals("*T2", t_pa_data.type_str);
 		t_pa_data_arr_0 := GetWatch("t.pa.*.data[0].arr[0]", text_op.watch_data_rows);
 		AssertEquals("3.14", t_pa_data_arr_0.value_str);
 		AssertEquals("float", t_pa_data_arr_0.type_str);
@@ -11679,6 +11701,9 @@ DONE,,test_alloc);
 	case 55; DownUpThisFrame(.ENTER, game_input);	
 	case 56; {
 		AssertEquals(17, text_op.watch_data_rows.count);
+		t_parr := GetWatch("t.parr.*, t.parr.*.count", text_op.watch_data_rows);
+		AssertEquals("array(3,16)", t_parr.value_str);
+		AssertEquals("[3] int", t_parr.type_str);
 		t_par_data_0 := GetWatch("t.parr.*[0]", text_op.watch_data_rows);
 		AssertEquals("0", t_par_data_0.value_str);
 		AssertEquals("int", t_par_data_0.type_str);
@@ -11702,7 +11727,9 @@ DONE,,test_alloc);
 	case 59; DownUpThisFrame(.ENTER, game_input);
 	case 60; {
 		AssertEquals(19, text_op.watch_data_rows.count);
-
+		t_arr := GetWatch("t.arr, t.arr[1]", text_op.watch_data_rows);
+		AssertEquals("array(2,16)", t_arr.value_str);
+		AssertEquals("[3] int", t_arr.type_str);
 		t_arr_0 := GetWatch("t.arr[0]", text_op.watch_data_rows);
 		AssertEquals("0", t_arr_0.value_str);
 		AssertEquals("int", t_arr_0.type_str);

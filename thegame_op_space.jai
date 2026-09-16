@@ -822,19 +822,61 @@ ComputeWatchValueAndType :: inline (watch_data : *WatchData, text_op : *TextOpSp
 				value_string = tprint("%", ram_address);
 			}
 		}
-		else if IsWatchCommaArray(watch_data.node) {
-			//TODO Could set this as something different for array and pointer or put the count in there if needed?
-			value_string = "drop(array)";	
-		}
 		else if AllOrEquals(watch_data.node.code_ir.t_info.type_enum, STRUCT_TYPE_INTERNAL) {
 			//TODO Should we set this to the first value or make an "{x,y}" preview string
 			value_string = "drop(struct)";
 			// ram_address : int = ComputeRAMLocation(watch_op, debug_info.debug_all_registers, all_data.ram_memory);
 			// mv, err := GetMemValue(ram_address, watch_data.node.code_ir.t_info, all_data.ram_memory);
 		} 
-		else if watch_data.node.code_ir.t_info.type_enum == .ARRAY {
+		else if IsWatchCommaArray(watch_data.node) && watch_data.node.left.code_ir.t_info.type_enum == .POINTER {
+			//TODO Could set this as something different for array and pointer or put the count in there if needed?
+			// value_string = "drop(array)";
+			//Memory for count integer is checked on the "," node
+			array_count : int = ComputeOperandInt(watch_data.node.right.code_ir.op, 
+				text_op.exec_info.debug_info.debug_all_registers, all_data.ram_memory);
+			//Memory here is checked when we check var node
+			data_address : int = ComputeOperandInt(watch_data.node.left.code_ir.op,
+				text_op.exec_info.debug_info.debug_all_registers, all_data.ram_memory);
+
+			value_string = tprint("array(%,%)", array_count, data_address);
+		}
+		else if watch_data.node.code_ir.t_info.type_enum == .ARRAY ||
+			(IsWatchCommaArray(watch_data.node) && watch_data.node.left.code_ir.t_info.type_enum == .ARRAY)
+		{
 			//TODO Should we set this to the first few values like "[x,y,z]" preview string
-			value_string = "drop(array)";
+			is_mem_err : CPUError;
+			valid_array : bool = false;
+			array_info := cast(*TypeInfoArray) watch_data.node.code_ir.t_info;
+			array_type : string;
+			array_count : int;
+			array_data_address : int = ComputeRAMLocation(watch_data.node.code_ir.op, debug_info.debug_all_registers, all_data.ram_memory);
+			if array_info.array_type == .VIEW {
+				valid_array = true;
+				array_type = "av";
+				array_count, is_mem_err = GetMemValue(array_data_address, int, all_data.ram_memory);
+				array_data_address += 8;
+				array_data_address, is_mem_err = GetMemValue(array_data_address, int, all_data.ram_memory);
+			} else if array_info.array_type == .FIXED {
+				valid_array = true;
+				array_count = array_info.array_count;
+			} 
+
+			if is_mem_err.is_error {
+				value_string = "Invalid memory";
+			}
+
+			if IsWatchCommaArray(watch_data.node) {
+				//We check this is value on the "," node so we can just grab the int here directly
+				array_count = ComputeOperandInt(watch_data.node.right.code_ir.op, 
+					text_op.exec_info.debug_info.debug_all_registers, all_data.ram_memory);
+			}
+
+			if valid_array {
+				value_string = tprint("array(%,%)", array_count, array_data_address);
+			} else {
+				value_string = INVALID_WATCH_EXPR;
+			}
+
 			// ram_address : int = ComputeRAMLocation(watch_op, debug_info.debug_all_registers, all_data.ram_memory);
 			// mv, err := GetMemValue(ram_address, watch_data.node.code_ir.t_info, all_data.ram_memory);
 		}
@@ -1039,7 +1081,14 @@ VisitWatchNodes :: (node : *BinaryNode, vwd : VisitWatchData) -> is_valid : bool
 		if IsWatchCommaArray(node) {
 			//Just in case we set here for the watch dropping row and other watch data that uses the top node
 			node.code_ir = node.left.code_ir;
-			return true;
+			//We check this is valid here so then we can just grab the count int everywhere else
+			count_value, is_err := ComputeWatchValue(node.right.code_ir.op, debug_info.debug_all_registers, vwd.all_data.ram_memory,,temp);
+			if is_err.is_error {
+				SetWatchError(vwd.watch_data, "Invalid count");
+				return false;
+			} else {
+				return true;
+			}
 		} else if node.parent == null {
 			SetWatchError(vwd.watch_data, INVALID_WATCH_EXPR);
 			return false;			
@@ -1079,6 +1128,7 @@ VisitWatchNodes :: (node : *BinaryNode, vwd : VisitWatchData) -> is_valid : bool
 			return false;			
 		}
 
+		is_mem_err : CPUError;
 		array_data_address : int;
 		value_type : *TypeInfo;
 		if node.left.code_ir.t_info.type_enum == {
@@ -1087,7 +1137,7 @@ VisitWatchNodes :: (node : *BinaryNode, vwd : VisitWatchData) -> is_valid : bool
 			value_type = pointer_info.pointer_to;
 
 			ram_address : int = ComputeRAMLocation(node.left.code_ir.op, debug_info.debug_all_registers, vwd.all_data.ram_memory);
-			array_data_address = GetMemValue(ram_address, int, vwd.all_data.ram_memory);
+			array_data_address, is_mem_err = GetMemValue(ram_address, int, vwd.all_data.ram_memory);
 		case .ARRAY;
 			array_info := cast(*TypeInfoArray) node.left.code_ir.t_info;
 			value_type = array_info.element_type;
@@ -1096,11 +1146,16 @@ VisitWatchNodes :: (node : *BinaryNode, vwd : VisitWatchData) -> is_valid : bool
 			array_data_address = ComputeRAMLocation(node.left.code_ir.op, debug_info.debug_all_registers, vwd.all_data.ram_memory);
 			if array_info.array_type == .VIEW {
 				array_data_address += 8;
-				array_data_address = GetMemValue(array_data_address, int, vwd.all_data.ram_memory);
+				array_data_address, is_mem_err = GetMemValue(array_data_address, int, vwd.all_data.ram_memory);
 			}
 		case;
 			SetWatchError(vwd.watch_data, "Invalid array access type.");
 			return false;						
+		}
+
+		if is_mem_err.is_error {
+			SetWatchError(vwd.watch_data, "Invalid array data address.");
+			return false;
 		}
 
 		array_offset : int = ComputeOperandInt(node.right.code_ir.op, debug_info.debug_all_registers, vwd.all_data.ram_memory);
@@ -1233,12 +1288,13 @@ VisitWatchNodes :: (node : *BinaryNode, vwd : VisitWatchData) -> is_valid : bool
 			for < c_frame.frame_vars if it.name == node.value.token_string {
 				var = it;
 				found_var = true;
+				break;
 			}
 			// var, found_var := ArrayFindFirstByNameId(c_frame.frame_vars, node.value.token_string, "name");
 
 			//TODO Maybe this is inefficient to check here and we should just check it on function calls?
 			//TODO Maybe we don't need functions here, or maybe we do... not sure
-			fun_decl, found_func := ArrayFindFirstByNameId(cd.all_function_declarations, node.value.token_string, "name");
+			// fun_decl, found_func := ArrayFindFirstByNameId(cd.all_function_declarations, node.value.token_string, "name");
 
 			found_struct_type : bool = false;
 			struct_type : *TypeInfoStruct;
@@ -1291,16 +1347,23 @@ VisitWatchNodes :: (node : *BinaryNode, vwd : VisitWatchData) -> is_valid : bool
 				//TODO If we have an array here then make a RamArray Op from the var op so that we can
 				//pass that up and then free the registers later. We can't store it in var.op directly
 				//because the register will get reused.
+				ram_address : int = ComputeRAMLocation(var.op, debug_info.debug_all_registers, vwd.all_data.ram_memory);
+				bounds_err : CPUError = MemoryInBounds(vwd.all_data.ram_memory, ram_address, 8);
+				if bounds_err.is_error {
+					SetWatchError(vwd.watch_data, "Memory out of bounds");
+					return false;
+				}
 				node.code_ir.op = var.op;
+
 			} else if found_struct_type {
 				node.code_ir.ir_type = .DATA_TYPE_INFO;
 				// node.code_ir.ir_data_id = struct_type.id;
 				//TODO Should we use type and id here instead of pointer to avoid pointer memory issues?
 				node.code_ir.t_info = cast(*TypeInfo) *struct_type.info;
 				node.code_ir.code_value_type = CodeValueType.R_VALUE;
-			} else if found_func {
-				node.code_ir.t_info = cast(*TypeInfo) fun_decl.t_info_proc;
-				node.code_ir.code_value_type = CodeValueType.R_VALUE;
+			// } else if found_func {
+			// 	node.code_ir.t_info = cast(*TypeInfo) fun_decl.t_info_proc;
+			// 	node.code_ir.code_value_type = CodeValueType.R_VALUE;
 			} else if found_reg {
 				node.code_ir.op = RegMem(cast(RegDef) reg_index);
 				//Default to int and then use external type with ","

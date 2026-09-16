@@ -15,13 +15,16 @@ Integers and floats are represented directly.
 Registers are represented by name which can be found in RegDef enum in thegame_data.jai.
 */
 main :: () {
-	//ctrl+f7 toggles the text status bar for general info
-	//ctrl+alt+d toggles debug mode
-	//ctrl+alt+c compiles the code
-	//set a breakpoint on the left grey column with mouse left click
-	//or set a breakpoint with f9 at the cursor
-	//run the code with f5
-	//any register can be placed in the top-right watch window
+	Try this out :
+	- ctrl+f7 toggles the text status bar for general info
+	- ctrl+alt+d toggles debug mode
+	- ctrl+alt+c compiles the code
+	- set a breakpoint on the left grey column with mouse left click
+	or set a breakpoint with f9 at the cursor
+	- run the code with f5 and step over each line with f10
+	- any register can be placed in the top-right watch window
+	- ctrl+alt+o toggles text op messages in debug mode.
+	- ctrl+alt+i toggles disassembly in debug mode.
 	#asm {
 		add ax, 1, 1; //put 1 + 1 into register ax
 

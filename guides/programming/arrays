@@ -19,7 +19,7 @@ main :: () {
 	ha : [] int = NewArray(3, int); //This creates 3 integers on the heap.
 
 	/*Put ha in the top-right watch window and press enter or 
-	click drop(array) to view the array contents during execution.
+	click the second watch column to view the array contents during execution.
 
 	To change the count put "ha,2" in the watch window.
 
@@ -39,6 +39,7 @@ main :: () {
 	"count" is how many members are in the array.
 	"data" is the address where the data of the array starts.
 	Try putting these in the top-right watch window.
+	The second watch column of "ha" will have array(ha.count,ha.data).
 	*/
 	ha_count : int = ha.count;
 	ha_data : *int = ha.data;
@@ -67,12 +68,12 @@ main :: () {
 	/*Addresses and arithmetic can be used directly to do array access.
 	The following to lines are the same
 	*/
-	fa_2_address : *int = *ha[2];
-	fa_2_data : *int = ha.data + 2; //note that 2 is implicitly multiplied by 8 here because size_of(int) is 8 bytes
+	ha_2_address : *int = *ha[2];
+	ha_2_data : *int = ha.data + 2; //note that 2 is implicitly multiplied by 8 here because size_of(int) is 8 bytes
 
 	//The following 2 lines will both access the same data address and so will return the same data value.
-	fa_2_av : int = fa_2_address.*;
-	fa_2_dv : int = fa_2_data.*;
+	ha_2_av : int = ha_2_address.*;
+	ha_2_dv : int = ha_2_data.*;
 
 
 	/*General fixed array view form is
@@ -82,11 +83,14 @@ main :: () {
 	and so the count and data member values are known only at compile time and 
 	not stored in memory and therefore not known at runtime.
 
+	Put "fa" in the watch window.
+	During execution, the second watch column will have array(fa.count,fa.data).
+
 	To store an array on the stack :
 	*/
 	fa : [2] int; //Only 2 integers on the stack.
 
-	//To view the data address of fa, put "*fa" in the top-right watch window.
+	//Another way to view the data address of fa, put "*fa" in the top-right watch window.
 	fa_count : int = fa.count; //this is set in the instruction directly at compile-time
 	fa_data : *int = fa.data; //this is fixed on the stack at compile-time
 

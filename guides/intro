@@ -3,12 +3,16 @@
 The terminal op space is behind this text op space.
 The top bar can be used to move it around.
 
+To learn about programming:
+load_op programming guides/programming/intro
+
+To start making music:
 Try this out :
 - ctrl+f7 to toggle the text status bar
 - ctrl+alt+d to toggle debug mode
 - ctrl+alt+c to compile
 Always compile before executing
-- f5 to execute and stop on the breakpoint
+- f5 to execute
 - take a look at the music behind the text and terminal op spaces
 - ctrl+p will toggle play/pause audio
 - ctrl+shift+p will stop and restart the audio cursor

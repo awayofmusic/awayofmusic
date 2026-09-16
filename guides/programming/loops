@@ -1,0 +1,78 @@
+/*Try this out:
+- ctrl+f7 toggles the status bar below for general info
+- ctrl+alt+d for debug mode
+- ctrl+alt+c to compile
+- set a breakpoint on the left grey column with mouse left click
+or set a breakpoint with f9 at the cursor
+Always compile before executing.
+- run the code using f5 and step over each instruction with f10
+- ctrl+shift+g to move between code and asm lines
+- ctrl+alt+o toggles text op messages in debug mode.
+- ctrl+alt+i toggles disassembly in debug mode.
+*/
+main :: () {
+	//A while loop is an fjmp at the top and a jmp at the bottom
+	while 0 { //fjmp here to check condition
+	}//jmp here to go back to the while loop start
+
+	//A while loop can take any logical expression
+	while 0 == 1 {
+	}
+
+	i : int = 0;
+	while i <= 2 {
+		i += 1;
+	}
+	/*A for loop on an integer range is the same as the above while loop.
+	This loops from integers 0 to 2 including both 0 and 2 and places
+	the value into the "it" var by default.
+	*/
+	for 0..2 {
+		//put "it" in the top-right watch window
+	}
+
+	//The value name of the for loop can be changed
+	for x : 0..2 {
+		//put "x" in the top-right watch window
+	}
+
+	//A for loop can go over an integer range in reverse.
+	//This loops from integer 2 to 0 including both 2 and 0.
+	for < 0..2 {
+		//put "it" in the top-right watch window
+	}
+
+	/*A for loop can also go over an array.
+	By default "it" refers to the current array value and
+	"it_index" refers to the current array index.
+	*/
+	a := int.[0,4,7];
+	for a {
+		//put "it" and "it_index" in the top-right watch window
+	}
+
+	//The value and index name of a for loop can be changed
+	for v,i : a {
+		//put "v" and "i" in the top-right watch window
+	}
+
+	//A for loop can go over an array in reverse
+	for < a {
+		//put "it" and "it_index" in the top-right watch window
+	}
+
+	//We can access the address of each array value
+	for * a {
+		//put "it" and "it_index" in the top-right watch window
+	}
+
+	//We can put "*" and "<" before the value and index name.
+	//This accesses the addresses of the array values in reverse
+	//with value name "p" and index name "pi"
+	for * < p,pi : a {
+		//put "p" and "pi" in the top-right watch window
+		//put "a" in the top-right watch window to see the array values updating
+		//uncomment the following line to update the array values in reverse
+		//p.* = 6;
+	}
+}

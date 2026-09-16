@@ -9,10 +9,11 @@ All dimensions higher than 3 are mapped onto the 3 dimensional visual plane.
 It is recommended to read through the code and think about it.
 Feelings should also be recognized and acknowledged.
 
-"ctrl+alt+d" for debug mode.
-"ctrl+alt+c" to compile.
-"F5" to run the code.
-Put "open_op cs3" in the terminal and press "Enter"
+Try this out:
+- "ctrl+alt+d" for debug mode.
+- "ctrl+alt+c" to compile.
+- "F5" to run the code.
+- Put "open_op cs3" in the terminal and press "Enter"
 to see the chord_s3 in the 3d op space.
 
 This space was created/discovered by Dimitri Tymoczko.

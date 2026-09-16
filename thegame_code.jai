@@ -7100,7 +7100,15 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 		} else {
 			//We can check in here if we either have a stack var or heap memory or a function name.
 			//TODO If we did a reverse array search here then we would find the correct variable right away
-			var, found_var := ArrayFindFirstByNameId(cd.variable_data_stack, node.value.token_string, "name");
+			// var, found_var := ArrayFindFirstByNameId(cd.variable_data_stack, node.value.token_string, "name");
+			//This grabs the last variable on the stack of that name which will be in the closest in scope.
+			var : VariableData;
+			found_var : bool = false;
+			for < cd.variable_data_stack if it.name == node.value.token_string {
+				var = it;
+				found_var = true;
+				break;
+			}
 
 			//TODO Maybe this is inefficient to check here and we should just check it on function calls?
 			/*DOC : For now we don't do function name overload type inference so we just error out if we find > 1.
