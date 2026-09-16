@@ -1,11 +1,12 @@
 /*Try this out:
-ctrl+alt+d for debug mode
-ctrl+alt+c to compile
-put a breakpoint next to "mov ax, 5" with mouse on left or f9 
-run the code using f5 and step over each instruction with f10
-ctrl+shift+g to move between code and asm lines
-try putting registers and variables in the upper right watch window
-ctrl+f7 toggles the status bar below for general info
+- ctrl+f7 toggles the status bar below for general info
+- ctrl+alt+d for debug mode
+- ctrl+alt+c to compile
+- put a breakpoint next to "mov ax, 5" in left grey column with mouse left click
+or f9 sets a breakpoint at the text cursor line
+- run the code using f5 and step over each instruction with f10
+- ctrl+shift+g to move between code and asm lines
+- try putting registers and variables in the upper right watch window
 ctrl+alt+1 text pane
 ctrl+alt+2 watch pane
 ctrl+alt+3 disassembly pane

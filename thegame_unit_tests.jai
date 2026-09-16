@@ -418,7 +418,7 @@ DONE,,unit_test_alloc);
 }
 } @UnitTest
 
-Test_AsmOpCodeLabel :: () {
+Test_AsmOpCodeFloat :: () {
 	cs : CompileSettings;
 	cd : *CompilationData;
 	count_equal : bool;
@@ -439,6 +439,98 @@ DONE,,unit_test_alloc);
 		MakeFloatInstr(.mov, RegMem(.cx), FImm(-3.1)),
 		MakeMI(.exit),
 	]);
+
+} @UnitTest
+
+Test_AsmLabels :: () {
+	cs : CompileSettings;
+	cd : *CompilationData;
+	count_equal : bool;
+
+	
+	cd = CompileCode(cs,
+#string DONE
+main :: () { 
+	#asm { 
+	jmp l1;
+	mov.f ax, 10.5;
+	l1: mov bx, 2;
+	}
+
+	x : int = 2;
+	while x < 2 {}
+
+	#asm {
+	mov bx, 6;
+	tjmp l2, bx;
+	sub bx, 1;
+	l3:
+	l2: mov bx, 0;
+	mov cx, 0;
+	fjmp l3, cx;
+	}
+}
+DONE,,unit_test_alloc);
+	comp_success : bool = AssertEquals(false, IsCompilationFail(cd));
+	if !comp_success return;
+	// print("%\n", cd.disassembly);
+
+	l1_asm_index : int = 2;
+	l2_asm_index : int = 10;
+	TestManyInstr(cd.all_music_instructions, .[
+		MakeMI(.jmp, Imm(l1_asm_index)),
+		MakeFloatInstr(.mov, RegMem(.ax), FImm(10.5)),
+		MakeMI(.mov, RegMem(.bx), Imm(2)),
+
+		MakeMI(.mov, RamMem(.sbp,0), Imm(2), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.clt, RamMem(.sbp,8), RamMem(.sbp,0), Imm(2)),
+		MakeMI(.fjmp, Imm(7), RamMem(.sbp,8)),
+		MakeMI(.jmp, Imm(4)),
+
+		MakeMI(.mov, RegMem(.bx), Imm(6)),
+		MakeMI(.tjmp, Imm(l2_asm_index), RegMem(.bx)),
+		MakeMI(.sub, RegMem(.bx), Imm(1)),
+		MakeMI(.mov, RegMem(.bx), Imm(0)),
+		MakeMI(.mov, RegMem(.cx), Imm(0)),
+		MakeMI(.fjmp, Imm(l2_asm_index), RegMem(.cx)),
+
+		MakeMI(.exit),
+	]);
+
+//Write error tests for having labels within an instructions
+//instead of at the start
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () { 
+	#asm {
+		mov ax label:, 0;
+	}
+}
+DONE,, unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () { 
+	#asm {
+		add ax, 0 l2:;
+	}
+}
+DONE,, unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+		reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () { 
+	#asm {
+		mul other_label: ax, 2;
+	}
+}
+DONE,, unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
 
 } @UnitTest
 
@@ -930,6 +1022,9 @@ main :: () {
 	b = i >= x;
 	b = i == x;
 	b = i != x;
+
+	b = i < x || i > x;
+	b = i <= x && i != x;
 }
 DONE,, unit_test_alloc);
 
@@ -998,6 +1093,20 @@ DONE,, unit_test_alloc);
 		//i != x
 		MakeMI(.cneq, AddOperandOffset(8, x_var.op), i_var.op, x_var.op),
 		MakeMI(.mov, b_var.op, AddOperandOffset(8, x_var.op), Imm(cd.bool_type_info.runtime_size)),
+	]);
+
+	TestNextManyInstr(*instr_index, cd, .[
+		//b = i < x || i > x;
+		MakeMI(.clt, AddOperandOffset(8, x_var.op), i_var.op, x_var.op),
+		MakeMI(.cgt, AddOperandOffset(16, x_var.op), i_var.op, x_var.op),
+		MakeMI(.or, AddOperandOffset(24, x_var.op), AddOperandOffset(8, x_var.op), AddOperandOffset(16, x_var.op)),
+		MakeMI(.mov, b_var.op, AddOperandOffset(24, x_var.op), Imm(cd.bool_type_info.runtime_size)),
+
+		//b = i <= x && i == x;
+		MakeMI(.clte, AddOperandOffset(8, x_var.op), i_var.op, x_var.op),
+		MakeMI(.cneq, AddOperandOffset(16, x_var.op), i_var.op, x_var.op),
+		MakeMI(.and, AddOperandOffset(24, x_var.op), AddOperandOffset(8, x_var.op), AddOperandOffset(16, x_var.op)),
+		MakeMI(.mov, b_var.op, AddOperandOffset(24, x_var.op), Imm(cd.bool_type_info.runtime_size)),
 
 		MakeMI(.exit),
 	]);

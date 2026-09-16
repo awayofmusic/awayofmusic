@@ -1,6 +1,7 @@
-/*ctrl+alt+d for debug mode
-ctrl+alt+c to compile
-set a breakpoint with mouse on left or f9 at the cursor
+/*Try this out:
+- ctrl+alt+d for debug mode
+- ctrl+alt+c to compile
+- set a breakpoint with mouse on left grey column or f9 at the cursor
 run with f5
 ctrl+shift+g moves between code and asm instructions
 */
@@ -19,7 +20,6 @@ main :: () {
 	fm : float = x % y; //float modulo
 
 	//Operators can also be applied directly on values
-	//ctrl+shift+g to move between the code and corresponding asm instructions
 	x += 1;
 	x -= 1;
 	fx *= 2.;
@@ -32,12 +32,15 @@ main :: () {
 	d : bool = a || b; //logical not
 	n : bool = !a; //logical not
 
+	//ctrl+shift+g to move between the code and corresponding asm instructions
 	a = x == y; //equals
 	a = x != y; //not equals
 	a = x < y; //less than
 	a = x > y; //greater than
 	a = x <= y; //less than or equals
 	a = x >= y; //greater than or equals
+
+	//Operator precedence can be in thegame_code.jai in function GetCodePrec
 
 	//Operators can be used in any expression
 	d = (x < y) || c;

@@ -1,0 +1,90 @@
+/*Assembly(asm) instructions take the general form
+
+op_code operand_0, operand_1, operand_2;
+
+Op code is necessary but the number of operands depends on the specific op_code.
+All op codes can be found in thegame_data.jai OpCode enum.
+Assembly instructions are executed directly as 
+MusicInstruction struct which can be found in thegame_data.jai.
+MusicInstruction execution is found in thegame_code.jai in function ExecMInstr.
+
+Most basic asm instructions take operand 1 and/or 2 as input and 
+place the result in operand 0.
+Operand types can be found in MusicOperandType enum in thegame_data.jai.
+Integers and floats are represented directly.
+Registers are represented by name which can be found in RegDef enum in thegame_data.jai.
+*/
+main :: () {
+	//ctrl+f7 toggles the text status bar for general info
+	//ctrl+alt+d toggles debug mode
+	//ctrl+alt+c compiles the code
+	//set a breakpoint on the left grey column with mouse left click
+	//or set a breakpoint with f9 at the cursor
+	//run the code with f5
+	//any register can be placed in the top-right watch window
+	#asm {
+		add ax, 1, 1; //put 1 + 1 into register ax
+
+		//asm instructions do not check for types so
+		//the type is set using the post-fix ".f" or ".i"
+		//integer instruction is the default without a post-fix
+		//So the following 2 instructions are equivalent.
+		add.i ax, 2, 2;
+		add ax, 2, 2;
+
+		//here we add floating point (real numbers)
+		add.f bx, 2.4, 6.1;
+
+		//We can also have only 2 operands such as
+		add ax, 1; //put ax + 1 into ax
+	}
+
+	/*
+	Ram (random access memory) is represented with square brackets [0].
+	Ram is accessed by byte 
+	[0] = 0th byte
+	[1] = 1st byte
+	[8] = 8th byte
+
+	Ram can contain registers or integers.
+	Ram can have 1 addition such as [ax+1].
+	To subtract a value, we add a negative value like [bx + -2] or
+	we can place a negative value in a register like ax and then [bx + ax] will subtract ax from bx.
+
+	Integers an floats are all 8 bytes (64 bits).
+	Ram should generally be accessed in increments of 8 since all base types are >= 8 bytes here.
+	*/
+	#asm {
+		//Try checking ram(0) in watch window to see the value
+		add [0], ax, 3; //put ax + 3 into [0] for 8 bytes since integer is 8 bytes
+		add.f [8], bx, 2.1; //put bx + 2.1 into [8] for 8 bytes since float is 8 bytes
+
+		mov [16], [0], 16; //move [16] into [0] for 16 bytes which will move both adds we did above
+
+		//Try out other instructions from OpCode enum in thegame_data.jai
+		//and look at their execution code in ExecMInstr in thegame_code.jai
+	}
+
+	/*To learn about asm jmps and labels
+	load_op cond guides/programming/conditionals
+	*/
+
+	//Values can be generally be passed directly into asm blocks as follows :
+	i : int = 2;
+	#asm {
+		add cx, i, 1;
+	}
+
+	/*Asm does not generally check types and so
+	the type needs to match the instruction input.
+	*/
+	f : float = 3.14;
+	#asm {
+		//Put cfloat(cx) in the watch window to view the cx register as a float
+		add.f cx, f, 1.1;
+	}
+	//Try cfloat(ram(8)) to see the value of the f variable as a float at [8]
+
+
+	//TODO guides/asm_music to create music using MUSIC_MEMORY
+}

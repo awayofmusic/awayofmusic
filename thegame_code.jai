@@ -1841,18 +1841,18 @@ GetCodePrec :: inline (type : CodeTokenType, pl : ParserLevel = .STATEMENT) -> i
 
 
 	//Logical operators
-	case #char ">"; return 798;
-	case #char "<"; return 799;
-	case .LOGICAL_OR; return 800;
-	case .LOGICAL_AND; return 801;
-	case #char "|"; return 802;
-	case #char "^"; return 803;
-	case #char "&"; return 804;
-	case .IS_EQUAL; return 807;
-	case .ISNOT_EQUAL; return 808;
-	case .LESS_EQUALS; return 809;
-	case .GREATER_EQUALS; return 810;
-	//TODO Left/right shift and rotate
+	case .LOGICAL_OR; return 780;
+	case .LOGICAL_AND; return 781;
+	case #char "|"; return 782;
+	case #char "^"; return 783;
+	case #char "&"; return 782;
+	case .IS_EQUAL; return 803;
+	case .ISNOT_EQUAL; return 804;
+	case #char ">"; return 805;
+	case .GREATER_EQUALS; return 806;
+	case #char "<"; return 807;
+	case .LESS_EQUALS; return 808;
+	//TODO Left/right shift and rotate precedence goes here
 
 	case #char "-"; return 900;
 	case #char "+"; return 901;
@@ -1861,7 +1861,7 @@ GetCodePrec :: inline (type : CodeTokenType, pl : ParserLevel = .STATEMENT) -> i
 	case #char "*"; return 904;
 
 	//NOTE : This needs to be below "(" because of case "-foo(0)" so we can negative functions
-	//and also "-tano(x,y)" so we can negate tanos
+	//and also "-tano(x,y)"
 	case .UNARY_OP; return 970;
 	//NOW IT IS WAY UP!
 	case #char "("; return 980; //Should this be way up? This is way higher up in C with "[". 
@@ -10447,9 +10447,10 @@ Assembler :: (asm_tokens : [] LCodeToken, total_asm_start_index : int, cd : *Com
 				//TODO Maybe we can remove FIRST_PASS_SKIP since we don't use it anymore.
        		c_index += 1;
        	}
-			else if c_index + 1 < c_tokens.count && c_tokens[c_index].token_type == CodeTokenType.IDENT &&
+			else if c_index == 0 && c_index + 1 < c_tokens.count && c_tokens[c_index].token_type == CodeTokenType.IDENT &&
     	   	c_tokens[c_index+1].token_type == #char ":"
  	   	{
+ 	   		//Labels are only allowed on c_index 0 but we can have multiple labels in a row
  	   		//We can only have labels before an opcode so reset the array here so the op_code can
  	   		//always be c_index == 0 so we can check it separately from other variable names
  	   		c_tokens = array_view(c_tokens, 2);
@@ -10739,7 +10740,7 @@ Assembler :: (asm_tokens : [] LCodeToken, total_asm_start_index : int, cd : *Com
 			} else {
 				//TODO Could have a more robust error if we have some AssemblyIRS
 				//eg if we have op_code already, then we could state which operand is invalid
-				print("Error at token %\n", c_tokens[c_index]);
+				// print("Error at token %\n", c_tokens[c_index]);
 	   		CreateCompErr(cd, .ASSEMBLY_ERROR, c_tokens[c_index], "Invalid asm.");
 				break;
 			}
@@ -11642,7 +11643,7 @@ ValidateMusicInstruction :: inline (instr : MusicInstruction) -> CPUError {
 	//TODO Could generate that file string internally the AsmInstructionManual.
 	//Could also generate a system file in a formatted way to use externally for all instructions.
 	return CPUErr(
-	sprint("Invalid % instruction. 'open asm_manual' to view valid asm instructions.", 
+	sprint("Invalid % instruction. In thegame_code.jai go to ASM_INSTRUCTION_MANUAL to view valid asm instructions.", 
 		instr.op_code,,context.allocator));
 }
 

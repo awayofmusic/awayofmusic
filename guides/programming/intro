@@ -13,6 +13,7 @@ Do the same for "bx" and "i".
 - f10 to step over each instruction
 Watch the data change in the top-right watch pane
 as you step over each instruction.
+- more info can be found below the main function
 */
 main :: () {
 	//The assembly gets converted directly below.
@@ -20,8 +21,8 @@ main :: () {
 		mov ax, 5;
 		add bx, ax, 1;
 	}
+	//ctrl+shift+g to move from code to asm lines.
 	//This declares an integer, which compiles to a mov instruction.
-	//ctrl+shift+g to go to the corresponding asm instruction.
 	i : int = 2;
 
 	/*To learn more memory

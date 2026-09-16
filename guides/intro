@@ -1,4 +1,88 @@
 #load "c_load/Library";
+/*This is a text op space.
+The terminal op space is behind this text op space.
+The top bar can be used to move it around.
+
+Try this out :
+- ctrl+f7 to toggle the text status bar
+- ctrl+alt+d to toggle debug mode
+- ctrl+alt+c to compile
+Always compile before executing
+- f5 to execute and stop on the breakpoint
+- take a look at the music behind the text and terminal op spaces
+- ctrl+p will toggle play/pause audio
+- ctrl+shift+p will stop and restart the audio cursor
+- ctrl+mouse_left_click sets the audio cursor position
+- more info can be found below the main function
+*/
+main :: () {
+	//This will clear all the data in this mspace which allows 
+	//us to recreate everything every time we run this code.
+	clear_m0 : AsmClearMSpaceData;
+	#asm{ clear_mspace clear_m0; }
+
+	//Library structs and functions are in c_load/Library.
+	//This can be opened in an external text editor for convenience.
+	synth : AsmGetOrCreateSimpleSynthData;
+	synth.synth_name = "s0";
+	#asm{ get_or_create_simple_synth synth; }
+	update_synth : AsmUpdateSimpleSynthData;
+	update_synth.synth_id = synth.ret_synth_id;
+	update_synth.update_wave_type = true;
+	update_synth.wave_type = OscWaveType.SINE;
+	//Volume is between 0-1 and is set for each neume
+	//so 0.1 for 3 values will be 0.3 overall
+	//anything above 1 will be clipped and likely cause audible distortion
+	update_synth.update_volume = true;
+	update_synth.volume = 0.1;
+	#asm{ update_simple_synth update_synth; }
+
+	ts : AsmGetTuningSystemData;
+	//"et19" and "et24" are also available. 
+	//All tuning systems can be found in thegame_shared_library.jai
+	ts.short_name = "et12";
+	#asm{ get_tuning_system ts; };
+	rs : RowSectionData;
+	rs.tuning_system_id = ts.ret_tuning_system_id;
+	rs.x_length = 24;
+	rd : AsmCreateRowData;
+	rd.octave_height = 12.0;
+	rd.row_height = 12.0;
+	rd.muted_row = false;
+	rd.row_sections = RowSectionData.[rs];
+	rd.row_system_type = RowSystemType.internal_pitch;
+	rd.row_system_id = synth.ret_synth_id;
+	// rd.row_system_type = RowSystemType.midi_pitch;
+	// rd.row_midi_data.midi_channel = 0;
+	// rd.row_midi_data.midi_velocity = 100;
+	#asm{ create_row rd; }
+
+	//Details can be found in guides/tano
+	tano(0,0..2) ~= int.[0,4,7];
+	tano(0,2..4) ~= int.[0,3,7];
+	
+	/*To learn how to open other op spaces 
+	load_op circle guides/circle
+	*/
+
+	/*
+	rd.row_system_id = synth.ret_synth_id;
+	rd.row_sub_system_id = cast(int) SimpleSynthMessageType.VOLUME;
+	//Can use right click knob and press link controller in fl studio 
+	//to set midi channel and cc messages.
+	//cc messages may not map directly to the neume values
+	//rd.row_system_type = RowSystemType.midi_control_change;
+	//rd.row_midi_data.midi_channel = 0;
+	//rd.row_midi_data.midi_control_change = 0;
+	#asm{ create_row rd; }
+
+	for x : 0..11 {
+		tano(1,x) ~= 0.15 * cast(float) x;
+		//For midi cc message
+		// tano(1,x) ~= 10*x;
+	}
+	*/
+}
 
 /*
 This is a text op space.
@@ -50,69 +134,3 @@ and open a text tab file to the given file_path.
 "open_op name" and "close_op name" will open and close that named op.
 "ctrl+s" can be used on a file to save it and saving success can be seen in the status bar.
 */
-main :: () {
-	//This will clear all the data in this mspace which allows 
-	//us to recreate everything every time we run this code.
-	clear_m0 : AsmClearMSpaceData;
-	#asm{ clear_mspace clear_m0; }
-
-	//Library structs and functions are in c_load/Library.
-	//This can be opened in an external text editor for convenience.
-	synth : AsmGetOrCreateSimpleSynthData;
-	synth.synth_name = "s0";
-	#asm{ get_or_create_simple_synth synth; }
-	update_synth : AsmUpdateSimpleSynthData;
-	update_synth.synth_id = synth.ret_synth_id;
-	update_synth.update_wave_type = true;
-	update_synth.wave_type = OscWaveType.SINE;
-	//Volume is between 0-1 and is set for each neume
-	//so 0.1 for 3 values will be 0.3 overall
-	//anything above 1 will be clipped and likely cause audible distortion
-	update_synth.update_volume = true;
-	update_synth.volume = 0.1;
-	#asm{ update_simple_synth update_synth; }
-
-	ts : AsmGetTuningSystemData;
-	//"et19" and "et24" are also available. 
-	//All tuning systems can be found in thegame_shared_library.jai
-	ts.short_name = "et12";
-	#asm{ get_tuning_system ts; };
-	rs : RowSectionData;
-	rs.tuning_system_id = ts.ret_tuning_system_id;
-	rs.x_length = 24;
-	rd : AsmCreateRowData;
-	rd.octave_height = 12.0;
-	rd.row_height = 12.0;
-	rd.muted_row = false;
-	rd.row_sections = RowSectionData.[rs];
-	rd.row_system_type = RowSystemType.internal_pitch;
-	rd.row_system_id = synth.ret_synth_id;
-	// rd.row_system_type = RowSystemType.midi_pitch;
-	// rd.row_midi_data.midi_channel = 0;
-	// rd.row_midi_data.midi_velocity = 100;
-	#asm{ create_row rd; }
-
-	//Details can be found in guides/tano
-	tano(0,0..2) ~= int.[0,4,7];
-	tano(0,2..4) ~= int.[0,3,7];
-	
-	//Opening other op spaces can be found in guides/circle.
-
-	/*
-	rd.row_system_id = synth.ret_synth_id;
-	rd.row_sub_system_id = cast(int) SimpleSynthMessageType.VOLUME;
-	//Can use right click knob and press link controller in fl studio 
-	//to set midi channel and cc messages.
-	//cc messages may not map directly to the neume values
-	//rd.row_system_type = RowSystemType.midi_control_change;
-	//rd.row_midi_data.midi_channel = 0;
-	//rd.row_midi_data.midi_control_change = 0;
-	#asm{ create_row rd; }
-
-	for x : 0..11 {
-		tano(1,x) ~= 0.15 * cast(float) x;
-		//For midi cc message
-		// tano(1,x) ~= 10*x;
-	}
-	*/
-}

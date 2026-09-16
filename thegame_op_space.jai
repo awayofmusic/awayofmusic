@@ -725,7 +725,8 @@ DebugWatchEditNameMode :: inline (
 {
 	//NOTE : If we are watch_editing and mouse_watch_index == text_op.highlighted_name_index
 	//then we stop above to move the cursor around with cursor_left_mouse_holding
-	if watch_data.name.count > 0 && !watch_data.is_error {
+	// if watch_data.name.count > 0 && !watch_data.is_error {
+	if watch_data.name.count > 0 {
 		memcpy(text_op.edit_watch_name.text_string.data, watch_data.name.data, watch_data.name.count);
 		text_op.edit_watch_name.text_string.count = watch_data.name.count;
 
@@ -956,7 +957,7 @@ VisitWatchNodes :: (node : *BinaryNode, vwd : VisitWatchData) -> is_valid : bool
 	debug_info : *DebugInfo = *vwd.text_op.exec_info.debug_info;	
 	c_frame : *DebugCallFrame = GetCallFrame(debug_info);
 
-	watch_keywords :: string.["ram"];
+	watch_keywords :: string.["ram", "cfloat"];
 	if node.value.token_type == {
 	//TODO Need to add array access and operators as well.
 	//Operators only base type like int, float and bool, maybe music memory?
@@ -986,6 +987,23 @@ VisitWatchNodes :: (node : *BinaryNode, vwd : VisitWatchData) -> is_valid : bool
 			//I think we can also allow a pointer to this which would just return the inner value
 			//but we can use a generalized pointer in the watch pane to do that anyways.
 			node.code_ir.t_info = *cd.int_type_info;
+		}
+		case "cfloat"; {
+			if node.right == null || node.right.code_ir.t_info == null || 
+				!AllOrEquals(node.right.code_ir.t_info.type_enum, .[.FLOAT, .INTEGER])
+			{
+				SetWatchError(vwd.watch_data, "cfloat() requires integer or float input");
+				return false;
+			}
+
+			right_value, right_err := ComputeWatchValue(node.right.code_ir.op, debug_info.debug_all_registers, vwd.all_data.ram_memory,,temp);
+			if right_err.is_error {
+				SetWatchError(vwd.watch_data, right_err.msg);
+				return false;
+			}
+
+			node.code_ir.op = FImm(right_value.float_value);
+			node.code_ir.t_info = *cd.float_type_info;
 		}
 		}
 		return true;
@@ -1134,29 +1152,33 @@ VisitWatchNodes :: (node : *BinaryNode, vwd : VisitWatchData) -> is_valid : bool
 			//TODO if struct_node == ARRAY then check array view and fixed for data and count vars explicitly
 			array_info : *TypeInfoArray;
 			if struct_node.code_ir.t_info.type_enum == .ARRAY {
-			array_info = cast(*TypeInfoArray) struct_node.code_ir.t_info;
+				array_info = cast(*TypeInfoArray) struct_node.code_ir.t_info;
 				if array_info.array_type == {
 				case .FIXED;
 					if node.value.token_string == {
 					case "count";
 						node.code_ir.op = Imm(array_info.array_count);
 						node.code_ir.t_info = *cd.int_type_info;
-					case "data";
-						//TODO Should we just GetOrCreateTypeInfoPointer? This is the debugger though so maybe
-						//we should check why were not creating it in the compiler if this errors here.
-						//Can we create values that don't exist in watch window? Technically yes like ****x or something weird
-						p_type, found_p_type := GetTypeInfoPointer(array_info.element_type, cd);
-						if !found_p_type {
-							SetWatchError(vwd.watch_data, 
-							tprint("Pointer type % not found.", TypeToString(p_type)));
-							log_error("Pointer type % not found.\n", array_info.element_type.*);
-							return false;	
-						}
+					//TODO THIS IS NOT ACTUALLY AVAILABLE AS A POINTER IN MEMORY AT RUNTIME SO WE SHOULD REMOVE IT
+					//The problem is when we have fa.data we need to return an int and fa.data[0] we need to return
+					//the pointer, but the pointer is not in memory. Since we can get the address with *fa, we remove this
+					//also generally fa, 2 and just fa work so its fine.
+					// case "data";
+					// 	//TODO Should we just GetOrCreateTypeInfoPointer? This is the debugger though so maybe
+					// 	//we should check why were not creating it in the compiler if this errors here.
+					// 	//Can we create values that don't exist in watch window? Technically yes like ****x or something weird
+					// 	p_type, found_p_type := GetTypeInfoPointer(array_info.element_type, cd);
+					// 	if !found_p_type {
+					// 		SetWatchError(vwd.watch_data, 
+					// 		tprint("Pointer type % not found.", TypeToString(p_type)));
+					// 		log_error("Pointer type % not found.\n", array_info.element_type.*);
+					// 		return false;	
+					// 	}
 
-						ram_address : int = ComputeRAMLocation(struct_node.code_ir.op, debug_info.debug_all_registers, vwd.all_data.ram_memory);
-						array_data_address := GetMemValue(ram_address, int, vwd.all_data.ram_memory);
-						node.code_ir.op = RamMem(array_data_address);
-						node.code_ir.t_info = p_type;
+					// 	ram_address : int = ComputeRAMLocation(struct_node.code_ir.op, debug_info.debug_all_registers, vwd.all_data.ram_memory);
+					// 	array_data_address := GetMemValue(ram_address, int, vwd.all_data.ram_memory);
+					// 	node.code_ir.op = RamMem(array_data_address);
+					// 	node.code_ir.t_info = p_type;
 					case;
 						SetWatchError(vwd.watch_data, 
 						tprint("\"%\" not a member.", node.value.token_string));
@@ -1366,7 +1388,12 @@ VisitWatchNodes :: (node : *BinaryNode, vwd : VisitWatchData) -> is_valid : bool
 			   }
 			}
 			case #char "*"; {
-				if node.right.code_ir.op.operand_type != .RAM_MEMORY {
+				if node.parent != null && node.parent.value.token_type != #char "*" {
+					//We only allow var address in watch window if this is the only variable
+					//so something like "*fa, 2" should not work since the "*" is not stored in memory
+					SetWatchError(vwd.watch_data, "* cannot be in larger expression");
+					return false;
+				} else if node.right.code_ir.op.operand_type != .RAM_MEMORY {
 					SetWatchError(vwd.watch_data, "invalid pointer");
 					return false;
 				}

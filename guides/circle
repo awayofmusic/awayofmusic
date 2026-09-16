@@ -2,17 +2,16 @@
 /*
 A 2d op space contains any 2d geometry.
 It is created and setup directly through the language.
-
 Here we create a circle as an example.
-Other geometries can be found in guides/chord_s2
 
-"ctrl+alt+d" for debug mode.
-"ctrl+alt+c" to compile.
-"F5" to run the code.
-Put "open_op s2d" in the terminal and press "Enter"
+Try this out:
+- "ctrl+f7" toggles the text status bar
+- "ctrl+alt+d" for debug mode.
+- "ctrl+alt+c" to compile.
+- "F5" to run the code.
+- Put "open_op s2d" in the terminal and press "Enter"
 to see the circle in the 2d op space.
-
-"WASD" can be used to move the 2d op space camera.
+- "WASD" can be used to move the 2d op space camera.
 */
 main :: () {
 	//To open this op space from the internal terminal run :
@@ -47,4 +46,8 @@ main :: () {
 	mc.pitches = float64.[0,4.5,7];
 	mc.draw_vl_type = DrawVLType.VL_LINE;
 	#asm{ map_circle mc; }
+
+	/*Other geometries can be found at
+	load_op chords2 guides/chord_s2
+	*/
 }

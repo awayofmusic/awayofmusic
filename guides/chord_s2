@@ -7,14 +7,16 @@ Similarly, a chord_s2 contains all possible unordered 2-note sets in each octave
 It is recommended to read through the code and think about it.
 Feelings should also be recognized and acknowledged.
 
-"ctrl+alt+d" for debug mode.
-"ctrl+alt+c" to compile.
-"F5" to run the code.
-Put "open_op cs2" in the terminal and press "Enter"
+Try this out:
+- "ctrl+alt+d" for debug mode.
+- "ctrl+alt+c" to compile.
+- "F5" to run the code.
+- Put "open_op cs2" in the terminal and press "Enter"
 to see the chord_s2 in the 2d op space.
 
 This space was created/discovered by Dimitri Tymoczko.
-Details for 3+ dimensions of this space can be found in guides/chord_s3.
+Details for 3+ dimensions of this space can be found at 
+load_op chords3 guides/chord_s3.
 */
 main :: () {
 	//To open this op space from the internal terminal run :

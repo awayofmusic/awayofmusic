@@ -1,0 +1,104 @@
+/*Try this out:
+- ctrl+f7 toggles the status bar below for general info
+- ctrl+alt+d for debug mode
+- ctrl+alt+c to compile
+- put a breakpoint in left grey column with mouse left click
+or f9 sets a breakpoint at the text cursor line
+- run the code using f5 and step over each instruction with f10
+- ctrl+shift+g to move from code to asm lines
+*/
+main :: () {
+	/*Arrays are a sequence of values in memory.
+
+	General array view form is :
+	array_name : [] array_type;
+
+	Arrays can be stored on the stack or heap.
+	To store an array on the heap :
+	*/	
+	ha : [] int = NewArray(3, int); //This creates 3 integers on the heap.
+
+	/*Put ha in the top-right watch window and press enter or 
+	click drop(array) to view the array contents during execution.
+
+	To change the count put "ha,2" in the watch window.
+
+	Each value can be accessed through ha[x].
+	*/
+	ha[0] = 1;
+	ha[1] = 2;
+	ha[2] = ha[1];
+
+	/*An array is a struct with 2 values
+	Array :: struct {
+		count : int;
+		data : *data_type;
+	}
+
+	An array view stores the above struct on the stack.
+	"count" is how many members are in the array.
+	"data" is the address where the data of the array starts.
+	Try putting these in the top-right watch window.
+	*/
+	ha_count : int = ha.count;
+	ha_data : *int = ha.data;
+
+	/*To learn about structs
+	load_op structs guides/programming/structs
+	*/
+
+	/*Array access is an add and multiplication from the array data address.
+	if ha.data is at address byte "d" then
+	ha[0] = [d + 0 * 8] where 8 bytes is the size of each value since this is an integer array
+	ha[1] = [d + 1 * 8]
+	ha[2] = [d + 2 * 8]
+
+	General array access is
+	ha[x] = [ha.data + x * size_of(data_type)]
+
+	ctrl+shift+g will move to the corresponding asm code
+	setting a breakpoint here will show all instructions for this array access
+	*/
+	ha[2] = 3;
+
+	//size_of is the size in bytes of any data type and is known at compile-time.
+	i_size : int = size_of(int);
+
+	/*Addresses and arithmetic can be used directly to do array access.
+	The following to lines are the same
+	*/
+	fa_2_address : *int = *ha[2];
+	fa_2_data : *int = ha.data + 2; //note that 2 is implicitly multiplied by 8 here because size_of(int) is 8 bytes
+
+	//The following 2 lines will both access the same data address and so will return the same data value.
+	fa_2_av : int = fa_2_address.*;
+	fa_2_dv : int = fa_2_data.*;
+
+
+	/*General fixed array view form is
+	array_name : [array_count] array_type;
+
+	A fixed array stores its values directly in memory on the stack
+	and so the count and data member values are known only at compile time and 
+	not stored in memory and therefore not known at runtime.
+
+	To store an array on the stack :
+	*/
+	fa : [2] int; //Only 2 integers on the stack.
+
+	//To view the data address of fa, put "*fa" in the top-right watch window.
+	fa_count : int = fa.count; //this is set in the instruction directly at compile-time
+	fa_data : *int = fa.data; //this is fixed on the stack at compile-time
+
+	//Array access for fixed arrays is generally the same as array views.
+	fa[0] = 5;
+	fa[1] = 10;
+
+	//Array literals are fixed arrays which can be set directly on declaration
+	al : [3] int = int.[0,4,7];
+	al2 := int.[0,4,7]; //we can omit the type here since it is inferred
+
+	//Casting a fixed array to an array view is generally not allowed.
+	//An exception is that we can declare a fixed array as an array view.
+	hl : [] int = al;
+}
