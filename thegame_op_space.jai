@@ -999,7 +999,7 @@ VisitWatchNodes :: (node : *BinaryNode, vwd : VisitWatchData) -> is_valid : bool
 	debug_info : *DebugInfo = *vwd.text_op.exec_info.debug_info;	
 	c_frame : *DebugCallFrame = GetCallFrame(debug_info);
 
-	watch_keywords :: string.["ram", "cfloat"];
+	watch_keywords :: string.["ram", "flt"];
 	if node.value.token_type == {
 	//TODO Need to add array access and operators as well.
 	//Operators only base type like int, float and bool, maybe music memory?
@@ -1030,11 +1030,11 @@ VisitWatchNodes :: (node : *BinaryNode, vwd : VisitWatchData) -> is_valid : bool
 			//but we can use a generalized pointer in the watch pane to do that anyways.
 			node.code_ir.t_info = *cd.int_type_info;
 		}
-		case "cfloat"; {
+		case "flt"; {
 			if node.right == null || node.right.code_ir.t_info == null || 
 				!AllOrEquals(node.right.code_ir.t_info.type_enum, .[.FLOAT, .INTEGER])
 			{
-				SetWatchError(vwd.watch_data, "cfloat() requires integer or float input");
+				SetWatchError(vwd.watch_data, "flt() requires integer or float input");
 				return false;
 			}
 

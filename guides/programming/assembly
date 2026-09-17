@@ -1,30 +1,31 @@
-/*Assembly(asm) instructions take the general form
-
-op_code operand_0, operand_1, operand_2;
-
-Op code is necessary but the number of operands depends on the specific op_code.
-All op codes can be found in thegame_data.jai OpCode enum.
-Assembly instructions are executed directly as 
-MusicInstruction struct which can be found in thegame_data.jai.
-MusicInstruction execution is found in thegame_code.jai in function ExecMInstr.
-
-Most basic asm instructions take operand 1 and/or 2 as input and 
-place the result in operand 0.
-Operand types can be found in MusicOperandType enum in thegame_data.jai.
-Integers and floats are represented directly.
-Registers are represented by name which can be found in RegDef enum in thegame_data.jai.
+/*Try this out :
+- ctrl+f7 toggles the text status bar for general info
+- ctrl+alt+d toggles debug mode
+- ctrl+alt+c compiles the code
+- set a breakpoint on the left grey column with mouse left click
+or set a breakpoint with f9 at the cursor
+- run the code with f5 and step over each line with f10
+- any register can be placed in the top-right watch window
+- ctrl+alt+o toggles text op messages in debug mode.
+- ctrl+alt+i toggles disassembly in debug mode.
 */
 main :: () {
-	Try this out :
-	- ctrl+f7 toggles the text status bar for general info
-	- ctrl+alt+d toggles debug mode
-	- ctrl+alt+c compiles the code
-	- set a breakpoint on the left grey column with mouse left click
-	or set a breakpoint with f9 at the cursor
-	- run the code with f5 and step over each line with f10
-	- any register can be placed in the top-right watch window
-	- ctrl+alt+o toggles text op messages in debug mode.
-	- ctrl+alt+i toggles disassembly in debug mode.
+	/*Assembly(asm) instructions take the general form
+
+	op_code operand_0, operand_1, operand_2;
+
+	Op code is necessary but the number of operands depends on the specific op_code.
+	All op codes can be found in thegame_data.jai OpCode enum.
+	Assembly instructions are executed directly as 
+	MusicInstruction struct which can be found in thegame_data.jai.
+	MusicInstruction execution is found in thegame_code.jai in function ExecMInstr.
+
+	Most basic asm instructions take operand 1 and/or 2 as input and 
+	place the result in operand 0.
+	Operand types can be found in MusicOperandType enum in thegame_data.jai.
+	Integers and floats are represented directly.
+	Registers are represented by name which can be found in RegDef enum in thegame_data.jai.
+	*/
 	#asm {
 		add ax, 1, 1; //put 1 + 1 into register ax
 
@@ -83,10 +84,10 @@ main :: () {
 	*/
 	f : float = 3.14;
 	#asm {
-		//Put cfloat(cx) in the watch window to view the cx register as a float
+		//Try flt(cx) in the watch window to view the cx register as a float
 		add.f cx, f, 1.1;
 	}
-	//Try cfloat(ram(8)) to see the value of the f variable as a float at [8]
+	//Try flt(ram(8)) to see the value of the f variable as a float at [8]
 
 
 	//TODO guides/asm_music to create music using MUSIC_MEMORY

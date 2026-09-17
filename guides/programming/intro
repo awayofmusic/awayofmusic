@@ -1,10 +1,11 @@
 /*Try this out :
+- ctrl+f7 toggles the status bar below for general info
 - ctrl+alt+d to toggle debug mode
 - Set a breakpoint on line "mov ax, 5"
 Either click the left column next to that line
 or put your cursor on that line and press f9 
 - ctrl+alt+c to compile
-Always compile before executing
+- Always compile before executing
 - f5 to execute and stop on the breakpoint
 - Add watch variables ax, bx and i in the top-right pane
 Click the top-right watch pane with the mouse or press ctrl+alt+2.
@@ -81,5 +82,4 @@ Everything within the curly braces {  } represents the scope of that function.
 Execution always starts at the main function.
 
 All shortcuts can be found in thegame_input.jai at DEFAULT_INPUT_MAPPINGS initialization.
-
 */
