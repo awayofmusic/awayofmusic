@@ -85,10 +85,9 @@ main :: () {
 	f : float = 3.14;
 	#asm {
 		//Try flt(cx) in the watch window to view the cx register as a float
-		add.f cx, f, 1.1;
+		sub.f cx, f, 1.1;
 	}
 	//Try flt(ram(8)) to see the value of the f variable as a float at [8]
-
 
 	//TODO guides/asm_music to create music using MUSIC_MEMORY
 }

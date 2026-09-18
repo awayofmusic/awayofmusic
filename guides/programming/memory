@@ -71,7 +71,7 @@ main :: () {
 	Press ctrl+shift+g to jump to the corresponding asm instruction below.
 	The following is equivalent to the sbp asm above.
 	*/
-	x : int = 10;
+	x : int = 10; //Integers are 8 bytes (64 bits)
 	y : int = x;
 
 	/*Each variable is represent by name and data type known at compile time.
@@ -90,6 +90,7 @@ main :: () {
 
 	/*Each value in memory is associated to a corresponding memory address.
 	Addresses can be accessed for any variable by the unary operator "*".
+	All addresses are 8 bytes (64 bits).
 	Try putting px and *x in the watch window.
 	*/
 	px : *int = *x;
@@ -105,7 +106,7 @@ main :: () {
 	New always returns an address to heap memory.
 	*/
 	h : *int = New(int);
-	f : *float = New(float);
+	f : *float = New(float); //Floats are 8 bytes (64 bits)
 
 	/*To learn about arrays
 	load_op arrays guides/programming/arrays
@@ -115,3 +116,72 @@ main :: () {
 	load_op conditionals guides/programming/conditionals
 	*/
 }
+
+/*Stack and heap memory can be visualized as dividing total memory into 2 sections.
+
+stack            heap
+**************** ****************
+                |
+**************** **************** 
+
+
+When we call a function, the memory for that functions stack is accumulated.
+In the main function above, "x : int = 10;" stores 8 bytes on the stack.
+So x is stored at byte 0 in total memory.
+Try putting "*x" in the top-right wach pane to see it's address.
+
+address: 0
+value  : x
+
+"y : int = x;" stores 8 bytes on the stack directly after x.
+So y is stored at byte 8 in total memory.
+
+address: 0, 8
+value  : x, y
+
+"px : *int = *x;" stores 8 bytes on the stack directly after y.
+So px is stored at byte 16 in total memory.
+
+address
+0, 8, 16
+value
+x, y, px
+
+All function stack memory is relative to the stack base pointer (sbp) which is
+stored in the sbp register. This is shown in the bottom-left assembly pane as :
+ x = [sbp+0]
+ y = [sbp+8]
+px = [sbp+16]
+py = [sbp+24]
+This is possible because all variables on the stack are known at compile time.
+
+
+Heap memory is stored where the heap starts in total memory.
+It is only conceptually separate from stack memory.
+Stack and heap memory are both part of the same total memory.
+
+"h : *int = New(int);" stores an integer on the heap so 8 bytes are placed on the heap.
+The variable "h" is an address to that heap integer and the address "h" is stored on the stack.
+So if total memory is 4 megabytes(Mb) and we have 2Mb for the stack and 2Mb for the heap,
+then heap memory will start at 2Mb.
+
+address: 0, 8, 16, 24, 32 ... 2Mb
+value  : x, y, px, py, h  ... int
+
+"f : *float = New(float);" stores a float on the heap so 8 bytes are placed after the int on the heap.
+The variable "f" is an address to that heap float and the address "f" is stored on the stack.
+
+address: 0, 8, 16, 24, 32, 40 ... 2Mb, 2Mb+8
+value  : x, y, px, py, h , f  ... int, float
+
+The addresses declared on the stack are known at compile-time.
+h : *int   = [sbp+32]
+f : *float = [sbp+48]
+
+The heap memory these addresses point to is not known at compile-time.
+If the address to something in heap memory is not remembered, then that 
+heap data is lost for the life-cycle of the current program.
+
+To learn about function memory
+load_op functions guides/programming/functions
+*/

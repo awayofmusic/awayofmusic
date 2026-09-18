@@ -15876,6 +15876,65 @@ Test_Lexer :: () {
 	TestToken(lt[0], #char "#", cast(int) CodeDirective.asm);
 
 
+//TEST that having skip tokens at end of file does not crash
+//We were crashing when ending a file with " " or "\t"
+//because we skip those at the beginning of the lexer since
+//those chars don't need to be tokenized.
+	ResetCodeLexer(*cl);
+	LexCodeTokens(*cl, " ",,unit_test_alloc);
+	AssertEquals(0, cl.lexer_tokens.count);
+	ResetCodeLexer(*cl);
+	LexCodeTokens(*cl, "\t",,unit_test_alloc);
+	AssertEquals(0, cl.lexer_tokens.count);
+	ResetCodeLexer(*cl);
+	LexCodeTokens(*cl, "\n",,unit_test_alloc);
+	AssertEquals(0, cl.lexer_tokens.count);
+	ResetCodeLexer(*cl);
+	LexCodeTokens(*cl, "\r",,unit_test_alloc);
+	AssertEquals(0, cl.lexer_tokens.count);
+	LexCodeTokens(*cl, " \t\r\n",,unit_test_alloc);
+	AssertEquals(0, cl.lexer_tokens.count);
+
+	ResetCodeLexer(*cl);
+	LexCodeTokens(*cl,
+#string DONE
+main :: () {
+} 
+DONE,,unit_test_alloc);
+	TestManyTokens(cl.lexer_tokens, .[
+		LCToken(.IDENT, "main"), LCToken(.DOUBLE_COLON),
+		LCToken(#char "("), LCToken(#char ")"),
+		LCToken(#char "{"), LCToken( #char "}")
+	]);
+
+//TEST end with tab no crash
+	ResetCodeLexer(*cl);
+	LexCodeTokens(*cl,
+#string DONE
+main :: () {
+}	
+DONE,,unit_test_alloc);
+	TestManyTokens(cl.lexer_tokens, .[
+		LCToken(.IDENT, "main"), LCToken(.DOUBLE_COLON),
+		LCToken(#char "("), LCToken(#char ")"),
+		LCToken(#char "{"), LCToken( #char "}")
+	]);
+
+//TEST end with new line no crash
+	ResetCodeLexer(*cl);
+	LexCodeTokens(*cl,
+#string DONE
+main :: () {
+}	
+
+DONE,,unit_test_alloc);
+	TestManyTokens(cl.lexer_tokens, .[
+		LCToken(.IDENT, "main"), LCToken(.DOUBLE_COLON),
+		LCToken(#char "("), LCToken(#char ")"),
+		LCToken(#char "{"), LCToken( #char "}")
+	]);
+
+
 	ResetCodeLexer(*cl);
 	LexCodeTokens(*cl,
 #string DONE

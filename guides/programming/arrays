@@ -57,8 +57,8 @@ main :: () {
 	General array access is
 	ha[x] = [ha.data + x * size_of(data_type)]
 
-	ctrl+shift+g will move to the corresponding asm code
-	setting a breakpoint here will show all instructions for this array access
+	- ctrl+shift+g will move to the corresponding asm code
+	- setting a breakpoint here will show all instructions for this array access
 	*/
 	ha[2] = 3;
 
@@ -81,16 +81,16 @@ main :: () {
 
 	A fixed array stores its values directly in memory on the stack
 	and so the count and data member values are known only at compile time and 
-	not stored in memory and therefore not known at runtime.
+	not stored explicitly stored in memory like array views.
 
-	Put "fa" in the watch window.
+	Try putting "fa" in the watch window.
 	During execution, the second watch column will have array(fa.count,fa.data).
 
 	To store an array on the stack :
 	*/
 	fa : [2] int; //Only 2 integers on the stack.
 
-	//Another way to view the data address of fa, put "*fa" in the top-right watch window.
+	//To view the data address of fa, put "*fa" in the top-right watch window.
 	fa_count : int = fa.count; //this is set in the instruction directly at compile-time
 	fa_data : *int = fa.data; //this is fixed on the stack at compile-time
 
@@ -100,7 +100,7 @@ main :: () {
 
 	//Array literals are fixed arrays which can be set directly on declaration
 	al : [3] int = int.[0,4,7];
-	al2 := int.[0,4,7]; //we can omit the type here since it is inferred
+	al2 := int.[0,3,7]; //we can omit the type here since it is inferred
 
 	//Casting a fixed array to an array view is generally not allowed.
 	//An exception is that we can declare a fixed array as an array view.

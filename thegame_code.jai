@@ -253,12 +253,15 @@ lexer.next_index = 0;
 
 while lexer.input_index < lexer.input.count
 {
-	//TODO I don't think we need found_next_c here since -1 would not match with anything
 	next_c, found_next_c := PeekChar(lexer);
-	while found_next_c && String.is_any(cast(u8)next_c, MY_DEFAULT_SKIPS) {
+	while found_next_c && String.is_any(cast(u8)next_c, " \t\r\n") {
 		EatChar(lexer);
 		next_c, found_next_c = PeekChar(lexer);
    }
+
+   //This fixes a crash we had on (cast(u8) -1) where next_c is -1
+   //when we ended the input string with " \t\r\n" skipped in the while loop above
+   if !found_next_c break;
 
 	lt : LCodeToken;
 	lt.token_type = cast(CodeTokenType) next_c;
@@ -317,6 +320,9 @@ while lexer.input_index < lexer.input.count
 	} 
 	else if next_c == {
 	case #char "\n"; {
+		//TODO We skip this above now but I will leave here for now just in case we had it for another reason.
+		//We were crashing on end lexing with " " but not with "\n" because of this.
+		//We put all skip tokens above and break out of loop if we have no more chars to parse.
 		//We don't carry over the "\n" as a token.
 		EatChar(lexer);
 	}

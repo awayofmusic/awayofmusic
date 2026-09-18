@@ -1,0 +1,76 @@
+/*A struct is a collection of members that are stored
+in memory in the order that they are declared.
+*/
+Example :: struct {
+	x : int; //byte 0 - size 8
+	f : float; //byte 8 - size 8
+	chord : [3] float; //byte 16 - size 3*8
+	arr : [] int; //byte 48 = 0+8+16+3*8 - size 8+8
+}
+Other :: struct {
+	//A struct can be the member of another struct.
+	exa : Example;
+}
+main :: () {
+	/*This creates a struct of type Example on the stack.
+	Put a breakpoint and put "e" in the top-right watch window.
+	"Enter" or mouse-clicking the second column will drop the struct data.
+	*/
+	e : Example;
+
+	/*We can set/get values use the "." operator.
+	This will access memory based on the byte offset of the struct member.
+	- ctrl+shift+g to move between code and asm lines
+	- set a breakpoint to see all instructions related tho the struct member acess
+	- try "e.x" and "e.f" in the top-right watch window
+	*/
+	e.x = 5;
+	e.f = 7.8;
+
+	//A fixed array is stored directly in the struct.
+	//"chord : [3] float" is the equivalent of storing 3 floats in the struct.
+	e.chord[0] = e.f;
+	e.chord[1] = 12.;
+	e.chord[2] = e.chord[0];
+
+	//An array view stores the count and data members in the struct.
+	//So we create the array data on the heap as usual.
+	e.arr = NewArray(2, int);
+
+	//count and data members of an array can be accessed with the "." operator
+	arr_count : int = e.arr.count;
+	arr_data : *int = e.arr.data;
+
+	//size_of will return the total size in bytes of any data type.
+	e_size : int = size_of(Example);
+
+	//New function will create a struct on the heap.
+	//Here we have an address to the struct.
+	he : *Example = New(Example);
+
+	//The ".*" operators gets the data at that address.
+	//"he.*" gets the data at the address "he".
+	he_copy : Example = he.*;
+
+	/*To access struct members of a struct address, use the ".*" operator.
+	- try putting "he" and "he.*" in the top-right watch window
+	*/
+	he.*.x = 10;
+	he.*.f = 1.1;
+	he.*.chord[1] = he.*.f;
+
+
+	//To access a struct member of a struct member, use sequential "." operators.
+	o : Other;
+	o.exa.f = 1.2;
+	o.exa.chord[0] = o.exa.f;
+
+
+	//"tano" and "neume" are structs built into this language.
+	t : tano;
+	t.row_start = 0;
+	t.row_end = 1;
+
+	n : neume;
+	n.svara = 2.4;
+}	

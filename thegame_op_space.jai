@@ -759,6 +759,7 @@ GetCallFrame :: inline (debug_info : *DebugInfo) -> *DebugCallFrame {
 	return c_frame;
 }
 
+ARRAY_WATCH_VALUE :: "c=%,d=%";
 //TODO Write tests for this function once it works on more types.
 ComputeWatchValueAndType :: inline (watch_data : *WatchData, text_op : *TextOpSpaceData, all_data : *AllData) {
 	//We set this before because even if we have an error we want to reset the type_str but
@@ -824,6 +825,7 @@ ComputeWatchValueAndType :: inline (watch_data : *WatchData, text_op : *TextOpSp
 		}
 		else if AllOrEquals(watch_data.node.code_ir.t_info.type_enum, STRUCT_TYPE_INTERNAL) {
 			//TODO Should we set this to the first value or make an "{x,y}" preview string
+			//OR we could put the address as struct(address) with ComputeRAMLocation
 			value_string = "drop(struct)";
 			// ram_address : int = ComputeRAMLocation(watch_op, debug_info.debug_all_registers, all_data.ram_memory);
 			// mv, err := GetMemValue(ram_address, watch_data.node.code_ir.t_info, all_data.ram_memory);
@@ -838,12 +840,16 @@ ComputeWatchValueAndType :: inline (watch_data : *WatchData, text_op : *TextOpSp
 			data_address : int = ComputeOperandInt(watch_data.node.left.code_ir.op,
 				text_op.exec_info.debug_info.debug_all_registers, all_data.ram_memory);
 
-			value_string = tprint("array(%,%)", array_count, data_address);
+			value_string = tprint(ARRAY_WATCH_VALUE, array_count, data_address);
 		}
 		else if watch_data.node.code_ir.t_info.type_enum == .ARRAY ||
 			(IsWatchCommaArray(watch_data.node) && watch_data.node.left.code_ir.t_info.type_enum == .ARRAY)
 		{
 			//TODO Should we set this to the first few values like "[x,y,z]" preview string
+			//TODO Is having the count, data here useful or confusing? Will it be confused for array preview?
+			//Should we put an array preview instead? This could also be adjustable with settings if needed.
+			//Education-wise it is likely useful to clearly see the array struct info.
+			//Also for fixed arrays this is simpler than adding "*fa" since the ".data" is not available
 			is_mem_err : CPUError;
 			valid_array : bool = false;
 			array_info := cast(*TypeInfoArray) watch_data.node.code_ir.t_info;
@@ -862,6 +868,7 @@ ComputeWatchValueAndType :: inline (watch_data : *WatchData, text_op : *TextOpSp
 			} 
 
 			if is_mem_err.is_error {
+				valid_array = false;
 				value_string = "Invalid memory";
 			}
 
@@ -872,7 +879,7 @@ ComputeWatchValueAndType :: inline (watch_data : *WatchData, text_op : *TextOpSp
 			}
 
 			if valid_array {
-				value_string = tprint("array(%,%)", array_count, array_data_address);
+				value_string = tprint("c=%,d=%", array_count, array_data_address);
 			} else {
 				value_string = INVALID_WATCH_EXPR;
 			}
