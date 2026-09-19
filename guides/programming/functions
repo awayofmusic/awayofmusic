@@ -1,0 +1,81 @@
+/*Functions are generally declared as
+
+function_name :: (input_0 : input_0_type, input_1 : input_1_type...) -> return_type
+
+Functions can have 0..n inputs and 0..1 outputs.
+
+- ctrl+alt+d toggles debug mode
+- ctrl+alt+c compiles
+- ctrl+shift+g to move between code and asm lines
+- more function info below the main function
+*/
+//Add function has 2 inputs and 1 output
+Add :: (i0 : int, i1 : int) -> int {
+	ri : int = i0 + i1;
+	return ri;
+}
+
+//Update function has 1 input and 0 outputs
+Update :: (i : *int) {
+	i.* += 1;
+}
+
+//Chord function has 0 inputs and 1 output
+Chord :: () -> [3] float {
+	return float.[0.5,3.5,7.5];	
+}
+
+//The main function has no inputs and no outputs.
+main :: () {
+	/*
+	- set a breakpoint with mouse click on left grey column
+	or f9 at text cursor
+	- f5 to run/debug
+	- f11 will step into the function during debugging
+	*/
+	i : int = Add(1,1);
+	Update(*i);
+
+	c : [3] float = Chord();
+}
+
+/*A function call is 
+- make space for return values on stack (no instructions)
+- push all registers onto the stack
+- move all inputs after the next sbp reg address
+- update the sbp reg to new function call stack
+- set the return instruction index
+- call/jmp to the function instruction index
+- pop registers from the stack after returning
+
+
+
+- Explicit Add function call notes:
+push_all_stack_reg [sbp+8]
+	- [sbp+0] is the return int value
+mov [sbp+160], 1, 8;
+	- [sbp+160] in main is [sbp+0] in Add
+mov [sbp+168], 1, 8;
+	- [sbp+168] in main is [sbp+8] in Add
+add sbp, sbp, 160;
+	- update sbp for the function call
+mov [sbp-8], 14;
+	- the return asm index relative to Add function sbp
+call 0;
+	- equivalent to jmp to asm index 0
+	- Add function starts on asm index 0
+pop_all_stack_reg [srp-152];
+	- srp is set to the sbp of Add function in the ret instruction
+	- sbp is updated before returning because when returning
+	we want to see the correct watch values otherwise 
+	the watch values would be based on the sbp before popping
+	- all registers could be popped in ret instruction
+	but then we would not have an instruction to come back to
+	when returning from the function being called
+	- see ret execution code in thegame_code.jai, function ExecMInstr
+
+- because we set return values on the previous stack
+we can copy the return value directly in memory
+from the function call at the return operator
+- see KEYWORD_RETURN and CompileFunctionCall in thegame_code.jai
+*/

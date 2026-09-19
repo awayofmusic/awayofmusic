@@ -8993,7 +8993,11 @@ CompileCode :: inline (cs : CompileSettings, code : string) -> *CompilationData 
 						//TODO Could add the word "operator" or "op" here if that seems helpful.
 						new_fd.name = sprint("%", op_string);
 					} else {
-						new_fd.name = node.left.value.token_string;
+						// new_fd.name = node.left.value.token_string;
+						//Copying so that if we edit text, we don't lose the name like this.
+						//It is stored by default in the allocator passed into the compiler.
+						//TODO This makes me feel like we should prevent text editing while debugging.
+						new_fd.name = copy_string(node.left.value.token_string);
 					}
 
 					//TODO Should we only allow 1 main function

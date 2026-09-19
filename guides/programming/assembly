@@ -15,10 +15,6 @@ main :: () {
 	op_code operand_0, operand_1, operand_2;
 
 	Op code is necessary but the number of operands depends on the specific op_code.
-	All op codes can be found in thegame_data.jai OpCode enum.
-	Assembly instructions are executed directly as 
-	MusicInstruction struct which can be found in thegame_data.jai.
-	MusicInstruction execution is found in thegame_code.jai in function ExecMInstr.
 
 	Most basic asm instructions take operand 1 and/or 2 as input and 
 	place the result in operand 0.
@@ -76,7 +72,7 @@ main :: () {
 	//Values can be generally be passed directly into asm blocks as follows :
 	i : int = 2;
 	#asm {
-		add cx, i, 1;
+		sub cx, i, 1; //put i - 1 into cx
 	}
 
 	/*Asm does not generally check types and so
@@ -85,9 +81,24 @@ main :: () {
 	f : float = 3.14;
 	#asm {
 		//Try flt(cx) in the watch window to view the cx register as a float
-		sub.f cx, f, 1.1;
+		sub.f cx, f, 1.1; //put f - 1.1 into cx
 	}
 	//Try flt(ram(8)) to see the value of the f variable as a float at [8]
+
+	/*Some assembly instructions to try are add, sub, mul, div, mod, abs...
+	All op codes can be found in thegame_data.jai OpCode enum.
+	Assembly instructions are executed directly as 
+	MusicInstruction struct which can be found in thegame_data.jai.
+	MusicInstruction execution is found in thegame_code.jai in function ExecMInstr.
+	*/
+
+	/*To learn about branching
+	load_op branching guides/programming/branching
+	*/
+
+	/*To learn about operators
+	load_op operators guides/programming/operators
+	*/
 
 	//TODO guides/asm_music to create music using MUSIC_MEMORY
 }

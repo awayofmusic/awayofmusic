@@ -112,8 +112,8 @@ main :: () {
 	load_op arrays guides/programming/arrays
 	*/
 
-	/*To learn about conditionals
-	load_op conditionals guides/programming/conditionals
+	/*To learn about branching
+	load_op branching guides/programming/branching
 	*/
 }
 
