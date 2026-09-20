@@ -11851,6 +11851,212 @@ DONE,,test_alloc);
 	ContinueTest(*perm.test_data);
 } @ITest
 
+Test_AsmMusic :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	perm : *Persist = GetPermanentStorage(game_memory);
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+		perm.all_data = InitAllData();
+		ResetAllRendererData(renderer_data);
+		SetupMusicAndRows(perm.all_data, TWO_ROWS);
+
+		text_file := CreateTestTextFile(*ALL_NEXT_IDS, *perm.all_data.all_text_files);
+		WriteFileString(*perm.all_data.all_text_files[0],
+#string DONE
+main :: () { 
+	#asm {
+		mov <0,0>, 0;
+		mov <0,0>, 4;
+		mov <0,0>, 7;
+		mlen <0,0>, 2;
+
+		mov.f [8], 0.5;
+		mov.f [16], 4.5;
+		mov.f [24], 7.5;
+		mov.f <1,2>, .[3,8], 2.25;
+	}
+}
+DONE);
+		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
+			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+
+		array_resize(*perm.test_data.all_sub_tests, 4+1);
+	} 
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	text_op : *TextOpSpaceData;
+	if perm.all_data.all_text_op_space_data.count > 0 {
+		text_op = *perm.all_data.all_text_op_space_data[0];
+	}
+
+	if perm.test_data.sub_test_index == {
+	case 0; {
+		open_test := MakeTerminalEvent(.open_op, TEST_TEXT_NAME);
+		array_add(*perm.all_data.all_terminal_events, open_test);
+	} 
+	case 1; DownUpInputMap(.TEXT_DEBUG_TOGGLE, game_input);
+	case 2; DownUpInputMap(.TEXT_COMPILE, game_input);
+	case 3; {
+		// CodeBPForTest(12, *text_op.exec_info.debug_info, text_op.text_comp_data);
+		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+	}
+	case 4; {
+		AssertEquals(text_op.exec_info.exec_state, .NOT_RUNNING);
+		// AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		mp0 := perm.all_data.all_mspace_data[0].all_music_pts[0];
+		AssertEquals(0, mp0.row_index);
+		AssertFloat64Equals(0, mp0.music_pt_float);
+		AssertFloat64Equals(0, mp0.x_start_float);
+		AssertFloat64Equals(2, mp0.x_end_float);
+
+		mp1 := perm.all_data.all_mspace_data[0].all_music_pts[1];
+		AssertEquals(0, mp1.row_index);
+		AssertFloat64Equals(4, mp1.music_pt_float);
+		AssertFloat64Equals(0, mp1.x_start_float);
+		AssertFloat64Equals(2, mp1.x_end_float);
+
+		mp2 := perm.all_data.all_mspace_data[0].all_music_pts[2];
+		AssertEquals(0, mp2.row_index);
+		AssertFloat64Equals(7, mp2.music_pt_float);
+		AssertFloat64Equals(0, mp2.x_start_float);
+		AssertFloat64Equals(2, mp2.x_end_float);
+
+		mp3 := perm.all_data.all_mspace_data[0].all_music_pts[3];
+		AssertEquals(1, mp3.row_index);
+		AssertFloat64Equals(0.5, mp3.music_pt_float);
+		AssertFloat64Equals(2, mp3.x_start_float);
+		AssertFloat64Equals(4.25, mp3.x_end_float);
+
+		mp4 := perm.all_data.all_mspace_data[0].all_music_pts[4];
+		AssertEquals(1, mp4.row_index);
+		AssertFloat64Equals(4.5, mp4.music_pt_float);
+		AssertFloat64Equals(2, mp4.x_start_float);
+		AssertFloat64Equals(4.25, mp4.x_end_float);
+
+		mp5 := perm.all_data.all_mspace_data[0].all_music_pts[5];
+		AssertEquals(1, mp5.row_index);
+		AssertFloat64Equals(7.5, mp5.music_pt_float);
+		AssertFloat64Equals(2, mp5.x_start_float);
+		AssertFloat64Equals(4.25, mp5.x_end_float);
+	}
+	}
+
+	ContinueTest(*perm.test_data);
+
+} @ITest
+
+Test_AsmVarArray :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	perm : *Persist = GetPermanentStorage(game_memory);
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+		perm.all_data = InitAllData();
+		ResetAllRendererData(renderer_data);
+		SetupMusicAndRows(perm.all_data, TWO_ROWS);
+
+		text_file := CreateTestTextFile(*ALL_NEXT_IDS, *perm.all_data.all_text_files);
+		WriteFileString(*perm.all_data.all_text_files[0],
+#string DONE
+main :: () { 
+	arr : [3] int = int.[0,4,7];
+	c : int = arr.count;
+	d : *int = arr.data;
+	#asm {
+		mov cx, c;
+		mov dx, d;
+		mov <0,1>, .[cx,dx];
+	}
+
+	arrf : [2] float = float.[1.0,6.2];
+	cf : int = arrf.count;
+	df : *float = arrf.data;
+	#asm {
+		mov ax, 1;
+		mov.f bx, 3.5;
+		mov cx, cf;
+		mov dx, df;
+		mov.f <ax,bx>, .[cx,dx], 1.5;
+	}
+}
+DONE);
+		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
+			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+
+		array_resize(*perm.test_data.all_sub_tests, 4+1);
+	} 
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	text_op : *TextOpSpaceData;
+	if perm.all_data.all_text_op_space_data.count > 0 {
+		text_op = *perm.all_data.all_text_op_space_data[0];
+	}
+
+	if perm.test_data.sub_test_index == {
+	case 0; {
+		open_test := MakeTerminalEvent(.open_op, TEST_TEXT_NAME);
+		array_add(*perm.all_data.all_terminal_events, open_test);
+	} 
+	case 1; DownUpInputMap(.TEXT_DEBUG_TOGGLE, game_input);
+	case 2; DownUpInputMap(.TEXT_COMPILE, game_input);
+	case 3; {
+		// CodeBPForTest(20, *text_op.exec_info.debug_info, text_op.text_comp_data);
+		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+	}
+	case 4; {
+		// AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+		AssertEquals(text_op.exec_info.exec_state, .NOT_RUNNING);
+
+		mp0 := perm.all_data.all_mspace_data[0].all_music_pts[0];
+		AssertEquals(0, mp0.row_index);
+		AssertFloat64Equals(0, mp0.music_pt_float);
+		AssertFloat64Equals(1, mp0.x_start_float);
+		AssertFloat64Equals(2, mp0.x_end_float);
+
+		mp1 := perm.all_data.all_mspace_data[0].all_music_pts[1];
+		AssertEquals(0, mp1.row_index);
+		AssertFloat64Equals(4, mp1.music_pt_float);
+		AssertFloat64Equals(1, mp1.x_start_float);
+		AssertFloat64Equals(2, mp1.x_end_float);
+
+		mp2 := perm.all_data.all_mspace_data[0].all_music_pts[2];
+		AssertEquals(0, mp2.row_index);
+		AssertFloat64Equals(7, mp2.music_pt_float);
+		AssertFloat64Equals(1, mp2.x_start_float);
+		AssertFloat64Equals(2, mp2.x_end_float);
+
+		mp3 := perm.all_data.all_mspace_data[0].all_music_pts[3];
+		AssertEquals(1, mp3.row_index);
+		AssertFloat64Equals(1, mp3.music_pt_float);
+		AssertFloat64Equals(3.5, mp3.x_start_float);
+		AssertFloat64Equals(5, mp3.x_end_float);
+
+		mp4 := perm.all_data.all_mspace_data[0].all_music_pts[4];
+		AssertEquals(1, mp4.row_index);
+		AssertFloat64Equals(6.2, mp4.music_pt_float);
+		AssertFloat64Equals(3.5, mp4.x_start_float);
+		AssertFloat64Equals(5, mp4.x_end_float);
+	}
+	}
+
+	ContinueTest(*perm.test_data);
+
+} @ITest
+
 Test_DeleteAllBreakpoints :: (
 	test_name : string,
 	game_memory : *GameMemory, 

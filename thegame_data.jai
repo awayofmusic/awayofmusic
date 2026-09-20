@@ -6875,6 +6875,7 @@ RamMem :: inline (b : int) -> MusicOperand {
 	return MakeMusicOperand(.RAM_MEMORY, .{.INTEGER,.{b}});
 }
 
+
 //TODO I kind of want to flip the order of data and count here...
 RamArray :: inline (count : $T, data : $R) -> MusicOperand {
 	mop : MusicOperand = 

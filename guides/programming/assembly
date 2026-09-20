@@ -100,5 +100,7 @@ main :: () {
 	load_op operators guides/programming/operators
 	*/
 
-	//TODO guides/asm_music to create music using MUSIC_MEMORY
+	/*To learn music in assembly
+	load_op asm_music guides/asm_music
+	*/
 }

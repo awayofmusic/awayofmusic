@@ -676,10 +676,98 @@ DONE,,unit_test_alloc);
 
 } @UnitTest
 
-//TODO FROM HERE Add RamArray and then do this test
-//Need to make sure pointers and .data is working before we implement this
-//OR should we just allow this in code and not asm
-//Can see when we use it what feels necessary
+Test_AsmRamArray :: () {
+	cs : CompileSettings;
+	cd : *CompilationData;
+	count_equal : bool;
+
+	cd = CompileCode(cs,
+#string DONE
+main :: () {
+	#asm {
+		mov <0,1>, .[cx,dx];
+		mov.f <ax,bx>, .[cx,dx];
+		mov <ax,bx>, .[cx,8], 3;
+		mov.f <1,bx>, .[cx,dx], 3.5;
+	}
+}
+DONE,,unit_test_alloc);
+	comp_success : bool = AssertEquals(false, IsCompilationFail(cd));
+	if !comp_success return;
+	// print("%\n", cd.disassembly);
+
+	instr_index : int = 0;
+	TestNextManyInstr(*instr_index, cd, .[
+		MakeMI(.mov, MusicMem(0,1), RamArray(RegDef.cx,RegDef.dx)),
+		FloatInstr(.mov, MusicMem(RegDef.ax,RegDef.bx), RamArray(RegDef.cx,RegDef.dx)),
+		MakeMI(.mov, MusicMem(RegDef.ax,RegDef.bx), RamArray(RegDef.cx,8), Imm(3)),
+		FloatInstr(.mov, MusicMem(1,RegDef.bx), RamArray(RegDef.cx,RegDef.dx), FImm(3.5)),
+	]);
+
+
+//TEST invalid ram array with +
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	#asm {
+		mov <0,0>, .[ax+8];
+	}
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+//TEST invalid ram array with only 1 value
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	#asm {
+		mov <0,0>, .[0];
+	}
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+//TEST invalid ram array with > 2 values
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	#asm {
+		mov <0,0>, .[0,1,2];
+	}
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST invalid ram array with float
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	#asm {
+		mov <0,0>, .[0,1.0];
+	}
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST invalid ram array with float
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	#asm {
+		mov <0,0>, .[3.5,0];
+	}
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+
+} @UnitTest
+
 Test_AsmVarArray :: () {
 	cs : CompileSettings;
 	cd : *CompilationData;
@@ -688,24 +776,93 @@ Test_AsmVarArray :: () {
 	cd = CompileCode(cs,
 #string DONE
 main :: () {
-	arr : [3] int;
+	arr : [3] int = int.[0,4,7];
 	c : int = arr.count;
 	d : *int = arr.data;
-	// tano[0][0] = arr;
-	// for arr tano[0][it_index] = it;
 	#asm {
-		mov <0,0>, int.[c,d];
+		mov cx, c;
+		mov dx, d;
+		mov <0,1>, .[cx,dx];
+	}
+
+	arrf : [2] float = float.[1.0,6.2];
+	cf : int = arrf.count;
+	df : *float = arrf.data;
+	#asm {
+		mov ax, 1;
+		mov.f bx, 3.5;
+		mov cx, cf;
+		mov dx, df;
+		mov.f <ax,bx>, .[cx,dx], 1.5;
 	}
 }
 DONE,,unit_test_alloc);
+	comp_success : bool = AssertEquals(false, IsCompilationFail(cd));
+	if !comp_success return;
+	// print("%\n", cd.disassembly);
+
+	arr_info, found_arr_info := GetArrayType(cd, *cd.int_type_info, .FIXED, 3);
+	AssertEquals(true, found_arr_info);
+	if !found_arr_info return;
+
+	arrf_info, found_arrf_info := GetArrayType(cd, *cd.float_type_info, .FIXED, 2);
+	AssertEquals(true, found_arrf_info);
+	if !found_arrf_info return;
+
+	int_p_t_info, found_int_p := GetTypeInfoPointer(*cd.int_type_info, cd);
+	AssertEquals(true, found_int_p);
+	float_p_t_info, found_float_p := GetTypeInfoPointer(*cd.float_type_info, cd);
+	AssertEquals(true, found_float_p);
+
+	vars_equal : bool = TestManyVarDeclSameStack(cd.all_variables, .[
+		VarDecl("arr", arr_info),
+		VarDecl("c", *cd.int_type_info),
+		VarDecl("d", int_p_t_info),
+
+		VarDecl("arrf", arrf_info),
+		VarDecl("cf", *cd.int_type_info),
+		VarDecl("df", float_p_t_info)
+	]);
+	if !vars_equal return;
+	arr_var := cd.all_variables[0];
+	c_var := cd.all_variables[1];
+	d_var := cd.all_variables[2];
+	arrf_var := cd.all_variables[3];
+	cf_var := cd.all_variables[4];
+	df_var := cd.all_variables[5];
 
 	instr_index : int = 0;
+	arr_op0, arr_op1 := GetMemoryAddressAsOperands(arr_var.op);
 	TestNextManyInstr(*instr_index, cd, .[
-		MakeMI(.push, Imm(10), Imm(8)),
-		MakeMI(.mov, RegMem(.ax), RamMem(.sbp,0))
+		MakeMI(.mov, RamMem(.sbp,0), Imm(0), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mov, RamMem(.sbp,8), Imm(4), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mov, RamMem(.sbp,16), Imm(7), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mov, c_var.op, Imm(arr_info.array_count), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.add, d_var.op, arr_op0, arr_op1),
+
+		MakeMI(.mov, RegMem(.cx), c_var.op),
+		MakeMI(.mov, RegMem(.dx), d_var.op),
+		MakeMI(.mov, MusicMem(0,1), RamArray(RegDef.cx,RegDef.dx)),
 	]);
 
-} //@UnitTest
+	arrf_op0, arrf_op1 := GetMemoryAddressAsOperands(arrf_var.op);
+	TestNextManyInstr(*instr_index, cd, .[
+		MakeMI(.mov, arrf_var.op, FImm(1), Imm(cd.float_type_info.runtime_size)),
+		MakeMI(.mov, AddOperandOffset(8,arrf_var.op), FImm(6.2), Imm(cd.float_type_info.runtime_size)),
+		MakeMI(.mov, cf_var.op, Imm(arrf_info.array_count), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.add, df_var.op, arrf_op0, arrf_op1),
+
+		MakeMI(.mov, RegMem(.ax), Imm(1)),
+		FloatInstr(.mov, RegMem(.bx), FImm(3.5)),
+		MakeMI(.mov, RegMem(.cx), cf_var.op),
+		MakeMI(.mov, RegMem(.dx), df_var.op),
+		FloatInstr(.mov, MusicMem(RegDef.ax,RegDef.bx), RamArray(RegDef.cx,RegDef.dx), FImm(1.5)),
+
+		MakeMI(.exit),
+	]);
+
+
+} @UnitTest
 
 //TODO Can split these out into separate unit test functions so their easier to check and manage.
 //Each test will have a several assertions likely. Can still group a few together if they are related.
@@ -16404,6 +16561,78 @@ Test_MovMusicXFloat :: () {
 
 } @UnitTest
 
+Test_MovMusicRange :: () {
+	ci : MusicInstruction;
+	ad : *AllData = InitAllData(,,unit_test_alloc);
+	SetupMusicAndRows(ad, TWO_ROWS);
+
+	//integer mov music range
+	ci = Instr(.mov, MusicMem(0,0), Imm(0), Imm(2), d=ad);
+	ExecMInstr(ci, ad);
+	mp0 := ad.all_mspace_data[0].all_music_pts[0];
+	AssertFloat64Equals(0.0, mp0.music_pt_float);
+	AssertFloat64Equals(0.0, mp0.x_start_float);
+	AssertFloat64Equals(2.0, mp0.x_end_float);
+
+	//float mov music range
+	ci = FInstr(.mov, MusicMem(0,0), FImm(4), FImm(2.5), d=ad);
+	ExecMInstr(ci, ad);
+	mp1 := ad.all_mspace_data[0].all_music_pts[1];
+	AssertFloat64Equals(4.0, mp1.music_pt_float);
+	AssertFloat64Equals(0, mp1.x_start_float);
+	AssertFloat64Equals(2.5, mp1.x_end_float);
+
+	//float ram mov music range
+	ci = FInstr(.mov, RamMem(8), FImm(10.15), d=ad);
+	ExecMInstr(ci, ad);
+	ci = FInstr(.mov, MusicMem(0,1), FImm(7.1), RamMem(8), d=ad);
+	ExecMInstr(ci, ad);
+	mp2 := ad.all_mspace_data[0].all_music_pts[2];
+	AssertFloat64Equals(7.1, mp2.music_pt_float);
+	AssertFloat64Equals(1, mp2.x_start_float);
+	AssertFloat64Equals(1+10.15, mp2.x_end_float);
+
+	//float ram array music range
+	ci = FInstr(.mov, RamMem(0), FImm(7.33), d=ad);
+	ExecMInstr(ci, ad);
+	ci = FInstr(.mov, MusicMem(0,3), RamArray(2,0), FImm(3.5), d=ad);
+	ExecMInstr(ci, ad);
+	mp3 := ad.all_mspace_data[0].all_music_pts[3];
+	AssertFloat64Equals(7.33, mp3.music_pt_float);
+	AssertFloat64Equals(3, mp3.x_start_float);
+	AssertFloat64Equals(3+3.5, mp3.x_end_float);
+	mp4 := ad.all_mspace_data[0].all_music_pts[4];
+	AssertFloat64Equals(10.15, mp4.music_pt_float);
+	AssertFloat64Equals(3, mp4.x_start_float);
+	AssertFloat64Equals(3+3.5, mp4.x_end_float);
+
+	//test int ram array range on row 1
+	//use the the 2 here as int size
+	for int.[2,5,9] {
+		ci = Instr(.mov, RamMem(16+it_index*8), Imm(it), d=ad);
+		ExecMInstr(ci, ad);		
+	}
+	ci = Instr(.mov, RegMem(.ax), Imm(16), d=ad);
+	ExecMInstr(ci, ad);
+	ci = Instr(.mov, RegMem(.bx), Imm(1), d=ad);
+	ExecMInstr(ci, ad);
+	ci = Instr(.mov, MusicMem(RegDef.bx,1), RamArray(3,RegDef.ax), RamMem(.ax), d=ad);
+	ExecMInstr(ci, ad);
+	mp5 := ad.all_mspace_data[0].all_music_pts[5];
+	AssertFloat64Equals(2, mp5.music_pt_float);
+	AssertFloat64Equals(1, mp5.x_start_float);
+	AssertFloat64Equals(1+2, mp5.x_end_float);
+	mp6 := ad.all_mspace_data[0].all_music_pts[6];
+	AssertFloat64Equals(5, mp6.music_pt_float);
+	AssertFloat64Equals(1, mp6.x_start_float);
+	AssertFloat64Equals(1+2, mp6.x_end_float);
+	mp7 := ad.all_mspace_data[0].all_music_pts[7];
+	AssertFloat64Equals(9, mp7.music_pt_float);
+	AssertFloat64Equals(1, mp7.x_start_float);
+	AssertFloat64Equals(1+2, mp7.x_end_float);
+
+} @UnitTest
+
 Test_ConstMov :: () {
 	ad : *AllData = InitAllData(,,unit_test_alloc);
 	ad.comp_data = MakeCompilationData();
@@ -17443,6 +17672,111 @@ Test_LogicalMusicFloat :: () {
 	ci = FInstr(.xor, MusicMem(1,2), MusicMem(1,1), d=ad);
 	ExecMInstr(ci, ad);
 	AssertArrayEquals(float64.[4.5,7.25], GetAllMusicPtFloat(1,2,ad.all_mspace_data[0].all_music_pts), "logicm xor 2 op");
+
+} @UnitTest
+
+Test_MLen :: () {
+	ci : MusicInstruction;
+	ad : *AllData = InitAllData(,,unit_test_alloc);
+	SetupMusicAndRows(ad, TWO_ROWS);
+
+	ci = Instr(.mov, MusicMem(0,0), Imm(0), d=ad);
+	ExecMInstr(ci, ad);
+	ci = Instr(.mov, MusicMem(0,0), Imm(4), d=ad);
+	ExecMInstr(ci, ad);
+	ci = Instr(.mov, MusicMem(0,0), Imm(7), d=ad);
+	ExecMInstr(ci, ad);
+	AssertArrayEquals(int.[0,4,7], GetAllMusicPtPosByPosition(0,0,ad.all_mspace_data[0].all_music_pts));
+
+	//Test integer length
+	ci = Instr(.mlen, MusicMem(0,0), Imm(2), d=ad);
+	ExecMInstr(ci, ad);
+	music_pts := GetAllMusicPtPosByPosition(0,0,ad.all_mspace_data[0].all_music_pts, MusicPoint);
+	for music_pts {
+		AssertFloat64Equals(it.x_end_float, 2.0);
+	}
+
+	//Test float length
+	ci = FInstr(.mlen, MusicMem(0,0), FImm(1.5), d=ad);
+	ExecMInstr(ci, ad);
+	music_pts = GetAllMusicPtPosByPosition(0,0,ad.all_mspace_data[0].all_music_pts, MusicPoint);
+	for music_pts {
+		AssertFloat64Equals(it.x_end_float, 1.5);
+	}
+
+	//Test ram length
+	ci = FInstr(.mov, RamMem(0,0), FImm(4.5), d=ad);
+	ExecMInstr(ci, ad);
+	ci = FInstr(.mlen, MusicMem(0,0), RamMem(0,0), d=ad);
+	ExecMInstr(ci, ad);
+	music_pts = GetAllMusicPtPosByPosition(0,0,ad.all_mspace_data[0].all_music_pts, MusicPoint);
+	for music_pts {
+		AssertFloat64Equals(it.x_end_float, 4.5);
+	}
+
+	//Test update range
+	for int.[0,3] {
+		ci = Instr(.mov, MusicMem(0,6), Imm(it), d=ad);
+		ExecMInstr(ci, ad);		
+	}
+
+	ci = Instr(.mlen, MusicMem(0,0), Imm(2), Imm(12), d=ad);
+	ExecMInstr(ci, ad);
+	music_pts = GetAllMemoryMusicPtsInRange(0,12,0,ad.all_mspace_data[0].all_music_pts);
+	for music_pts {
+		if it.x_start_float > 5.0 {
+			AssertFloat64Equals(it.x_end_float, 8.0);
+		} else {
+			AssertFloat64Equals(it.x_end_float, 2.0);
+		}
+	}
+
+	//Test update only last notes with float range
+	ci = FInstr(.mlen, MusicMem(0,6), FImm(1.5), FImm(6), d=ad);
+	ExecMInstr(ci, ad);
+	music_pts = GetAllMemoryMusicPtsInRange(0,12,0,ad.all_mspace_data[0].all_music_pts);
+	for music_pts {
+		if it.x_start_float > 5.0 {
+			AssertFloat64Equals(it.x_end_float, 7.5);
+		} else {
+			AssertFloat64Equals(it.x_end_float, 2.0);
+		}
+	}
+
+	//Test update only first notes with ram
+	ci = FInstr(.mlen, MusicMem(0,0), RamMem(0,0), FImm(4), d=ad);
+	ExecMInstr(ci, ad);
+	music_pts = GetAllMemoryMusicPtsInRange(0,12,0,ad.all_mspace_data[0].all_music_pts);
+	for music_pts {
+		if it.x_start_float > 5.0 {
+			AssertFloat64Equals(it.x_end_float, 7.5);
+		} else {
+			AssertFloat64Equals(it.x_end_float, 4.5);
+		}
+	}
+
+	//Test that second row update works with a register
+	for int.[0,3] {
+		ci = Instr(.mov, MusicMem(1,3), Imm(it), d=ad);
+		ExecMInstr(ci, ad);		
+	}
+
+	ci = FInstr(.mov, RegMem(.ax), FImm(2.5), d=ad);
+	ExecMInstr(ci, ad);		
+	ci = FInstr(.mlen, MusicMem(1,3), RegMem(.ax), d=ad);
+	ExecMInstr(ci, ad);
+	music_pts = GetAllMemoryMusicPtsInRange(0,12,1,ad.all_mspace_data[0].all_music_pts);
+	for music_pts {
+		if it.row_index == 1 {
+			AssertFloat64Equals(it.x_end_float, 5.5);
+		} else {
+			if it.x_start_float > 5.0 {
+				AssertFloat64Equals(it.x_end_float, 7.5);
+			} else {
+				AssertFloat64Equals(it.x_end_float, 4.5);
+			}
+		}
+	}
 
 } @UnitTest
 

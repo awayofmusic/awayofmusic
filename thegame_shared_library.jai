@@ -1185,6 +1185,9 @@ SetMemoryMusicPoint :: inline (
 	}
 	mp.row_index = row_index;
 }
+UpdateMusicPtLength :: inline (mp : *MusicPoint, new_length : float64) {
+	SetMemoryMusicPoint(mp, mp.music_pt_float, mp.row_index, mp.x_start_float, mp.x_start_float + new_length);
+}
 
 //HOWEVER .and <x,y> [r] where r is empty array would clear the music_memory
 //If the first value in memory is always zero, so [0] is zero then that would be

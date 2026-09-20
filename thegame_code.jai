@@ -10174,6 +10174,7 @@ AssemblyIRValueType :: enum {
 	// RAM_MEMORY;
 
 	//TODO Could add logical operators here as well if needed
+	//REMOVE THIS WAS FROM IMPLEMENTING EXPRESSION IN ASSEMBLY WHICH WE REMOVED because of programming language
 	BINARY_ADD_OP;
 	BINARY_SUB_OP;
 	BINARY_MULT_OP;
@@ -10183,11 +10184,13 @@ AssemblyIRValueType :: enum {
 	OPEN_CIRCLE_BRACKET;
 	CLOSE_CIRCLE_BRACKET;
 
+	//TODO REMOVE THIS WE DONT PARSE EXPRESSIONS IN ASSEMBLY ANYMORE
 	EXPRESSION;
 }
 
 SINGLE_ASM_IR_TYPE :: AssemblyIRType.[.INT,.SINGLE_REGISTER,.RAM_MEMORY];
-SINGLE_VALUE_TYPE :: AssemblyIRType.[.INT,.SINGLE_REGISTER,.EXPRESSION];
+// SINGLE_VALUE_TYPE :: AssemblyIRType.[.INT,.SINGLE_REGISTER,.EXPRESSION];
+SINGLE_VALUE_TYPE :: AssemblyIRType.[.INT,.SINGLE_REGISTER];
 // INT_OR_SINGLE_REGISTER :: AssemblyIRType.[.INT,.SINGLE_REGISTER];
 // asm_ir_type_enums : [] AssemblyIRType : #run enum_values_as_enum(AssemblyIRType);
 AssemblyIRType :: enum {
@@ -10204,6 +10207,7 @@ AssemblyIRType :: enum {
 	RAM_MEMORY;
 	ARRAY;
 	OP_CODE;
+	RAM_ARRAY;
 	//End of runtime types
 
 	//For variables that are used which can be declared outside of the asm block and possibly also in the asm block
@@ -10642,6 +10646,30 @@ Assembler :: (asm_tokens : [] LCodeToken, total_asm_start_index : int, cd : *Com
 							"Invalid asm memory. Examples : [0], [ax], [sbp+8], [sbp+bx].");
 				   	}
 					}
+					else if bracket_token.token_type == .ARRAY_LITERAL {
+						bracket_index : int = bracket_asm.asm_ir_index + 1;
+						asm_ir_in_brackets : [] AssemblyIR = array_view(current_asm_irs, bracket_index, current_asm_irs.count);
+					   is_valid_memory_access : bool = ValidateAssemblyIRTypes(asm_ir_in_brackets,
+			   			SINGLE_VALUE_TYPE, .[.COMMA], SINGLE_VALUE_TYPE);
+				   	if is_valid_memory_access {
+				   		//TODO Could make this into a function since we reuse it 3 times
+				   		//We skip over commas and operators
+				   		for asm_ir_in_brackets if it.asm_ir_type == {
+				   			case .INT; #through;
+				   			case .SINGLE_REGISTER;
+								CreateAsmIRValue(memory_asm_ir.id, it.asm_ir_type, it.int_value, *current_asm_ir_values);
+				   		}
+
+							//Store count here so we know how many asm_ir_values to get.
+							memory_asm_ir.int_value = asm_ir_in_brackets.count;
+							// Remove all asm_irs after MEMORY_MPS between brackets []
+							current_asm_irs.count -= asm_ir_in_brackets.count;
+							ASM_IR_ID -= asm_ir_in_brackets.count;
+				   	} else {
+		   				CreateCompErr(cd, .ASSEMBLY_ERROR, c_tokens[c_index],
+							"Invalid asm array. Examples : [2,0], [3,ax], [ax,bx].");
+				   	}
+					}
 					else {
 						//TODO This is checked in the lexer. Will leave here for resilience.
 	   				CreateCompErr(cd, .ASSEMBLY_ERROR, c_tokens[c_index],
@@ -10662,6 +10690,15 @@ Assembler :: (asm_tokens : [] LCodeToken, total_asm_start_index : int, cd : *Com
 			else if c_tokens[c_index].token_type == #char "[" {
 				defer c_index += 1;
 				CreateAsmIR(.RAM_MEMORY, 0, *current_asm_irs);
+
+				bracket_asm : *BracketAsm = array_add(*bracket_stack);
+				bracket_asm.c_index = c_index;
+				bracket_asm.asm_ir_index = current_asm_irs.count-1;
+				bracket_asm.asm_ir_value_index = current_asm_ir_values.count;
+			}
+			else if c_tokens[c_index].token_type == .ARRAY_LITERAL {
+				defer c_index += 1;
+				CreateAsmIR(.RAM_ARRAY, 0, *current_asm_irs);
 
 				bracket_asm : *BracketAsm = array_add(*bracket_stack);
 				bracket_asm.c_index = c_index;
@@ -10803,18 +10840,23 @@ Assembler :: (asm_tokens : [] LCodeToken, total_asm_start_index : int, cd : *Com
 			for asm_ir_op, op_index : asm_ir_operands {
 				c_op : *MusicOperand = *ci.operands[op_index];
 				if asm_ir_op.asm_ir_type == {
-				case AssemblyIRType.SINGLE_REGISTER; 
+				case AssemblyIRType.SINGLE_REGISTER; {
 					c_op.* = RegMem(cast(RegDef) asm_ir_op.int_value);
-				case AssemblyIRType.INT;
+				}
+				case AssemblyIRType.INT; {
 					c_op.* = Immediate(asm_ir_op.int_value);
-				case AssemblyIRType.FLOAT;
+				}
+				case AssemblyIRType.FLOAT; {
 					c_op.* = FImm(asm_ir_op.float_value);
+				}
+				case AssemblyIRType.RAM_ARRAY; #through;
 				case AssemblyIRType.MEMORY_MPS; #through;
-				case AssemblyIRType.RAM_MEMORY;
+				case AssemblyIRType.RAM_MEMORY; {
 					asm_ir_values : [] AssemblyIRValue = ArrayFindAllVarName(current_asm_ir_values, asm_ir_op.id, "asm_ir_id", temp);
 					if asm_ir_op.asm_ir_type == {
 					case .MEMORY_MPS; c_op.operand_type = .MUSIC_MEMORY;
 					case .RAM_MEMORY; c_op.operand_type = .RAM_MEMORY;
+					case .RAM_ARRAY; c_op.operand_type = .RAM_ARRAY;
 					}
 
 					for ir_value, v_index : asm_ir_values {
@@ -10844,7 +10886,8 @@ Assembler :: (asm_tokens : [] LCodeToken, total_asm_start_index : int, cd : *Com
 						print(err.msg);
 						CreateCompErr(cd, .ASSEMBLY_ERROR, c_tokens[0], err.msg);
 					}
-				case AssemblyIRType.ASM_VARIABLE;
+				}
+				case AssemblyIRType.ASM_VARIABLE; {
 					//TODO FROM HERE write tests for this and then do RamArray but could do RamArray later when needed
 					//and then start on op spaces with asm instead.
 					var, found_var := ArrayFindFirstByNameId(cd.variable_data_stack, asm_ir_op.int_value, "id");
@@ -10857,10 +10900,12 @@ Assembler :: (asm_tokens : [] LCodeToken, total_asm_start_index : int, cd : *Com
 					} else {
 						c_op.* = var.op;
 					}
-				case;
+				}
+				case; {
 					CreateCompErr(cd, .ASSEMBLY_ERROR, c_tokens[0],
 					"Invalid asm instruction.");
 					break;
+				}
 				}
 			}
 
@@ -11275,7 +11320,7 @@ GenerateAsmInstructionManual :: () -> AsmInstructionManual {
 			.[.NONE]]},
 		//3 op music memory
 		.{.[.[.MUSIC_MEMORY], 
-			.[.MUSIC_MEMORY], 
+			ALL_OPERANDS_AND_ARRAY, 
 			ALL_SINGLE_OPERANDS]},
 		]};
 	}
@@ -11553,9 +11598,15 @@ GenerateAsmInstructionManual :: () -> AsmInstructionManual {
 			.[.RAM_MEMORY]]},
 		]};
 	}
+	case OpCode.mlen; {
+		aim.valid_instr_info[it] = .{.[
+		.{.[.[.MUSIC_MEMORY],
+				ALL_SINGLE_OPERANDS,
+			  .[.NONE, .REGISTER, .RAM_MEMORY, .INTEGER, .FLOAT]]},
+		]};
+	}
 	//TODO .tune and .mlen can be replace with .muscall altogether
 	case OpCode.tune; #through;
-	case OpCode.mlen; #through;
 	case OpCode.muscall; {
 		aim.valid_instr_info[it] = .{.[
 		.{.[ALL_SINGLE_INT_OPERANDS,
@@ -12810,7 +12861,7 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 				from_row, from_x := MusicMemRowAndXIndex(ci.operands[1], ad.all_register_memory, ad.global_rules.row_size);
 				//Reminder : using [..] *MusicPoint here did not work because the pointers will change
 				//once we increase the size of the dynamic array of all_music_pts after array_count >= 8.
-				to_music_pts : [] MusicPoint = GetAllMusicPtPosByPosition(from_row, from_x, ad.all_mspace_data[0].all_music_pts, MusicPoint);
+				to_music_pts : [] MusicPoint = GetAllMusicPtPosByPosition(from_row, from_x, ad.all_mspace_data[0].all_music_pts, MusicPoint,,temp);
 				UpdateMusicPtsFromMinStart(to_music_pts, to_start_x, to_row, ad.global_rules.row_size);
 				for * to_music_pts ArithmeticMusicOp(ci.op_code, iv, fv, it);
 				CreateManyMusicPtsInMemory(to_music_pts, *ad.all_mspace_data[0].all_music_pts);
@@ -12828,9 +12879,9 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 					//I don't know if range_size really works because what about overlapping notes?
 					operand_2 : MusicOperand = ci.operands[2];
 					range_size : int = ComputeOperandInt(operand_2, ad.all_register_memory, ad.ram_memory);
-					from_music_pts = GetAllMemoryMusicPtsInRange(to_start_x, to_start_x + range_size, to_row, ad.all_mspace_data[0].all_music_pts, *MusicPoint);
+					from_music_pts = GetAllMemoryMusicPtsInRange(to_start_x, to_start_x + range_size, to_row, ad.all_mspace_data[0].all_music_pts, *MusicPoint,,temp);
 				} else {
-					from_music_pts = GetAllMusicPtPosByPosition(to_row, to_start_x, ad.all_mspace_data[0].all_music_pts, *MusicPoint);
+					from_music_pts = GetAllMusicPtPosByPosition(to_row, to_start_x, ad.all_mspace_data[0].all_music_pts, *MusicPoint,,temp);
 				}
 				//TODO Do float properly here once we have float in asm.
 				// op_float : float = cast(float) op_int;
@@ -12937,7 +12988,7 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 				//just looping over the values is going to be more efficient unless we organize the data later for better search.
 				from_music_pts : [] *MusicPoint = 
 					GetAllMemoryMusicPtsInRange(from_x, from_x + range_size, from_row,
-						ad.all_mspace_data[0].all_music_pts, *MusicPoint);
+						ad.all_mspace_data[0].all_music_pts, *MusicPoint,,temp);
 
 				//TODO Could have a version with RAM_ARRAY where each value is shifted by different distances
 				//based on the RAM_ARRAY.
@@ -13858,48 +13909,32 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 	and can also allow all values above or below certain y or just do that in tmov
 	*/
 	case OpCode.mlen; {
-		assert(ci.operands[0].operand_type != .NONE && ci.operands[1].operand_type != .NONE);
-
-		//TODO We could have the 3rd operand specify a point but I guess it would be arbitrary vertical.
-		//But that could still be useful.
-		operand_1 : MusicOperand = ci.operands[0];
-		operand_2 : MusicOperand = ci.operands[1];
-
-		music_pt_length : int = operand_2.int_value;
-		//TODO Should we delete the music_pts if length == 0?
-		//or just not allow it at compile-time?
-		assert(music_pt_length > 0);
-
-		row_index, x_index := MusicMemRowAndXIndex(operand_1,
+		row_index, x_index := MusicMemRowAndXIndex(ci.operands[0],
 			ad.all_register_memory,
 			ad.global_rules.row_size);
 
-		//TODO Need to redo this with the new x_start_float
-		#if 0 {
-		array_x_start_music_pts : [] *MusicPoint =
-			ArrayFindAllPointersByAndOp(ad.all_mspace_data[0].all_music_pts,
-				x_index, "x_start",
-				row_index, "row_index", temp);
+		//TODO Get default mspace
+		// mspace : MusicSpaceData = ad.all_mspace_data[0];
 
-		//TODO What should we do about overlapping notes? Could leave it and have the synthesizer
-		//and audio output adjust it based on volume so we would still hear the new note play.
-		if array_x_start_music_pts.count > 0 
-		{
-			new_x_end : int = array_x_start_music_pts[0].x_start + music_pt_length;
-			// We check > and not >= because we go until the next memory_dspace to mark the end of the length
-			if new_x_end > ad.global_rules.row_size {
-				//TODO Make this error better once we have line_number and also should be able to show
-				//error in the memory like highlight the memory_mps and the music_pt and debug stop.
-				print("Runtime error : mlen % exceeds row_size %.\n", music_pt_length, ad.global_rules.row_size);
-				// break; //TODO Should we break at runtime errors for now?
-			} 
-			else {
-				//TODO Could SIMD this once we decide on x_end types
-				for music_pt : array_x_start_music_pts {
-					music_pt.x_end = new_x_end;
-				}
-			}
+		mv : MemoryValue = ComputeMemoryValue(ci.operands[1], ad.all_register_memory, ad.ram_memory);
+		new_length : float64 = MVToFVAndIV(mv, ci.instr_type);
+		//This gets adjusted in rendering and audio in thegame_base.jai.
+		//This allows us to put values in other x and rows without worrying and maybe adding those rows later.
+		//Maybe that's not what we want, I guess we'll see with usage.
+		// new_length = Clamp(0, new_length, mspace.all_music_lane_rows[row_index].row_size);
+		new_length = max(new_length, 0);
+
+		from_music_pts : [] *MusicPoint;
+		if ci.operands[2].operand_type == .NONE {
+			from_music_pts = GetAllMusicPtPosByPosition(row_index, x_index, ad.all_mspace_data[0].all_music_pts, *MusicPoint,,temp);
+		} else {
+			mem_value_range : MemoryValue = ComputeMemoryValue(ci.operands[2], ad.all_register_memory, ad.ram_memory);
+			range_size : float64 = MVToFVAndIV(mem_value_range, ci.instr_type);
+			from_music_pts = GetAllMemoryMusicPtsInRange(x_index, x_index + range_size, row_index, ad.all_mspace_data[0].all_music_pts, *MusicPoint,,temp);
 		}
+
+		for from_music_pts {
+			UpdateMusicPtLength(it, new_length);
 		}
 	}
 	/*DOC : Ret is a jmp to PROC_RETURN_OP AND srp = sbp AND pop sbp from stack memory back to the register 
@@ -15494,35 +15529,33 @@ ExecMov :: inline (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		case .FLOAT; #through;
 		case .INTEGER; #through;
 		case .REGISTER; #through;
-		case .RAM_MEMORY;
-			//TODO operands[2] here should be music_point length
-			//TODO Should make this error output more consistent with op and operands and error condition.
-			//TODO Should we even allow mov_size here or just have it be 8.
-			assert(mov_size == 8, "mov_size must == 8 for operand %.\n", ci.operands[1]);
-			// if mov_size != 8 {
-			// 	return CPUErr(sprint("mov_size must == 8 for operand %.\n", ci.operands[1],, context.allocator));
-			// }
-			//TODO This could be ComputeMultiMemoryFloat and then RAM can be used to load many values at once,
-			//like with the set operators.
-			mv : MemoryValue = ComputeMemoryValue(ci.operands[1], ad.all_register_memory, ad.ram_memory);
+		case .RAM_MEMORY; {
 			row_index, x_index := MusicMemRowAndXIndex(ci.operands[0], ad.all_register_memory, ad.global_rules.row_size);
-			//TODO Could override the type if we have immediate float or integer
-			CreateMusicPtByIType(ci.instr_type, mv, x_index, x_index+1, row_index, *ad.all_mspace_data[0].all_music_pts);
-		case .RAM_ARRAY;
-			//TODO ci.operands[2] could be the size of the notes here instead.
+			mv : MemoryValue = ComputeMemoryValue(ci.operands[1], ad.all_register_memory, ad.ram_memory);
 
-			/*TODO IF RAM_ARRAY is 2nd operand, then we could do split here and move the values in the RAM_ARRAY
-			over by index. This would help with for example munit[0][0][0] where the 3rd value could even be an array
-			or something like that...
-			*/
+			x_length : float64 = 1.0;
+			if ci.operands[2].operand_type != .NONE {
+				x_length = OpToCorrectedFloat(ci.operands[2], ci.instr_type, ad.all_register_memory, ad.ram_memory); 
+				x_length = max(x_length, 0);
+			}
+
+			//TODO Could override the type if we have immediate float or integer
+			CreateMusicPtByIType(ci.instr_type, mv, x_index, x_index+x_length, row_index, *ad.all_mspace_data[0].all_music_pts);
+		}
+		case .RAM_ARRAY; {
 			to_row_index, to_x_index := MusicMemRowAndXIndex(ci.operands[0], ad.all_register_memory, ad.global_rules.row_size);
 			from_values : [] float64 = ComputeMultiMemoryFloat(ci.instr_type, ci.operands[1], 
 				ad.all_register_memory, ad.ram_memory, ad.all_mspace_data[0].all_music_pts, ad.global_rules.row_size);
 
-			CreateManyMusicPtsInMemory(from_values, to_row_index, to_x_index, to_x_index+1,
-				*ad.all_mspace_data[0].all_music_pts);
+			x_length : float64 = 1.0;
+			if ci.operands[2].operand_type != .NONE {
+				x_length = OpToCorrectedFloat(ci.operands[2], ci.instr_type, ad.all_register_memory, ad.ram_memory); 
+				x_length = max(x_length, 0);
+			}
 
-		case .MUSIC_MEMORY;
+			CreateManyMusicPtsInMemory(from_values, to_row_index, to_x_index, to_x_index+x_length, *ad.all_mspace_data[0].all_music_pts);
+		}
+		case .MUSIC_MEMORY; {
 			//TODO These can be int or float now...
 			from_row, from_x := MusicMemRowAndXIndex(ci.operands[1], ad.all_register_memory, ad.global_rules.row_size);
 			to_row, to_start_x := MusicMemRowAndXIndex(ci.operands[0], ad.all_register_memory, ad.global_rules.row_size);
@@ -15531,9 +15564,15 @@ ExecMov :: inline (ci : MusicInstruction, ad : *AllData) -> CPUError {
 			//TODO This can be float here now so we should allow that.
 			mov_size_float : float64 = 1;
 			if ci.operands[2].operand_type != .NONE {
+				#if 1 {
+				mov_size_float = OpToCorrectedFloat(ci.operands[2], ci.instr_type, ad.all_register_memory, ad.ram_memory); 
+				} else {
 				//TODO Do we really want this range stuff or just make a loop? What about inverse operations?
 				// mov_size = ComputeOperandInt(ci.operands[2], ad.all_register_memory, ad.ram_memory);
 				mem_value := ComputeMemoryValue(ci.operands[2], ad.all_register_memory, ad.ram_memory);
+				// mov_size_float : float64 = MVToFVAndIV(mem_value, ci.instr_type);
+				// mov_size_float = max(mov_size_float, 0);
+
 				if ci.instr_type == {
 				case .INTEGER;
 					mov_size_float = cast(float64) mem_value.int_value;
@@ -15546,22 +15585,26 @@ ExecMov :: inline (ci : MusicInstruction, ad : *AllData) -> CPUError {
 						mov_size_float = cast(float64) mem_value.int_value;
 					}
 				}
+				}
 			}
 
 			//TODO User error.
 			//Technically this could wrap around to the next row
-			assert(from_x + mov_size_float < cast(float64) ad.global_rules.row_size &&
-				    to_start_x + mov_size_float < cast(float64) ad.global_rules.row_size);
+			//TODO Could return a CPUError here or just clamp based on the row length
+			//ACTUALLY this does not matter since nothing will be > row_size anyways...
+			// assert(from_x + mov_size_float < cast(float64) ad.global_rules.row_size &&
+			// 	    to_start_x + mov_size_float < cast(float64) ad.global_rules.row_size);
 
 			//TODO We should just be updating the points directly in the array and not making a new array here.
 			//This is very inefficient since mov music memory is always going to be an update on music points.
 			from_music_pts : [] MusicPoint = 
-				GetAllMemoryMusicPtsInRange(from_x, from_x + mov_size_float, from_row, ad.all_mspace_data[0].all_music_pts);
+				GetAllMemoryMusicPtsInRange(from_x, from_x + mov_size_float, from_row, ad.all_mspace_data[0].all_music_pts,,temp);
 
 			//TODO Update this to fix a few bugs
 			UpdateMusicPtsFromMinStart(from_music_pts, to_start_x, to_row, ad.global_rules.row_size);
 			CreateManyMusicPtsInMemory(from_music_pts, *ad.all_mspace_data[0].all_music_pts);
 		}
+	}
 	}
 	}
 	return .{};
@@ -15608,8 +15651,37 @@ MVToFVAndIV :: inline (mv : MemoryValue, t : InstructionType) -> float64, int {
 	}
 	return fv, iv;
 }
+OpToCorrectedFloat :: inline (
+	op : MusicOperand, 
+	t : InstructionType, 
+	all_register_memory : [] MemoryValue, 
+	ram_mem : RAMMemory) 
+-> float64 
+{
+	mv := ComputeMemoryValue(op, all_register_memory, ram_mem);
+	r_float : float64;
+	if t == {
+	case .INTEGER; {
+		r_float = cast(float64) mv.int_value;
+		if op.operand_type == .FLOAT {
+			r_float = mv.float_value;
+		}
+	}
+	case .FLOAT; {
+		r_float = mv.float_value;
+		if op.operand_type == .INTEGER {
+			r_float = cast(float64) mv.int_value;
+		}
+	}
+	}
+	return r_float;
+}
+
 
 /*TODO This should return some consistent and general errors which then get checked and added in the layer above.
+We don't return errors here because in the CPU execution, we check these before running them with ValidateMusicOperand.
+So if we use this somewhere else, we need to check ram bounds first and should likely use function calls that return errors.
+We could still have this return an error and just not check it...
 */
 ComputeMemoryValue :: inline (
 	operand : MusicOperand,
@@ -15721,6 +15793,8 @@ ComputeMultiMemoryFloat :: inline (
 		//so it may be beneficial to put the data first.
 		//TODO Could make a function here GetRamArrayValues
 		array_count : int = ComputeMusicOperandValue(operand.values[0], all_register_memory);
+		//This is checked at the loop anyways
+		// array_count = max(0,array_count);
 		array_data : int = ComputeMusicOperandValue(operand.values[1], all_register_memory);
 
 		#if 0 {
