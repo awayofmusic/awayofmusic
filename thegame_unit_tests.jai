@@ -12937,54 +12937,59 @@ DONE,,unit_test_alloc);
 	AssertEquals(size_of(AsmCreateRowData), row_data_info.runtime_size);
 	AssertEquals("AsmCreateRowData", row_data_info.name);
 	AssertEquals(TypeInfoTag.STRUCT, row_data_info.type_enum);
-	count_equals = AssertEquals(9, row_data_info.struct_members.count);
+	count_equals = AssertEquals(10, row_data_info.struct_members.count);
 	if !count_equals return;	
-	octave_info := row_data_info.struct_members[0];
+	asm_mspace_id := row_data_info.struct_members[0];
+	AssertEquals(cd.int_type_info.runtime_size, asm_mspace_id.t_info.runtime_size);
+	AssertEquals("mspace_id", asm_mspace_id.name);
+	AssertEquals(TypeInfoTag.INTEGER, asm_mspace_id.t_info.type_enum);
+	AssertEquals(0, asm_mspace_id.offset_in_bytes);
+	octave_info := row_data_info.struct_members[1];
 	AssertEquals(cd.float_type_info.runtime_size, octave_info.t_info.runtime_size);
 	AssertEquals("octave_height", octave_info.name);
 	AssertEquals(TypeInfoTag.FLOAT, octave_info.t_info.type_enum);
-	AssertEquals(0, octave_info.offset_in_bytes);
-	row_height_info := row_data_info.struct_members[1];
+	AssertEquals(8, octave_info.offset_in_bytes);
+	row_height_info := row_data_info.struct_members[2];
 	AssertEquals(cd.float_type_info.runtime_size, row_height_info.t_info.runtime_size);
 	AssertEquals("row_height", row_height_info.name);
 	AssertEquals(TypeInfoTag.FLOAT, row_height_info.t_info.type_enum);
-	AssertEquals(8, row_height_info.offset_in_bytes);
-	row_base_pt := row_data_info.struct_members[2];
+	AssertEquals(16, row_height_info.offset_in_bytes);
+	row_base_pt := row_data_info.struct_members[3];
 	AssertEquals(cd.float_type_info.runtime_size, row_base_pt.t_info.runtime_size);
 	AssertEquals("row_base_pt", row_base_pt.name);
 	AssertEquals(TypeInfoTag.FLOAT, row_base_pt.t_info.type_enum);
-	AssertEquals(16, row_base_pt.offset_in_bytes);
-	sound_on_info := row_data_info.struct_members[3];
+	AssertEquals(24, row_base_pt.offset_in_bytes);
+	sound_on_info := row_data_info.struct_members[4];
 	AssertEquals(cd.float_type_info.runtime_size, sound_on_info.t_info.runtime_size);
 	AssertEquals("muted_row", sound_on_info.name);
 	AssertEquals(TypeInfoTag.BOOL, sound_on_info.t_info.type_enum);
-	AssertEquals(24, sound_on_info.offset_in_bytes);
-	row_system_type_info := row_data_info.struct_members[4];
+	AssertEquals(32, sound_on_info.offset_in_bytes);
+	row_system_type_info := row_data_info.struct_members[5];
 	AssertEquals(cd.float_type_info.runtime_size, row_system_type_info.t_info.runtime_size);
 	AssertEquals("row_system_type", row_system_type_info.name);
 	AssertEquals(TypeInfoTag.ENUM, row_system_type_info.t_info.type_enum);
-	AssertEquals(32, row_system_type_info.offset_in_bytes);
-	row_system_id_info := row_data_info.struct_members[5];
+	AssertEquals(40, row_system_type_info.offset_in_bytes);
+	row_system_id_info := row_data_info.struct_members[6];
 	AssertEquals(cd.int_type_info.runtime_size, row_system_id_info.t_info.runtime_size);
 	AssertEquals("row_system_id", row_system_id_info.name);
 	AssertEquals(TypeInfoTag.INTEGER, row_system_id_info.t_info.type_enum);
-	AssertEquals(40, row_system_id_info.offset_in_bytes);
-	row_sub_system_id_info := row_data_info.struct_members[6];
+	AssertEquals(48, row_system_id_info.offset_in_bytes);
+	row_sub_system_id_info := row_data_info.struct_members[7];
 	AssertEquals(cd.int_type_info.runtime_size, row_sub_system_id_info.t_info.runtime_size);
 	AssertEquals("row_sub_system_id", row_sub_system_id_info.name);
 	AssertEquals(TypeInfoTag.INTEGER, row_sub_system_id_info.t_info.type_enum);
-	AssertEquals(48, row_sub_system_id_info.offset_in_bytes);
-	section_count_info := row_data_info.struct_members[7];
+	AssertEquals(56, row_sub_system_id_info.offset_in_bytes);
+	section_count_info := row_data_info.struct_members[8];
 	AssertEquals(cd.all_type_info_array[0].runtime_size, section_count_info.t_info.runtime_size);
 	AssertEquals("row_sections", section_count_info.name);
 	AssertEquals(TypeInfoTag.ARRAY, section_count_info.t_info.type_enum);
-	AssertEquals(56, section_count_info.offset_in_bytes);
+	AssertEquals(64, section_count_info.offset_in_bytes);
 	asm_midi_info, found_asm_midi_info := GetTypeInfoStructByName("AsmRowMidiData", cd.all_type_info_struct);
-	asm_midi_member_info := row_data_info.struct_members[8];
+	asm_midi_member_info := row_data_info.struct_members[9];
 	AssertEquals(asm_midi_info.runtime_size, asm_midi_member_info.t_info.runtime_size);
 	AssertEquals("row_midi_data", asm_midi_member_info.name);
 	AssertEquals(TypeInfoTag.STRUCT, asm_midi_member_info.t_info.type_enum);
-	AssertEquals(72, asm_midi_member_info.offset_in_bytes);
+	AssertEquals(80, asm_midi_member_info.offset_in_bytes);
 
 	create_space_info, found_create_space_info := GetTypeInfoStructByName("AsmOpSpaceData", cd.all_type_info_struct);
 	AssertEquals(true, found_create_space_info);
@@ -13203,18 +13208,18 @@ DONE,,unit_test_alloc);
 
 		//rd : RowData;
 		MakeMI(.mset, rd_var.op, Imm(0), Imm(row_data_info.runtime_size)),
-		MakeMI(.mov, rd_var.op, FImm(12.0), Imm(cd.float_type_info.runtime_size)),
 		MakeMI(.mov, AddOperandOffset(8, rd_var.op), FImm(12.0), Imm(cd.float_type_info.runtime_size)),
-		MakeMI(.mov, AddOperandOffset(24, rd_var.op), Imm(cast(int) false), Imm(cd.bool_type_info.runtime_size)),
-		MakeMI(.mov, AddOperandOffset(32, rd_var.op), ImmEnum(RowSystemType.internal_pitch), Imm(row_audio_info.runtime_size)),
+		MakeMI(.mov, AddOperandOffset(16, rd_var.op), FImm(12.0), Imm(cd.float_type_info.runtime_size)),
+		MakeMI(.mov, AddOperandOffset(32, rd_var.op), Imm(cast(int) false), Imm(cd.bool_type_info.runtime_size)),
+		MakeMI(.mov, AddOperandOffset(40, rd_var.op), ImmEnum(RowSystemType.internal_pitch), Imm(row_audio_info.runtime_size)),
 		//row_sections fixed array added to stack
 		MakeMI(.mov, RamMem(.sbp,stack_p), rs_var.op, Imm(rs_var.t_info.runtime_size)),
 		//TODO REDUNDANT INSTRUCTION NEED TO CHECK WHY AND OPTIMIZE OUT
 		MakeMI(.mov, RamMem(.sbp,stack_p), RamMem(.sbp,stack_p), Imm(rs_var.t_info.runtime_size)),
 		//row_sections.count
-		MakeMI(.mov, AddOperandOffset(56, rd_var.op), Imm(1), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mov, AddOperandOffset(64, rd_var.op), Imm(1), Imm(cd.int_type_info.runtime_size)),
 		//row_sections.data
-		MakeMI(.add, AddOperandOffset(64, rd_var.op), RegMem(.sbp), Imm(stack_p)),
+		MakeMI(.add, AddOperandOffset(72, rd_var.op), RegMem(.sbp), Imm(stack_p)),
 
 		MakeMI(.create_row, rd_var.op),
 
@@ -16356,7 +16361,7 @@ Test_CPUError :: () {
 	err = ExecMInstr(ci, ad);
 	AssertEquals(true, err.is_error);
 
-	row_size : int = ad.global_rules.row_size;
+	row_size : int = ad.all_mspace_data[0].all_music_lane_rows[0].row_size;
 	row_count : int = ad.all_mspace_data[0].all_music_lane_rows.count;
 
 	ci = Instr(.mov, MusicMem(0,row_size * row_count), Imm(1), d=ad);
@@ -16554,7 +16559,7 @@ Test_MovMusicXFloat :: () {
 	AssertArrayEquals(float64.[0.5,5.5], GetAllMusicPtFloat(0,1.75,ad.all_mspace_data[0].all_music_pts));
 
 	
-	ci = Instr(.mov, MusicMem(0,4.5), MusicMem(0,0.5), FImm(1.5), d=ad);
+	ci = FInstr(.mov, MusicMem(0,4.5), MusicMem(0,0.5), FImm(1.5), d=ad);
 	ExecMInstr(ci, ad);
 	AssertArrayEquals(float64.[0,4,7], GetAllMusicPtFloat(0,4.5,ad.all_mspace_data[0].all_music_pts));
 	AssertArrayEquals(float64.[0.5,5.5], GetAllMusicPtFloat(0,5.75,ad.all_mspace_data[0].all_music_pts));
@@ -16630,6 +16635,205 @@ Test_MovMusicRange :: () {
 	AssertFloat64Equals(9, mp7.music_pt_float);
 	AssertFloat64Equals(1, mp7.x_start_float);
 	AssertFloat64Equals(1+2, mp7.x_end_float);
+
+} @UnitTest
+
+Test_MovMusicRowRange :: () {
+	ci : MusicInstruction;
+	ad : *AllData = InitAllData(,,unit_test_alloc);
+	SetupMusicAndRows(ad, .[
+	.{row_section_data=.[.{x_length=12}], row_system_type=.internal_pitch},
+	.{row_section_data=.[.{x_length=12}], row_system_type=.internal_pitch},
+	.{row_section_data=.[.{x_length=12}], row_system_type=.internal_pitch},
+	.{row_section_data=.[.{x_length=12}], row_system_type=.internal_pitch},
+	]);
+
+	ci = Instr(.mov, MusicMem(0,2), Imm(0), Imm(2), d=ad);
+	ExecMInstr(ci, ad);
+	ci = FInstr(.mov, MusicMem(0,3), FImm(4), FImm(2.5), d=ad);
+	ExecMInstr(ci, ad);
+	ci = FInstr(.mov, RegMem(.ax), FImm(4.5), d=ad);
+	ExecMInstr(ci, ad);
+	ci = FInstr(.mov, MusicMem(0,RegDef.ax), FImm(7.1), RegMem(.ax), d=ad);
+	ExecMInstr(ci, ad);
+
+	//integer mov x range
+	ci = Instr(.mov, MusicMem(1,2), MusicMem(0,1), MusicMem(0,9), d=ad);
+	ExecMInstr(ci, ad);
+
+	mp0 := ad.all_mspace_data[0].all_music_pts[3];
+	AssertEquals(1, mp0.row_index);
+	AssertFloat64Equals(0, mp0.music_pt_float);
+	AssertFloat64Equals(3, mp0.x_start_float);
+	AssertFloat64Equals(3+2, mp0.x_end_float);
+
+	mp1 := ad.all_mspace_data[0].all_music_pts[4];
+	AssertEquals(1, mp1.row_index);
+	AssertFloat64Equals(4, mp1.music_pt_float);
+	AssertFloat64Equals(4, mp1.x_start_float);
+	AssertFloat64Equals(4+2.5, mp1.x_end_float);
+
+	mp2 := ad.all_mspace_data[0].all_music_pts[5];
+	AssertEquals(1, mp2.row_index);
+	AssertFloat64Equals(7.1, mp2.music_pt_float);
+	AssertFloat64Equals(5.5, mp2.x_start_float);
+	AssertFloat64Equals(5.5+4.5, mp2.x_end_float);
+
+
+	//integer mov row and x range
+	ci = Instr(.mov, RegMem(.ax), Imm(1), d=ad);
+	ExecMInstr(ci, ad);
+	ci = FInstr(.mov, RegMem(.bx), FImm(8.5), d=ad);
+	ExecMInstr(ci, ad);
+	ci = Instr(.mov, MusicMem(2,3), MusicMem(0,1), MusicMem(RegDef.ax,RegDef.bx), d=ad);
+	ExecMInstr(ci, ad);
+
+	AssertEquals(12, ad.all_mspace_data[0].all_music_pts.count);
+
+	mp6 := ad.all_mspace_data[0].all_music_pts[6];
+	AssertEquals(2, mp6.row_index);
+	AssertFloat64Equals(0, mp6.music_pt_float);
+	AssertFloat64Equals(4, mp6.x_start_float);
+	AssertFloat64Equals(4+2, mp6.x_end_float);
+
+	mp7 := ad.all_mspace_data[0].all_music_pts[7];
+	AssertEquals(2, mp7.row_index);
+	AssertFloat64Equals(4, mp7.music_pt_float);
+	AssertFloat64Equals(5, mp7.x_start_float);
+	AssertFloat64Equals(5+2.5, mp7.x_end_float);
+
+	mp8 := ad.all_mspace_data[0].all_music_pts[8];
+	AssertEquals(2, mp8.row_index);
+	AssertFloat64Equals(7.1, mp8.music_pt_float);
+	AssertFloat64Equals(6.5, mp8.x_start_float);
+	AssertFloat64Equals(6.5+4.5, mp8.x_end_float);
+
+	mp9 := ad.all_mspace_data[0].all_music_pts[9];
+	AssertEquals(3, mp9.row_index);
+	AssertFloat64Equals(0, mp9.music_pt_float);
+	AssertFloat64Equals(5, mp9.x_start_float);
+	AssertFloat64Equals(5+2, mp9.x_end_float);
+
+	mp10 := ad.all_mspace_data[0].all_music_pts[10];
+	AssertEquals(3, mp10.row_index);
+	AssertFloat64Equals(4, mp10.music_pt_float);
+	AssertFloat64Equals(6, mp10.x_start_float);
+	AssertFloat64Equals(6+2.5, mp10.x_end_float);
+
+	mp11 := ad.all_mspace_data[0].all_music_pts[11];
+	AssertEquals(3, mp11.row_index);
+	AssertFloat64Equals(7.1, mp11.music_pt_float);
+	AssertFloat64Equals(7.5, mp11.x_start_float);
+	AssertFloat64Equals(7.5+4.5, mp11.x_end_float);
+
+} @UnitTest
+
+Test_MovMusicMSpace :: () {
+	ci : MusicInstruction;
+	ad : *AllData = InitAllData(,,unit_test_alloc);
+	SetupMusicAndRows(ad, TWO_ROWS);
+
+	gcmd : GetOrCreateMSpaceData;
+	gcmd.mspace_name = "test";
+	mspace_1 := GetOrCreateMusicSpace(gcmd, ad.runtime_settings, *ad.all_mspace_data, *ad.free_mspace_data_pool);
+	for TWO_ROWS {
+		crd : CreateRowData = it;
+		crd.mspace_id = mspace_1.mspace_id;
+		CreateMusicRow(crd, ad);
+	}
+
+
+	ci = FInstr(.mov, RegMem(.ax), FImm(5.5), d=ad);
+	ExecMInstr(ci, ad);	
+	ci = FInstr(.mov, MusicMem(1,RegDef.ax), FImm(2.5), FImm(2.5), d=ad);
+	ExecMInstr(ci, ad);
+	ci = Instr(.mov, MusicMem(1,3.2), Imm(7), Imm(3), d=ad);
+	ExecMInstr(ci, ad);
+
+	AssertEquals(2, ad.all_mspace_data[0].all_music_pts.count);
+	AssertEquals(0, ad.all_mspace_data[1].all_music_pts.count);
+
+	//mov to another mspace
+	//dfms is to_mspace and RamArray is from_mspace
+	ci = Instr(.mov, RegMem(.dfms), Imm(1), d=ad);
+	ExecMInstr(ci, ad);		
+	ci = Instr(.mov, RegMem(.cx), Imm(8), d=ad);
+	ExecMInstr(ci, ad);	
+	ci = FInstr(.mov, MusicMem(1,2), MusicMem(1,1), RamArray(0,RegDef.cx), d=ad);
+	ExecMInstr(ci, ad);
+
+	AssertEquals(2, ad.all_mspace_data[0].all_music_pts.count);
+	AssertEquals(2, ad.all_mspace_data[1].all_music_pts.count);
+
+	//mspace 0 should stay the same
+	mp0_0 := ad.all_mspace_data[0].all_music_pts[0];
+	AssertEquals(1, mp0_0.row_index);
+	AssertFloat64Equals(2.5, mp0_0.music_pt_float);
+	AssertFloat64Equals(5.5, mp0_0.x_start_float);
+	AssertFloat64Equals(5.5+2.5, mp0_0.x_end_float);
+	mp0_1 := ad.all_mspace_data[0].all_music_pts[1];
+	AssertEquals(1, mp0_1.row_index);
+	AssertFloat64Equals(7, mp0_1.music_pt_float);
+	AssertFloat64Equals(3.2, mp0_1.x_start_float);
+	AssertFloat64Equals(3.2+3, mp0_1.x_end_float);
+
+	//mspace 1 should have values now
+	mp1_0 := ad.all_mspace_data[1].all_music_pts[0];
+	AssertEquals(1, mp1_0.row_index);
+	AssertFloat64Equals(2.5, mp1_0.music_pt_float);
+	AssertFloat64Equals(6.5, mp1_0.x_start_float);
+	AssertFloat64Equals(6.5+2.5, mp1_0.x_end_float);
+	mp1_1 := ad.all_mspace_data[1].all_music_pts[1];
+	AssertEquals(1, mp1_1.row_index);
+	AssertFloat64Equals(7, mp1_1.music_pt_float);
+	AssertFloat64Equals(4.2, mp1_1.x_start_float);
+	AssertFloat64Equals(4.2+3, mp1_1.x_end_float);
+
+	//TEst moving from 1 to 0
+	ci = Instr(.mov, RegMem(.dfms), Imm(0), d=ad);
+	ExecMInstr(ci, ad);		
+	ci = Instr(.mov, RegMem(.cx), Imm(1), d=ad);
+	ExecMInstr(ci, ad);	
+	ci = FInstr(.mov, RegMem(.dx), FImm(1.0), d=ad);
+	ExecMInstr(ci, ad);	
+	ci = FInstr(.mov, MusicMem(0,RegDef.dx), MusicMem(1,0), RamArray(RegDef.cx,9), d=ad);
+	ExecMInstr(ci, ad);
+
+	AssertEquals(4, ad.all_mspace_data[0].all_music_pts.count);
+	AssertEquals(2, ad.all_mspace_data[1].all_music_pts.count);
+
+	mp0_0 = ad.all_mspace_data[0].all_music_pts[0];
+	AssertEquals(1, mp0_0.row_index);
+	AssertFloat64Equals(2.5, mp0_0.music_pt_float);
+	AssertFloat64Equals(5.5, mp0_0.x_start_float);
+	AssertFloat64Equals(5.5+2.5, mp0_0.x_end_float);
+	mp0_1 = ad.all_mspace_data[0].all_music_pts[1];
+	AssertEquals(1, mp0_1.row_index);
+	AssertFloat64Equals(7, mp0_1.music_pt_float);
+	AssertFloat64Equals(3.2, mp0_1.x_start_float);
+	AssertFloat64Equals(3.2+3, mp0_1.x_end_float);
+	mp0_2 := ad.all_mspace_data[0].all_music_pts[2];
+	AssertEquals(0, mp0_2.row_index);
+	AssertFloat64Equals(2.5, mp0_2.music_pt_float);
+	AssertFloat64Equals(7.5, mp0_2.x_start_float);
+	AssertFloat64Equals(7.5+2.5, mp0_2.x_end_float);
+	mp0_3 := ad.all_mspace_data[0].all_music_pts[3];
+	AssertEquals(0, mp0_3.row_index);
+	AssertFloat64Equals(7, mp0_3.music_pt_float);
+	AssertFloat64Equals(5.2, mp0_3.x_start_float);
+	AssertFloat64Equals(5.2+3, mp0_3.x_end_float);
+
+	//This should stay the same since we moved to 0
+	mp1_0 = ad.all_mspace_data[1].all_music_pts[0];
+	AssertEquals(1, mp1_0.row_index);
+	AssertFloat64Equals(2.5, mp1_0.music_pt_float);
+	AssertFloat64Equals(mp0_0.x_start_float+1, mp1_0.x_start_float);
+	AssertFloat64Equals(mp0_0.x_end_float+1, mp1_0.x_end_float);
+	mp1_1 = ad.all_mspace_data[1].all_music_pts[1];
+	AssertEquals(1, mp1_1.row_index);
+	AssertFloat64Equals(7, mp1_1.music_pt_float);
+	AssertFloat64Equals(mp0_1.x_start_float+1, mp1_1.x_start_float);
+	AssertFloat64Equals(mp0_1.x_end_float+1, mp1_1.x_end_float);
 
 } @UnitTest
 
@@ -17403,7 +17607,8 @@ Test_ArithmeticMusic :: () {
 
 	//This test currently ignores the Imm(2) so we just add 1. Do we want that? 
 	//I think so, it makes more sense than adding the values and then adding that to music_mem which would be 2 instructions.
-	ci = Instr(.add, MusicMem(0,0), Imm(1), Imm(2), d=ad);
+	// ci = Instr(.add, MusicMem(0,0), Imm(1), Imm(2), d=ad);
+	ci = Instr(.add, MusicMem(0,0), Imm(1), d=ad);
 	ExecMInstr(ci, ad);
 	AssertArrayEquals(int.[1,5,8,3,7,10], GetAllMusicPtPosByPosition(0,0,ad.all_mspace_data[0].all_music_pts));
 
@@ -17449,6 +17654,11 @@ Test_ArithmeticMusic :: () {
 	ci = Instr(.sub, MusicMem(0,4.5), Imm(12), d=ad);
 	ExecMInstr(ci, ad);
 	AssertArrayEquals(int.[0,3,7], GetAllMusicPtPosByPosition(0,4.5,ad.all_mspace_data[0].all_music_pts), "sub test");
+
+	//test sub from 12 so directions are inverted here
+	ci = Instr(.sub, MusicMem(0,5.5), Imm(12), MusicMem(0,4.5), d=ad);
+	ExecMInstr(ci, ad);
+	AssertArrayEquals(int.[12,9,5], GetAllMusicPtPosByPosition(0,5.5,ad.all_mspace_data[0].all_music_pts), "sub test");
 
 } @UnitTest
 
@@ -17518,39 +17728,39 @@ Test_ShiftMusic :: () {
 
 	//TODO Be more explicit about these tests. Could write detailed notes,
 	//but also could separate tests into many functions so that each test case is clearer.
-	ci = Instr(.mov, MusicMem(0,0), Immediate(0), d=ad);
+	ci = Instr(.mov, MusicMem(0,0), Imm(0), d=ad);
 	ExecMInstr(ci, ad);
-	ci = Instr(.shr, MusicMem(0,0), Immediate(2), d=ad);
+	ci = Instr(.shr, MusicMem(0,0), Imm(2), d=ad);
 	ExecMInstr(ci, ad);
 	AssertArrayEquals(int.[0], GetAllMusicPtPosByPosition(0,2,ad.all_mspace_data[0].all_music_pts), "shr test");
 
-	ci = Instr(.mov, MusicMem(1,0), Immediate(0), d=ad);
+	ci = Instr(.mov, MusicMem(1,0), Imm(0), d=ad);
 	ExecMInstr(ci, ad);
-	ci = Instr(.mov, MusicMem(1,1), Immediate(5), d=ad);
+	ci = Instr(.mov, MusicMem(1,1), Imm(5), d=ad);
 	ExecMInstr(ci, ad);
-	ci = Instr(.shr, MusicMem(1,0), Immediate(2), Immediate(2), d=ad);
+	ci = Instr(.shr, MusicMem(1,0), Imm(2), Imm(2), d=ad);
 	ExecMInstr(ci, ad);
 	AssertArrayEquals(int.[0], GetAllMusicPtPosByPosition(1,2,ad.all_mspace_data[0].all_music_pts), "shr range_test");
 	AssertArrayEquals(int.[5], GetAllMusicPtPosByPosition(1,3,ad.all_mspace_data[0].all_music_pts), "shr range_test");
 
-	ci = Instr(.mov, MusicMem(0,11), Immediate(0), d=ad);
+	ci = Instr(.mov, MusicMem(0,11), Imm(0), d=ad);
 	ExecMInstr(ci, ad);
-	ci = Instr(.shl, MusicMem(0,11), Immediate(2), d=ad);
+	ci = Instr(.shl, MusicMem(0,11), Imm(2), d=ad);
 	ExecMInstr(ci, ad);
 	AssertArrayEquals(int.[0], GetAllMusicPtPosByPosition(0,9,ad.all_mspace_data[0].all_music_pts), "shl test");
 
-	ci = Instr(.mov, MusicMem(1,6), Immediate(0), d=ad);
+	ci = Instr(.mov, MusicMem(1,6), Imm(0), d=ad);
 	ExecMInstr(ci, ad);
 	//TODO Could update stack_p and heap_p from another struct hat raps the RamMEmory since I don't thinke we use that.
 	lower_index : int = PushRAMValues(6, 9, r=*ad.ram_memory);
-	ci = Instr(.ror, MusicMem(1,6), Immediate(3), RamMem(lower_index), d=ad);
+	ci = Instr(.ror, MusicMem(1,6), Imm(3), RamMem(lower_index), d=ad);
 	ExecMInstr(ci, ad);
 	AssertArrayEquals(int.[0], GetAllMusicPtPosByPosition(1,6,ad.all_mspace_data[0].all_music_pts), "ror test");
 
-	ci = Instr(.mov, MusicMem(1,11), Immediate(0), d=ad);
+	ci = Instr(.mov, MusicMem(1,11), Imm(0), d=ad);
 	ExecMInstr(ci, ad);
 	lower_index = PushRAMValues(8, 11, r=*ad.ram_memory);
-	ci = Instr(.rol, MusicMem(1,11), Immediate(4), RamMem(lower_index), d=ad);
+	ci = Instr(.rol, MusicMem(1,11), Imm(4), RamMem(lower_index), d=ad);
 	ExecMInstr(ci, ad);
 	AssertArrayEquals(int.[0], GetAllMusicPtPosByPosition(1,10,ad.all_mspace_data[0].all_music_pts), "rol test");
 

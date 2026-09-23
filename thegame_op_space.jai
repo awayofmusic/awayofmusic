@@ -787,7 +787,7 @@ ComputeWatchValueAndType :: inline (watch_data : *WatchData, text_op : *TextOpSp
 	case MusicOperandType.MUSIC_MEMORY; {
 		//TODO Can make this similar to an array of floats with a dropdown of floats instead of this
 		//Although we could have both so you can see the first few in the window.
-		row_index, x_index := MusicMemRowAndXIndex(watch_op, debug_info.debug_all_registers, all_data.global_rules.row_size);
+		row_index, x_index := MusicMemRowAndXIndex(watch_op, debug_info.debug_all_registers);
 		music_pt_floats : [] float64 = GetAllMusicPtFloat(row_index, x_index, all_data.all_mspace_data[0].all_music_pts);
 
 	   sb: String_Builder;

@@ -11620,7 +11620,7 @@ DONE);
 
 } @ITest
 
-Test_CreateSpace :: (
+Test_CreateOpSpace :: (
 	test_name : string,
 	game_memory : *GameMemory, 
 	renderer_data : *RendererData, 
@@ -11740,6 +11740,96 @@ DONE);
 				AssertEquals(0, perm.all_data.all_op_space_spec_data[0].all_op_circle_spaces.count);
 			}
 		}		
+	}
+	}
+
+	ContinueTest(*perm.test_data);
+
+} @ITest
+
+Test_AsmMSpace :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	perm : *Persist = GetPermanentStorage(game_memory);
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+		perm.all_data = InitAllData();
+		ResetAllRendererData(renderer_data);
+
+		text_file := CreateTestTextFile(*ALL_NEXT_IDS, *perm.all_data.all_text_files);
+		WriteFileString(text_file,
+#string DONE
+#load "c_load/Library";
+main :: () {
+	c_mspace : AsmGetOrCreateMSpaceData;
+	c_mspace.mspace_name = "test";
+	#asm{ get_or_create_mspace c_mspace; }
+
+	rs : RowSectionData;
+	rs.tuning_system_id = 0;
+	rs.x_length = 12;
+	rd : AsmCreateRowData;
+	rd.mspace_id = c_mspace.ret_mspace_id;
+	rd.octave_height = 12.0;
+	rd.row_height = 12.0;
+	rd.muted_row = false;
+	rd.row_sections = RowSectionData.[rs];
+	rd.row_system_type = RowSystemType.internal_pitch;
+	#asm{ create_row rd; }
+
+	ums : AsmUpdateMSpaceData;
+	ums.mspace_id = c_mspace.ret_mspace_id;
+	ums.update_mspace_audio_row_size = true;
+	ums.set_fixed_audio_row_size = true;
+	ums.mspace_audio_row_size = 6;
+	#asm{ update_mspace ums; }
+}
+DONE);
+
+		load_file, load_success := LoadTextFile("c_load/Library", *perm.all_data.all_text_files);
+		text_op := CreateTextOpSpace(.[text_file.id], perm.text_editor_data, 
+			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+	
+		array_resize(*perm.test_data.all_sub_tests, 4+1);
+	} 
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	text_op : *TextOpSpaceData;
+	if perm.all_data.all_text_op_space_data.count > 0 {
+		text_op = *perm.all_data.all_text_op_space_data[0];
+	}
+
+	if perm.test_data.sub_test_index == {
+	case 0; {
+		open_test := MakeTerminalEvent(.open_op, TEST_TEXT_NAME);
+		array_add(*perm.all_data.all_terminal_events, open_test);
+	}
+	case 1; DownUpInputMap(.TEXT_DEBUG_TOGGLE, game_input);
+	case 2; DownUpInputMap(.TEXT_COMPILE, game_input);
+	case 3; {
+		comp_success : bool = AssertEquals(false, IsCompilationFail(text_op.text_comp_data));
+		if !comp_success {
+			EndTest(*perm.test_data);
+		} else {
+			// AddWatchDataForTest(.["x", "y", "xp", "yp", "xyp", "x1p", "xpp", "*y", "*xp", "*xpp"], text_op);
+			// CodeBPForTest(11, *text_op.exec_info.debug_info, text_op.text_comp_data);
+			DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+		}
+	}
+	case 4; {
+		AssertEquals(2, perm.all_data.all_mspace_data.count);
+		AssertEquals(0, perm.all_data.all_mspace_data[0].all_music_lane_rows.count);
+		count_equals := AssertEquals(1, perm.all_data.all_mspace_data[1].all_music_lane_rows.count);
+		if count_equals {
+			AssertEquals(true, perm.all_data.all_mspace_data[1].is_fixed_audio_row_size);
+			AssertEquals(6, perm.all_data.all_mspace_data[1].mspace_audio_row_size);
+		}
 	}
 	}
 

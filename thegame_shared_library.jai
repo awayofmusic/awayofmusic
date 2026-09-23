@@ -1694,6 +1694,26 @@ GetTanoNumOfPoints :: inline (t : tano, all_music_pts : [] MusicPoint) -> int {
 	}
 	return dim;
 }
+//This is not used and untested right now but is useful in general
+RemoveTanoMusicPts :: inline (t : tano, all_music_pts : [] MusicPoint) {
+	music_pts : [..] MusicPoint;
+	music_pts.allocator = context.allocator;
+
+	t_norm : tano = NormalizeTano(t);
+	mpi : int = 0;
+	while mpi < all_music_pts.count {
+		in_tano : bool = InTanoAssumeNorm(mp, t_norm);
+		if in_tano {
+    		array_add(*music_pts, mp);
+    		//TODO I think its better to just remove it unordered and then sort once afterwards
+			array_ordered_remove_by_index(all_music_pts, mpi);
+			mpi -= 1;
+	   }
+	   mpi += 1;
+	}
+
+	return music_pts;
+}
 
 //TODO Update this function and use it in mov for music, then test
 //and also check rendering and audio
@@ -1701,30 +1721,49 @@ GetTanoNumOfPoints :: inline (t : tano, all_music_pts : [] MusicPoint) -> int {
 //relative to the min_x_start in the set.
 //TODO We can make a for_expansion version of this so we don't need to accumulate memory here.
 GetAllMemoryMusicPtsInRange :: inline (
-	x_start : $T, x_end : T,
+	x_start : float64, x_end : float64,
 	row_index : int,
 	all_music_pts : [] MusicPoint,
 	$type : Type = MusicPoint)
 -> [] type
 {
+	return GetAllMemoryMusicPtsInRange(x_start, x_end, row_index, row_index, all_music_pts, type);
+}
+GetAllMemoryMusicPtsInRange :: inline (
+	x_start : float64, x_end : float64,
+	row_start : int, row_end : int,
+	all_music_pts : [] MusicPoint,
+	$type : Type = MusicPoint)
+-> [] type
+{
 #assert(AllOrEquals(type,.[MusicPoint,*MusicPoint]));
-
+	
+	#if 1 {
+	t : tano = MakeTano(row_start, row_end, x_start, x_end);
+	return GetTanoMusicPts(t, all_music_pts, .DEFAULT, type);
+	} else {
 	music_pts : [..] type;
 	music_pts.allocator = context.allocator;
 
 	for mp : all_music_pts {
-		in_range : bool = MusicPtInRange(x_start, mp, x_end);
-		if in_range && row_index == mp.row_index {
+		in_x_range : bool = MusicPtInRange(x_start, mp, x_end);
+		in_row_range : bool = MusicPtInRowRange(row_start, mp, row_end);
+		if in_x_range && in_row_range {
 			#if type == *MusicPoint array_add(*music_pts, *all_music_pts[it_index]);
 	    	else array_add(*music_pts, mp);
 	   }
 	}
 
 	return music_pts;
+	}
 }
 
 //TODO REMOVE ALL THE INT CODE FROM HERE ONCE float64 x works since that should be the only way.
 //We can just cast(float64) if we are passing in an int then.
+//TODO Remove this no longer used
+//I am not sure what this was really used for, maybe convenience from tano mov, not sure...
+//but It does not make since and has been replace with the new update music pts function below
+#if 0 {
 UpdateMusicPtsFromMinStart :: inline (
 	music_pts : [] MusicPoint, 
 	to_start_x : $T, to_row : int,
@@ -1767,6 +1806,23 @@ UpdateMusicPtsFromMinStart :: inline (
 		//when I update the asm to allow x float everywhere.
 		// it.x_start_float = cast(float64) it.x_start;
 		// it.x_end_float = cast(float64) it.x_end;
+	}
+}
+}
+UpdateMusicPtsToStart :: inline (
+	from_music_pts : [] MusicPoint,
+	from_start_x : float64, from_row : int,
+	to_start_x : float64, to_row : int,
+	row_size : int) 
+{
+	for * from_music_pts {
+		from_row_diff : int = it.row_index - from_row;
+		it.row_index = to_row + from_row_diff;
+
+		x_length : float64 = it.x_end_float - it.x_start_float;
+		from_x_diff : float64 = it.x_start_float - from_start_x;
+		it.x_start_float = to_start_x + from_x_diff;
+		it.x_end_float = ClampMax(it.x_start_float + x_length, cast(float64) row_size);
 	}
 }
 
@@ -2088,6 +2144,7 @@ LinearPitchSpace :: struct {
 }
 //Asm specific create row data
 AsmCreateRowData :: struct {
+	mspace_id : int;
 	octave_height : float64;
 	row_height : float64;
 	row_base_pt : float64;
@@ -2473,7 +2530,7 @@ GetPointColor :: inline (
 }
 
 CreateRowData :: struct {
-	mspace_id : int;
+	mspace_id : int = 0;
 	// lane_start_row_index : int;
 	// relative_row_index : int;
 	// row_name : string;

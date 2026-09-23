@@ -3342,6 +3342,42 @@ GetNextNonMutedMSpace :: inline (
 	return start_index, true;
 }
 
+FindMSpace :: inline (
+	mspace_index : int,
+	all_mspace_data : [] MusicSpaceData,
+	all_register_memory : [] MemoryValue) 
+-> *MusicSpaceData, err : CPUError
+{
+	if InRange(0, mspace_index, all_mspace_data.count-1) {
+		return *all_mspace_data[mspace_index], NO_CPU_ERROR;
+	}
+	return null, CPUErr("MSpace index % not found.");
+}
+FindMusicRow :: inline (
+	row_index : int,
+	//TODO Could just pass in rows but this gives us id as well
+	mspace : MusicSpaceData) 
+-> *MusicLaneRow, CPUError
+{
+	if !InRange(0, row_index, mspace.all_music_lane_rows.count-1) {
+		return null, CPUErr(tprint("Row index % not found in mspace %.", mspace.mspace_id));
+	} 
+	return *mspace.all_music_lane_rows[row_index], NO_CPU_ERROR;
+}
+ValidateMSpaceRowAndX :: inline (
+	row_index : int,
+	x_index : float64,
+	mspace : MusicSpaceData)
+-> CPUError
+{
+	row, row_err := FindMusicRow(row_index, mspace);
+	if row_err.is_error return row_err;
+	if !InRange(0, cast(int) x_index, row.row_size) {
+		return CPUErr(tprint("x index % not found for row % in mspace %.", x_index, row_index, mspace.mspace_id));
+	}	
+	return NO_CPU_ERROR;
+}
+
 MoveFixedCameraOpSpaces :: inline (
 	new_cam_pos : Vector2F,
 	last_cam_pos : Vector2F,
@@ -6403,8 +6439,10 @@ TODO SET A DEFAULT BASE/ZERO FREQUENCY IN HERE so that we have the same
 frequency everywhere for all 0 pitches and then we can allow adjusting that
 on a per case basis explicitly if needed.
 */
+//TODO WE CAN REMOVE THIS AND JUST PUT memory_units_per_second in the settings
 SetupMusicData :: struct {
 	//TODO I think this should just be memory_units_per_second
+	//TODO WE TAKE THIS FROM music lane rows now so remove its
 	row_size : int = 12;
 	memory_units_per_second : float64 = 1.0;
 	// default_pitch_zero_freq : float64 = C4;
@@ -6594,7 +6632,7 @@ MusicOperandType :: enum u8 {
 	REGISTER;
 	//TODO Should we rename this to RAM_VALUE now?
 	RAM_MEMORY;
-	MUSIC_MEMORY;
+	MUSIC_MEMORY; //first value is row and register is integer, second value is x and register is float
 	//We are using RAM_ARRAY for array access so we cannot set right now.
 	//Should we allow setting an array? That seems like something
 	//we can stick to keeping in the compiler.
@@ -7789,20 +7827,25 @@ DirectionArithmeticOp :: inline (
 	mp : *MusicPoint) 
 {
 	if op_code == {
+	case OpCode.add; #through;
 	case OpCode.tadd;
 		mp.music_pt_float = left_float + right_float;
+	case OpCode.sub; #through;
 	case OpCode.tsub;
 		//TODO Should we allow negative music_pt_pos here and then just not play or render them?
 		//This way they can be modded for example if needed.
 		//Need to check if that works with rendering music_pts on linear row
 		// mp.music_pt_float = ClampMin(cast(float64) 0, left_float - right_float);
 		mp.music_pt_float = left_float - right_float;
+	case OpCode.mod; #through;
 	case OpCode.tmod;
 		//TODO We could use fmod_cycling OR have a separate operation for modulo that stays negative/positive
 		//depending on the mod value.
 		mp.music_pt_float = PosMod(left_float, right_float);
+	case OpCode.div; #through;
 	case OpCode.tdiv;
 		mp.music_pt_float = left_float / right_float;
+	case OpCode.mul; #through;
 	case OpCode.tmul;
 		mp.music_pt_float = left_float * right_float;
 	}

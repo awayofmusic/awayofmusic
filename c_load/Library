@@ -71,9 +71,6 @@ S3CamStartType :: enum {
 	USER_SET;
 	POINT_FOCUS;
 }
-AsmShapeType :: enum {
-	RECTANGLE;
-}
 ChordSpaceFilterAggregate :: enum {
 	INTERSECTION;
 	UNION;
@@ -90,6 +87,9 @@ AsmMapSpiralType :: enum {
 AsmOpSpaceType :: enum {
 	space_2d;
 	space_3d;
+}
+AsmShapeType :: enum {
+	RECTANGLE;
 }
 CustomAudioType :: enum {
 	TUNING_SYSTEM;
@@ -255,6 +255,7 @@ AsmCSFilter :: struct {
 	filter_type : ChordSpaceFilterType;
 }
 AsmCreateRowData :: struct {
+	mspace_id : int;
 	octave_height : float64;
 	row_height : float64;
 	row_base_pt : float64;
@@ -264,23 +265,6 @@ AsmCreateRowData :: struct {
 	row_sub_system_id : int;
 	row_sections : [] RowSectionData;
 	row_midi_data : AsmRowMidiData;
-}
-AsmGeom2D :: struct {
-	ret_dspace_id : int;
-	op_space_id : int;
-	custom_audio_type : CustomAudioType;
-	tuning_system_id : int;
-	osc_wave_type : OscWaveType;
-	collision_pos : Vector2;
-	collision_dim : Vector2;
-	show_collision : bool;
-}
-AsmText2D :: struct {
-	op_space_id : int;
-	text : string;
-	op_pos : Vector2;
-	color : Vector4;
-	render_order : int;
 }
 AsmShapeData :: struct {
 	ret_shape_id : int;
@@ -296,6 +280,23 @@ AsmShapeData :: struct {
 	type : AsmShapeType;
 	rect_pos : Vector2;
 	rect_dim : Vector2;
+}
+AsmText2D :: struct {
+	op_space_id : int;
+	text : string;
+	op_pos : Vector2;
+	color : Vector4;
+	render_order : int;
+}
+AsmGeom2D :: struct {
+	ret_dspace_id : int;
+	op_space_id : int;
+	custom_audio_type : CustomAudioType;
+	tuning_system_id : int;
+	osc_wave_type : OscWaveType;
+	collision_pos : Vector2;
+	collision_dim : Vector2;
+	show_collision : bool;
 }
 AsmChordS2Data :: struct {
 	ret_dspace_id : int;
