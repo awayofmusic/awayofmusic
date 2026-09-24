@@ -59,6 +59,7 @@ BG_GREEN_V :: Vector4F.{1.1*5.0/255.0, 1.1*24.0/255.0, 1.1*26.0/255.0, 1.0};
 LBLUE_V :: Vector4F.{0/255.0, 175.0/255.0, 255.0/255.0, 1.0};
 DBLUE_V :: Vector4F.{0/255.0, 0.3*175.0/255.0, 0.3*255.0/255.0, 1.0};
 MBLUE_V :: Vector4F.{0/255.0, 0.45*175.0/255.0, 0.45*255.0/255.0, 1.0};
+HBLUE_V :: Vector4F.{0/255.0, 0.6*175.0/255.0, 0.6*255.0/255.0, 1.0};
 // LMBLUE_V :: #run (0.65 * LBLUE_V); //can do this since we also multiply the alpha by 0.65
 //LMBLUE_V and DBLUE_V are very similar but the alpha of LMBLUE_V feels a bit less harsh but changes with other colors
 //TODO SETTING SO these will be user settable since background and font color will be settable as well

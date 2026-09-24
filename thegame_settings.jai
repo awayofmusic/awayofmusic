@@ -68,6 +68,8 @@ ParsedToRuntimeSettings :: inline (prs : ParsedRuntimeSettings) -> RuntimeSettin
 	// rsd.default_input_mappings_file = copy_string(prs.default_input_mappings_file);
 	rsd.save_file_on_focus_lost = prs.save_file_on_focus_lost;
 
+	// rsd.update_music_while_running = prs.update_music_while_running;
+
 	rsd.terminal_size = Dim2DSettingToVector2F(prs.terminal_size);
 	rsd.text_op_size = Dim2DSettingToVector2F(prs.text_op_size);
 	rsd.default_op_space_size = Dim2DSettingToVector2F(prs.default_op_space_size);
@@ -83,6 +85,8 @@ RuntimeToParsedSettings :: inline (rsd : RuntimeSettingsData) -> ParsedRuntimeSe
 	// prs.default_input_mappings_file = copy_string(rsd.default_input_mappings_file);
 	prs.save_file_on_focus_lost = rsd.save_file_on_focus_lost;
 
+	// prs.update_music_while_running = rsd.update_music_while_running;
+
 	prs.terminal_size = Vector2FToDim2DSetting(rsd.terminal_size);
 	prs.text_op_size = Vector2FToDim2DSetting(rsd.text_op_size);
 	prs.default_op_space_size = Vector2FToDim2DSetting(rsd.default_op_space_size);
@@ -96,6 +100,8 @@ RuntimeToParsedSettings :: inline (rsd : RuntimeSettingsData) -> ParsedRuntimeSe
 ParsedRuntimeSettings :: struct {
 	// default_input_mappings_file : string = INPUT_MAPPINGS_REL_PATH;
 	save_file_on_focus_lost : bool = false;
+
+	// update_music_while_running : bool = false;
 
 	//TODO Should this be in it's own file eventually so we can have custom shareable themes with just 1 file?
 	//Maybe we wait till there are too many setting options or if we want to add colors/settings as variables as well.
@@ -270,6 +276,7 @@ UpdateRuntimeSettings :: inline (
 
 	//We don't let this go below 1 to avoid stalling at 0 or having negative instructions
 	perm.all_data.runtime_settings.asm_instructions_per_frame = max(1, new_rs.asm_instructions_per_frame);
+	// perm.all_data.runtime_settings.update_music_while_running = new_rs.update_music_while_running;
 }
 
 ParsedInputMapping :: struct {

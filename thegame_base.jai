@@ -546,21 +546,22 @@ if active_cam != null {
 if IsInputMapPress(.PLAY_PAUSE_MUSIC, .DOWN_THIS_FRAME, game_input) {
 	//TODO We do the sort here whenever we play audio for convenience for now.
 	// quick_sort(perm.all_data.all_mspace_data[0].all_music_pts, (m1,m2) => m1.x_start_float - m2.x_start_float);
-	DefaultSortNeumes(perm.all_data.all_mspace_data[0].all_music_pts);
+	for perm.all_data.all_mspace_data DefaultSortNeumes(it.all_music_pts);
 
 	if perm.all_data.game_audio_play.play_state == {
 	case AudioPlayState.STOP; {
 		perm.all_data.game_audio_play.play_state = AudioPlayState.PLAY;
-		array_add(*perm.all_data.all_audio_events, MakeAudioEvent(.RESET_AUDIO_TO_MEMORY_UNIT, perm.all_data.game_audio_play.current_x_memory));
-	}
-	case AudioPlayState.PLAY; {
-		perm.all_data.game_audio_play.play_state = AudioPlayState.PAUSE;
-		array_add(*perm.all_data.all_audio_events, MakeAudioEvent(.STOP_ALL_MUSIC_PTS));
-	}
-	case AudioPlayState.PAUSE; {
-		perm.all_data.game_audio_play.play_state = AudioPlayState.PLAY;
+		// array_add(*perm.all_data.all_audio_events, MakeAudioEvent(.RESET_AUDIO_TO_MEMORY_UNIT, perm.all_data.game_audio_play.current_x_memory));
 		array_add(*perm.all_data.all_audio_events, MakeAudioEvent(.PLAY_NOTES_AT_CURRENT_MEMORY));
 	}
+	case AudioPlayState.PLAY; {
+		perm.all_data.game_audio_play.play_state = AudioPlayState.STOP;
+		array_add(*perm.all_data.all_audio_events, MakeAudioEvent(.STOP_ALL_MUSIC_PTS));
+	}
+	// case AudioPlayState.PAUSE; {
+	// 	perm.all_data.game_audio_play.play_state = AudioPlayState.PLAY;
+	// 	array_add(*perm.all_data.all_audio_events, MakeAudioEvent(.PLAY_NOTES_AT_CURRENT_MEMORY));
+	// }
 	}
 
 	print("audio_state : %\n", perm.all_data.game_audio_play.play_state);
@@ -569,14 +570,32 @@ if IsInputMapPress(.PLAY_PAUSE_MUSIC, .DOWN_THIS_FRAME, game_input) {
 else if IsInputMapPress(.STOP_MUSIC, .DOWN_THIS_FRAME, game_input) {
 	//TODO We do the sort here whenever we play audio for convenience for now.
 	// quick_sort(perm.all_data.all_mspace_data[0].all_music_pts, (m1,m2) => m1.x_start_float - m2.x_start_float);
-	DefaultSortNeumes(perm.all_data.all_mspace_data[0].all_music_pts);
-
-	array_add(*perm.all_data.all_audio_events, MakeAudioEvent(.STOP_ALL_MUSIC_PTS));
-	array_add(*perm.all_data.all_audio_events, MakeAudioEvent(.RESET_AUDIO_TO_MEMORY_UNIT, 0));
+	//Should we sort all of them or or just not sort at all?
+	//We could remove this once we sort on instruction execution since thats the only place we add music pts
+	for perm.all_data.all_mspace_data DefaultSortNeumes(it.all_music_pts);
+	// array_add(*perm.all_data.all_audio_events, MakeAudioEvent(.STOP_ALL_MUSIC_PTS));
+	// array_add(*perm.all_data.all_audio_events, MakeAudioEvent(.RESET_AUDIO_TO_MEMORY_UNIT, 0));
 	perm.all_data.game_audio_play.play_state = AudioPlayState.STOP;
+	perm.all_data.set_audio_position_data.is_set_audio = true;
+	perm.all_data.set_audio_position_data.set_audio_mspace_id = 0;
+	perm.all_data.set_audio_position_data.set_audio_type = .SET_MEMORY_UNIT;
+	perm.all_data.set_audio_position_data.memory_unit = 0;
 
 	print("audio_state : %\n", perm.all_data.game_audio_play.play_state);
 }
+else if IsInputMapPress(.STOP_MUSIC_AT_AUDIO_MSPACE, .DOWN_THIS_FRAME, game_input) {
+	for perm.all_data.all_mspace_data DefaultSortNeumes(it.all_music_pts);
+	audio_mspace : *MusicSpaceData = GetAudioMSpace(perm.all_data);
+	// array_add(*perm.all_data.all_audio_events, MakeAudioEvent(.STOP_ALL_MUSIC_PTS));
+	// array_add(*perm.all_data.all_audio_events, MakeAudioEvent(.RESET_AUDIO_TO_MEMORY_UNIT, audio_mspace.mspace_audio_x_start));
+	perm.all_data.game_audio_play.play_state = AudioPlayState.STOP;
+	perm.all_data.set_audio_position_data.is_set_audio = true;
+	perm.all_data.set_audio_position_data.set_audio_mspace_id = audio_mspace.mspace_id;
+	perm.all_data.set_audio_position_data.set_audio_type = .SET_MEMORY_UNIT;
+	perm.all_data.set_audio_position_data.memory_unit = audio_mspace.mspace_audio_x_start;
+	print("audio_state : %\n", perm.all_data.game_audio_play.play_state);
+}
+
 
 //TODO For now we prevent any hovering while moving an op_space as the title bar of another op space 
 //was showing if we moved an op space quickly enough and the mouse would go over the other op_space.
@@ -1388,8 +1407,12 @@ if frame_hover_entities.count > 0 {
 				if mouse_memory_unit > mspace_for_input.mspace_audio_row_size {
 					mouse_memory_unit = mspace_for_input.mspace_audio_row_size;
 				}
+				//DAWs allow playing start but not end
+				// if mouse_memory_unit < mspace_for_input.mspace_audio_x_start {
+				// 	mouse_memory_unit = mspace_for_input.mspace_audio_x_start;
+				// }
 
-				perm.all_data.set_audio_position_data.is_set = true;
+				perm.all_data.set_audio_position_data.is_set_audio = true;
 				perm.all_data.set_audio_position_data.set_audio_mspace_id = perm.all_data.render_mspace_id;
 				//TODO We could set this to SET_MEMORY_X_FLOAT if it is playing so we go to the precise position if needed
 				perm.all_data.set_audio_position_data.set_audio_type = .SET_MEMORY_UNIT;
@@ -5180,26 +5203,51 @@ GENERATED_INPUT_MAPPINGS_REL_PATH);
 					append(*sb, "'midi_msg' requires 4 or 5 arguments.\n");
 				}
 			}
-			case TerminalCommandType.mp;
-			{
-				//TODO Can remove this or change the name once we can set audio_pointer with mouse
-				//TODO This should be a float for tano_x and also should be settable through 
-				//terminal, mouse and code
-				if command_tokens.count == 2 {
-					x_memory_string : string = command_tokens[1].token;
-					x_memory, is_int := string_to_int(command_tokens[1].token);
-					if is_int {
-						perm.all_data.set_audio_position_data.is_set = true;
-						perm.all_data.set_audio_position_data.memory_unit = x_memory;
-
-						// array_add(*perm.all_data.all_audio_events, MakeAudioEvent(.SET_TO_MEMORY_UNIT, x_memory));
-					} else {
-						append(*sb, "'mp' requires 1 int argument.\n");
+			case TerminalCommandType.mp; {
+				help_msg :: #run sprint(
+#string DONE
+mp x mspace
+Set audio to x for mspace.
+mspace is optional and 0 by default.
+DONE,
+GENERATED_INPUT_MAPPINGS_REL_PATH);			
+				if IsTerminalCmdHelp(cmd_switches) {
+					print_to_builder(*sb, help_msg);
+				} else if InRange(2, command_tokens.count, 3) {
+					mspace_index : int = 0;
+					found_mspace : bool = true;
+					if command_tokens.count == 3 {
+						mspace_input, mspace_is_int := string_to_int(command_tokens[2].token);
+						if !mspace_is_int {
+							found_mspace = false;
+							print_to_builder(*sb, "mspace % is not integer value.\n", command_tokens[2].token);
+						} else {
+							mspace, mspace_err := FindMSpace(mspace_input, perm.all_data.all_mspace_data, perm.all_data.all_register_memory);
+							if mspace_err.is_error {
+								found_mspace = false;
+								append(*sb, mspace_err.msg);
+							} else {
+								mspace_index = mspace_input;
+							}
+						}
 					}
+
+					if found_mspace {
+						mspace : MusicSpaceData = perm.all_data.all_mspace_data[mspace_index];
+						x_memory, is_int := string_to_int(command_tokens[1].token);
+						if is_int {
+							perm.all_data.set_audio_position_data.is_set_audio = true;
+							perm.all_data.set_audio_position_data.memory_unit = Clamp(0, x_memory, mspace.mspace_audio_row_size);
+							perm.all_data.set_audio_position_data.set_audio_mspace_id = mspace.mspace_id;
+							perm.all_data.set_audio_position_data.set_audio_type = .SET_MEMORY_UNIT;
+							print_to_builder(*sb, "Audio set to x=% for mspace=%.\n", x_memory, mspace_index);
+						} else {
+							print_to_builder(*sb, "x % is not integer value.\n", command_tokens[1].token);
+						}
+					}
+				} else {
+					print_to_builder(*sb, INVALID_CMD_MSG, help_msg);
 				}
-				else {
-					append(*sb, "'mp' command takes 1 argument.\n");
-				}	
 			}
 			//TODO Can use this as a generalized go_to method to go_to a specific mspace or world_pos or op_space for example
 			//This also can make it clearer what we can go_to directly from the terminal
@@ -5866,7 +5914,7 @@ if perm.all_data.game_audio_play.play_state == AudioPlayState.PLAY {
 	check_mspace := GetAudioMSpace(perm.all_data);
 	if perm.all_data.game_audio_play.current_x_memory >= check_mspace.mspace_audio_row_size
 		//REMINDER : We only want to loop around if we haven't already set the audio somewhere else this frame
-		&& !perm.all_data.set_audio_position_data.is_set
+		&& !perm.all_data.set_audio_position_data.is_set_audio
 	{
 		check_mspace_index, found_check_mspace := ArrayFindFirstIndexByNameId(perm.all_data.all_mspace_data,
 			perm.all_data.audio_mspace_id, "mspace_id");
@@ -5882,20 +5930,24 @@ if perm.all_data.game_audio_play.play_state == AudioPlayState.PLAY {
 		if all_muted {
 			perm.all_data.game_audio_play.play_state = AudioPlayState.STOP;
 		}
-		perm.all_data.audio_mspace_id = perm.all_data.all_mspace_data[next_mspace_index].mspace_id;
+		next_mspace : MusicSpaceData = perm.all_data.all_mspace_data[next_mspace_index];
+		perm.all_data.audio_mspace_id = next_mspace.mspace_id;
 		//TODO we could not do this and let the notes release with the envelopes
 		//ACTUALLY for midi this is necessary
-		array_add(*perm.all_data.all_audio_events, MakeAudioEvent(.STOP_ALL_MUSIC_PTS));
-		//TODO We can set a start audio memory unit for each mspace and this would allow to start/end loops
-		array_add(*perm.all_data.all_audio_events, MakeAudioEvent(.RESET_AUDIO_TO_MEMORY_UNIT, 0));
-	} 	
+		// array_add(*perm.all_data.all_audio_events, MakeAudioEvent(.STOP_ALL_MUSIC_PTS));
+		// array_add(*perm.all_data.all_audio_events, MakeAudioEvent(.RESET_AUDIO_TO_MEMORY_UNIT, next_mspace.mspace_audio_x_start));
+		perm.all_data.set_audio_position_data.is_set_audio = true;
+		perm.all_data.set_audio_position_data.set_audio_mspace_id = perm.all_data.audio_mspace_id;
+		perm.all_data.set_audio_position_data.set_audio_type = .SET_MEMORY_UNIT;
+		perm.all_data.set_audio_position_data.memory_unit = next_mspace.mspace_audio_x_start;
+	}
 }
 
 /*DOC : This way ensures that we only have 1 repositioning per frame, so we can make sure we set that exactly
 how we need without overriding or doing multiple audio repositions.
 */
 sapd : *SetAudioPositionData = *perm.all_data.set_audio_position_data;
-if sapd.is_set {
+if sapd.is_set_audio {
 	perm.all_data.audio_mspace_id = sapd.set_audio_mspace_id;
 	array_add(*perm.all_data.all_audio_events, MakeAudioEvent(.STOP_ALL_MUSIC_PTS));
 	if sapd.set_audio_type == {
@@ -5909,11 +5961,12 @@ if sapd.is_set {
 
 	if perm.all_data.game_audio_play.play_state == AudioPlayState.PLAY {
 		array_add(*perm.all_data.all_audio_events, MakeAudioEvent(.PLAY_NOTES_AT_CURRENT_MEMORY));
-	} else {
-		perm.all_data.game_audio_play.play_state = AudioPlayState.PAUSE;
-	}
+	} 
+	// else {
+	// 	perm.all_data.game_audio_play.play_state = AudioPlayState.PAUSE;
+	// }
 
-	sapd.is_set = false;
+	sapd.is_set_audio = false;
 }
 
 //DOC : We adjust the audio_mspace on reset so we don't have to update it.
@@ -5945,7 +5998,7 @@ for audio_event : perm.all_data.all_audio_events {
 		}
 		}
 
-		perm.all_data.game_audio_play.last_memory_unit_played = audio_event.initial_x_memory - 1;
+		// perm.all_data.game_audio_play.last_memory_unit_played = audio_event.initial_x_memory - 1;
 
 		//TODO Could do this based on a float value event now too
 		perm.all_data.game_audio_play.music_pt_play_index = 0;
@@ -6440,24 +6493,45 @@ if perm.all_data.render_mspace_id == perm.all_data.audio_mspace_id && render_msp
 	}
 }
 
+//TODO We could make a setting where we highlight this whole section and pass in the color with alpha < 1.
+//This would just be 1 rectangle with the diff of play_pos x and then the total_height already calculated below.
+//I like the clarity of not having the highlighting though.
+if render_mspace.all_music_lane_rows.count > 0 {
+top_row : MusicLaneRow = render_mspace.all_music_lane_rows[0];
+bottom_row : MusicLaneRow = peek(render_mspace.all_music_lane_rows);
+total_height : float = top_row.row_world_base_start.y + top_row.row_height - bottom_row.row_world_base_start.y;
 if render_mspace.is_fixed_audio_row_size {
-	top_row : MusicLaneRow = render_mspace.all_music_lane_rows[0];
 	// play_pos_x : float = GetRowXStart(top_row, perm.all_data.global_rules.memory_unit_width);
 	// play_pos_x += cast(float) (render_mspace.mspace_audio_row_size * perm.all_data.global_rules.memory_unit_width);
 	play_pos_x : float = GetPlayPosWorldX(top_row, cast(float64) render_mspace.mspace_audio_row_size, 
 		perm.all_data.global_rules.memory_unit_width);
 	//TODO This way feels the most natural, but we can put a setting for the other ones if needed
-	bottom_row : MusicLaneRow = peek(render_mspace.all_music_lane_rows);
-	total_height : float = top_row.row_world_base_start.y + top_row.row_height - bottom_row.row_world_base_start.y;
 	play_line_pos := Vector2F.{play_pos_x, bottom_row.row_world_base_start.y};
 	//0.1 width seems smoother on this 4k 27inch screen than 0.07. maybe good to check on other screens/resolutions
 	// play_line_dim := Vector2F.{0.07,total_height};
 	//TODO SETTINGS can adjust the width and color of the audio row play size line
-	play_line_dim := Vector2F.{0.3,total_height};
+	play_line_dim := Vector2F.{0.25,total_height};
 	play_line : Rectangle2 = RectMinCenterDim(play_line_pos, play_line_dim);
 	play_line_cam : Rectangle2 = WorldRectToCamRect(play_line, default_base_cam);
 	//REMINDER : This needs to be bellow the play line since we need to see if we set it here
 	PushRectangle(play_line_cam, BLACK_V, renderer_data.base_render_group, order = 9);
+}
+if render_mspace.mspace_audio_x_start > 0 {
+	play_pos_x : float = GetPlayPosWorldX(top_row, cast(float64) render_mspace.mspace_audio_x_start, 
+		perm.all_data.global_rules.memory_unit_width);
+	play_line_pos := Vector2F.{play_pos_x, bottom_row.row_world_base_start.y};
+	//0.1 width seems smoother on this 4k 27inch screen than 0.07. maybe good to check on other screens/resolutions
+	// play_line_dim := Vector2F.{0.07,total_height};
+	//TODO SETTINGS can adjust the width and color of the audio row play size line
+	play_line_dim := Vector2F.{0.2,total_height};
+	play_line : Rectangle2 = RectMinCenterDim(play_line_pos, play_line_dim);
+	play_line_cam : Rectangle2 = WorldRectToCamRect(play_line, default_base_cam);
+	//REMINDER : This needs to be bellow the play line since we need to see if we set it here
+	// PushRectangle(play_line_cam, HBLUE_V, renderer_data.base_render_group, order = 9);
+	// PushRectangle(play_line_cam, Lerp(LIGHT_BROWN,0.65,YELLOW_V), renderer_data.base_render_group, order = 9);
+	PushRectangle(play_line_cam, MakeV4F(0.9*LIGHT_BROWN.xyz,1.0), renderer_data.base_render_group, order = 9);
+	// PushRectangle(play_line_cam, LIGHT_BROWN, renderer_data.base_render_group, order = 9);
+}
 }
 
 /*TODO IF we can render this both in world and in op_space then we just have to pass in the corresponding

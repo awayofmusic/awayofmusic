@@ -738,6 +738,7 @@ InputMapType :: enum {
 
 	PLAY_PAUSE_MUSIC;
 	STOP_MUSIC;
+	STOP_MUSIC_AT_AUDIO_MSPACE;
 
 	RUN_EXTERNAL_UPDATE;
 
@@ -1110,6 +1111,11 @@ DEFAULT_INPUT_MAPPINGS, IM_DESCRIPTIONS :: #run () ->
 	case .STOP_MUSIC; {
 		k_maps := NewArray(1, KeyboardMap);
 		k_maps[0] = .{xx #char "P", .{ctrl_pressed=true,shift_pressed=true}};
+		d[it] = .{it, k_maps};		
+	}
+	case .STOP_MUSIC_AT_AUDIO_MSPACE; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "P", .{ctrl_pressed=true,alt_pressed=true}};
 		d[it] = .{it, k_maps};		
 	}
 	case .RUN_EXTERNAL_UPDATE; {

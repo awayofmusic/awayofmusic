@@ -1080,7 +1080,7 @@ GameAudioPlay :: struct {
 
 	//TODO this should be last_played_unit
 	//once we use rhythm_units for memory_index
-	last_memory_unit_played : int;
+	// last_memory_unit_played : int;
 
 	music_pt_play_index : int;
 
@@ -1093,7 +1093,11 @@ GameAudioPlay :: struct {
 AudioPlayState :: enum {
 	STOP;
 	PLAY;
-	PAUSE;
+	
+	//Having pause was confusing so we just have STOP and PLAY
+	//and pause is just an action which stops at the current x audio memory
+	//but the STOP action stops and resets the audio memory to the start audio
+	// PAUSE;
 }
 
 //TODO FROM HERE USE THIS INSTEAD WHILE PLAYING AND OTHER UPDATE AND ONLY UPDATE BELOW WHEN WE RESET

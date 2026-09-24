@@ -89,6 +89,21 @@ main :: () {
 		mov <1,5.5>, 5;
 		//add 1 to all values
 		add <bx,ax>, 1;
+
+		/*Ram arrays can be used to move values.
+		Ram array is ".[count,data]"
+		Count can be an int or int register.
+		Data can be an int or int register.
+		*/
+		mov [0], 0;
+		mov [8], 5;
+		mov <0,7>, .[2,0];
+
+		//Ram arrays can be integers or floats depending on the instruction type
+		mov ax, 16;
+		mov.f [ax], 0.5;
+		mov.f [24], 7.5;
+		mov.f <0,8>, .[2,ax], 1.5; //length needs to be float for instruction type float
 	}
 
 	//All music asm instructions are in thegame_code.jai function ExecMInstr

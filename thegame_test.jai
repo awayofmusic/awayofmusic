@@ -9786,40 +9786,22 @@ Test_MiniGame :: (
 	}
 	case 5; {
 		t_01 := tano.{0,0,0,1,0};
-		tmp : [] Neume = GetTanoMusicPts(t_01, perm.all_data.all_mspace_data[0].all_music_pts, type=Neume);
-		AssertFloat64Equals(0, tmp[0].svara);
-		AssertFloat64Equals(0, tmp[0].x_start);
-		AssertFloat64Equals(1, tmp[0].x_end);
-		AssertFloat64Equals(4, tmp[1].svara);
-		AssertFloat64Equals(0, tmp[1].x_start);
-		AssertFloat64Equals(1, tmp[1].x_end);
-		AssertFloat64Equals(7, tmp[2].svara);
-		AssertFloat64Equals(0, tmp[2].x_start);
-		AssertFloat64Equals(1, tmp[2].x_end);
+		tmp : [] MusicPoint = GetTanoMusicPts(t_01, perm.all_data.all_mspace_data[0].all_music_pts, type=MusicPoint);
+		AssertFoundMusicPt(MakeMusicPoint(0.,0,0.,1.), tmp);
+		AssertFoundMusicPt(MakeMusicPoint(0.,0,0.,1.), tmp);
+		AssertFoundMusicPt(MakeMusicPoint(0.,0,0.,1.), tmp);
 
 		t_13 := tano.{0,0,1,3,0};
-		tmp = GetTanoMusicPts(t_13, perm.all_data.all_mspace_data[0].all_music_pts, type=Neume);
-		AssertFloat64Equals(0+8, tmp[0].svara);
-		AssertFloat64Equals(1, tmp[0].x_start);
-		AssertFloat64Equals(3, tmp[0].x_end);
-		AssertFloat64Equals(4+8, tmp[1].svara);
-		AssertFloat64Equals(1, tmp[1].x_start);
-		AssertFloat64Equals(3, tmp[1].x_end);
-		AssertFloat64Equals(7+8, tmp[2].svara);
-		AssertFloat64Equals(1, tmp[2].x_start);
-		AssertFloat64Equals(3, tmp[2].x_end);
+		tmp = GetTanoMusicPts(t_13, perm.all_data.all_mspace_data[0].all_music_pts, type=MusicPoint);
+		AssertFoundMusicPt(MakeMusicPoint(0+8,0,1.,3.), tmp);
+		AssertFoundMusicPt(MakeMusicPoint(4+8,0,1.,3.), tmp);
+		AssertFoundMusicPt(MakeMusicPoint(7+8,0,1.,3.), tmp);
 
 		t_34 := tano.{0,0,3,4,0};
-		tmp = GetTanoMusicPts(t_34, perm.all_data.all_mspace_data[0].all_music_pts, type=Neume);
-		AssertFloat64Equals(0, tmp[0].svara);
-		AssertFloat64Equals(3, tmp[0].x_start);
-		AssertFloat64Equals(4, tmp[0].x_end);
-		AssertFloat64Equals(4, tmp[1].svara);
-		AssertFloat64Equals(3, tmp[1].x_start);
-		AssertFloat64Equals(4, tmp[1].x_end);
-		AssertFloat64Equals(7, tmp[2].svara);
-		AssertFloat64Equals(3, tmp[2].x_start);
-		AssertFloat64Equals(4, tmp[2].x_end);
+		tmp = GetTanoMusicPts(t_34, perm.all_data.all_mspace_data[0].all_music_pts, type=MusicPoint);
+		AssertFoundMusicPt(MakeMusicPoint(0,0,3.,4.), tmp);
+		AssertFoundMusicPt(MakeMusicPoint(4,0,3.,4.), tmp);
+		AssertFoundMusicPt(MakeMusicPoint(7,0,3.,4.), tmp);
 	}
 	}
 
@@ -10283,7 +10265,7 @@ Test_MSpaceAudio :: (
 	case 3; {
 		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.audio_mspace_id);
 		AssertFloat64Equals(0, perm.all_data.game_audio_play.float_x_memory);
-		AssertEquals(AudioPlayState.PAUSE, perm.all_data.game_audio_play.play_state);
+		AssertEquals(AudioPlayState.STOP, perm.all_data.game_audio_play.play_state);
 
 		DownUpInputMap(.NEXT_MUSIC_SPACE, game_input);
 	}
@@ -10315,7 +10297,7 @@ Test_MSpaceAudio :: (
 		AssertEquals(true, 1 < perm.all_data.game_audio_play.float_x_memory && 2 > perm.all_data.game_audio_play.float_x_memory);
 
 		//TEST that stopping music brings us back to the current audio mspace
-		DownUpInputMap(.STOP_MUSIC, game_input);
+		DownUpInputMap(.STOP_MUSIC_AT_AUDIO_MSPACE, game_input);
 	}
 	case 7; {
 		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.render_mspace_id);
@@ -10348,7 +10330,7 @@ Test_MSpaceAudio :: (
 		AssertFloat64Equals(2, perm.all_data.game_audio_play.float_x_memory);
 
 		//TEST play music and clicking somewhere else should bring us there directly and continue playing
-		DownUpInputMap(.STOP_MUSIC, game_input);
+		DownUpInputMap(.STOP_MUSIC_AT_AUDIO_MSPACE, game_input);
 	}
 	case 10; {
 		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.render_mspace_id);
@@ -10363,7 +10345,7 @@ Test_MSpaceAudio :: (
 		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.render_mspace_id);
 		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.audio_mspace_id);
 		AssertEquals(AudioPlayState.PLAY, perm.all_data.game_audio_play.play_state);
-		AssertFloat64Equals(0, perm.all_data.game_audio_play.float_x_memory);
+		AssertEquals(true, perm.all_data.game_audio_play.float_x_memory > 0);
 
 		//TEST play music and clicking in a different mspace should bring play to new mspace
 		row_0 : MusicLaneRow = perm.all_data.all_mspace_data[1].all_music_lane_rows[0];
@@ -10381,7 +10363,7 @@ Test_MSpaceAudio :: (
 		AssertFloat64Equals(1, perm.all_data.game_audio_play.float_x_memory);
 
 		//TEST play music and clicking in a different mspace should bring play to new mspace
-		DownUpInputMap(.STOP_MUSIC, game_input);
+		DownUpInputMap(.STOP_MUSIC_AT_AUDIO_MSPACE, game_input);
 	}
 	case 13; {
 		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.render_mspace_id);
@@ -10411,7 +10393,7 @@ Test_MSpaceAudio :: (
 	case 15; {
 		AssertEquals(perm.all_data.all_mspace_data[0].mspace_id, perm.all_data.render_mspace_id);
 		AssertEquals(perm.all_data.all_mspace_data[0].mspace_id, perm.all_data.audio_mspace_id);
-		AssertEquals(AudioPlayState.PAUSE, perm.all_data.game_audio_play.play_state);
+		AssertEquals(AudioPlayState.STOP, perm.all_data.game_audio_play.play_state);
 		AssertFloat64Equals(0, perm.all_data.game_audio_play.float_x_memory);
 
 		//TEST clicking end of mspace when the next one is empty should bring us back on the same frame
@@ -10420,7 +10402,7 @@ Test_MSpaceAudio :: (
 	case 16; {
 		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.render_mspace_id);
 		AssertEquals(perm.all_data.all_mspace_data[0].mspace_id, perm.all_data.audio_mspace_id);
-		AssertEquals(AudioPlayState.PAUSE, perm.all_data.game_audio_play.play_state);
+		AssertEquals(AudioPlayState.STOP, perm.all_data.game_audio_play.play_state);
 		AssertFloat64Equals(0, perm.all_data.game_audio_play.float_x_memory);
 
 		//TEST clicking end of mspace when the next one is empty should bring us back on the same frame
@@ -10435,7 +10417,7 @@ Test_MSpaceAudio :: (
 	case 17; {
 		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.render_mspace_id);
 		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.audio_mspace_id);
-		AssertEquals(AudioPlayState.PAUSE, perm.all_data.game_audio_play.play_state);
+		AssertEquals(AudioPlayState.STOP, perm.all_data.game_audio_play.play_state);
 		AssertFloat64Equals(0, perm.all_data.game_audio_play.float_x_memory);
 
 		//TEST clicking end of mspace when the next one is empty should bring us back on the same frame
@@ -10471,13 +10453,390 @@ Test_MSpaceAudio :: (
 		AssertEquals(AudioPlayState.PLAY, perm.all_data.game_audio_play.play_state);
 		AssertFloat64Equals(0, perm.all_data.game_audio_play.float_x_memory);
 
-		DownUpInputMap(.STOP_MUSIC, game_input);
+		DownUpInputMap(.STOP_MUSIC_AT_AUDIO_MSPACE, game_input);
 	}
 	case 21; {
 		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.render_mspace_id);
 		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.audio_mspace_id);
 		AssertEquals(AudioPlayState.STOP, perm.all_data.game_audio_play.play_state);
 		AssertFloat64Equals(0, perm.all_data.game_audio_play.float_x_memory);
+	}
+	}
+
+	ContinueTest(*perm.test_data);
+
+} @ITest
+
+Test_MSpaceAudioStart :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	perm : *Persist = GetPermanentStorage(game_memory);
+
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+
+		perm.all_data = InitAllData();
+		ResetAllRendererData(renderer_data);
+
+		//Defaults to mspace_id = 0
+		CreateMusicRow(TWO_ROWS[0], perm.all_data);
+		AssertEquals(1, perm.all_data.all_mspace_data[0].all_music_lane_rows.count);
+		AssertEquals(1, perm.all_data.all_mspace_data[0].all_section_to_row.count);
+		AssertEquals("", perm.all_data.all_mspace_data[0].mspace_name);
+		AssertEquals(perm.all_data.runtime_settings.default_tano_x_unit_width, 
+			perm.all_data.all_mspace_data[0].tano_x_unit_width);
+
+		gcmd : GetOrCreateMSpaceData;
+		gcmd.mspace_name = "test";
+		mspace_1 := GetOrCreateMusicSpace(gcmd, perm.all_data.runtime_settings, *perm.all_data.all_mspace_data,
+			*perm.all_data.free_mspace_data_pool);
+
+		count_equals := AssertEquals(2, perm.all_data.all_mspace_data.count);
+		if count_equals {
+			for TWO_ROWS {
+				crd : CreateRowData = it;
+				crd.mspace_id = mspace_1.mspace_id;
+				CreateMusicRow(crd, perm.all_data);
+			}
+			AssertEquals(2, perm.all_data.all_mspace_data[1].all_music_lane_rows.count);
+			AssertEquals(2, perm.all_data.all_mspace_data[1].all_section_to_row.count);
+			AssertEquals(gcmd.mspace_name, perm.all_data.all_mspace_data[1].mspace_name);
+			AssertEquals(perm.all_data.runtime_settings.default_tano_x_unit_width,
+				perm.all_data.all_mspace_data[1].tano_x_unit_width);
+		}
+
+		CreateManyMusicPtsInMemory(float64.[0,4], 0, 0, 1, *perm.all_data.all_mspace_data[0].all_music_pts);
+		CreateManyMusicPtsInMemory(float64.[0,7], 0, 1, 3, *perm.all_data.all_mspace_data[0].all_music_pts);
+		CreateManyMusicPtsInMemory(float64.[0,9], 0, 3, 6, *perm.all_data.all_mspace_data[0].all_music_pts);
+
+		CreateManyMusicPtsInMemory(float64.[0,1], 0, 0, 1, *perm.all_data.all_mspace_data[1].all_music_pts);
+		CreateManyMusicPtsInMemory(float64.[0,2], 0, 1, 3, *perm.all_data.all_mspace_data[1].all_music_pts);
+		CreateManyMusicPtsInMemory(float64.[0,3], 0, 3, 6, *perm.all_data.all_mspace_data[1].all_music_pts);
+
+		array_resize(*perm.test_data.all_sub_tests, 17+1);
+	}
+
+	default_base_cam : Camera2D = GetRenderMSpace(perm.all_data).mspace_cam;
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	//TODO FROM HERE right a few audio tests to make sure
+	//looping is working and also with mouse clicks
+	//and silent loops (maybe add an extra mspace as well)
+	//and then update create row to new asm model
+	//so we can then generate asm lib all automatically
+	if perm.test_data.sub_test_index == {
+	case 0; {
+		umd : UpdateMSpaceData;
+		umd.mspace_id = 0;
+		umd.update_mspace_audio_x_start = true;
+		umd.mspace_audio_x_start = 2;
+		umd.update_mspace_audio_row_size = true;
+		umd.set_fixed_audio_row_size = true;
+		umd.mspace_audio_row_size = 4;
+		UpdateMusicSpace(umd, perm.all_data.runtime_settings, *perm.all_data.all_mspace_data);
+		mspace_0 := *perm.all_data.all_mspace_data[0];
+		AssertEquals(umd.set_fixed_audio_row_size, mspace_0.is_fixed_audio_row_size);
+		AssertEquals(umd.mspace_audio_row_size, mspace_0.mspace_audio_row_size);
+		AssertEquals(umd.mspace_audio_x_start, mspace_0.mspace_audio_x_start);
+
+		umd.mspace_id = 1;
+		umd.mspace_audio_x_start = 1;
+		umd.mspace_audio_row_size = 2;
+		UpdateMusicSpace(umd, perm.all_data.runtime_settings, *perm.all_data.all_mspace_data);
+		mspace_1 := *perm.all_data.all_mspace_data[1];
+		AssertEquals(umd.set_fixed_audio_row_size, mspace_1.is_fixed_audio_row_size);
+		AssertEquals(umd.mspace_audio_row_size, mspace_1.mspace_audio_row_size);
+		AssertEquals(umd.mspace_audio_x_start, mspace_1.mspace_audio_x_start);
+
+		//TEST mouse click set to the audio x start
+		row_0 : MusicLaneRow = mspace_0.all_music_lane_rows[0];
+		play_pos_x : float = GetPlayPosWorldX(row_0, mspace_0.mspace_audio_x_start+0.1, perm.all_data.global_rules.memory_unit_width);
+		play_pos_y : float = 0.5 * (row_0.row_world_base_start.y + row_0.row_height);
+		game_input.mouse_cam = WorldSpaceToCameraSpace(Vector2F.{play_pos_x,play_pos_y}, default_base_cam);
+		//TODO USE THIS again ONCE THE jai-Input bug gets fixed. Details at GLOBAL_MOVE_INSTANTLY code in thegame_base.
+		// DownUpThisFrame(.MOUSE_BUTTON_LEFT, .{ctrl_pressed=true}, game_input);
+		DownUpThisFrame(.CTRL, game_input);
+		DownUpThisFrame(.MOUSE_BUTTON_LEFT, game_input);
+	}
+	case 1; {
+		AssertEquals(perm.all_data.all_mspace_data[0].mspace_id, perm.all_data.audio_mspace_id);
+		AssertFloat64Equals(cast(float64) perm.all_data.all_mspace_data[0].mspace_audio_x_start, perm.all_data.game_audio_play.float_x_memory);
+
+		//TEST if we start playing from start
+		DownUpInputMap(.PLAY_PAUSE_MUSIC, game_input);
+	}
+	case 2; {
+		AssertEquals(perm.all_data.all_mspace_data[0].mspace_id, perm.all_data.audio_mspace_id);
+		AssertEquals(true, perm.all_data.game_audio_play.float_x_memory > cast(float64) perm.all_data.all_mspace_data[0].mspace_audio_x_start);
+		AssertEquals(AudioPlayState.PLAY, perm.all_data.game_audio_play.play_state);
+
+		DownUpInputMap(.PLAY_PAUSE_MUSIC, game_input);
+	}
+	case 3; {
+		AssertEquals(perm.all_data.all_mspace_data[0].mspace_id, perm.all_data.audio_mspace_id);
+		AssertEquals(true, perm.all_data.game_audio_play.float_x_memory > cast(float64) perm.all_data.all_mspace_data[0].mspace_audio_x_start);
+		AssertEquals(AudioPlayState.STOP, perm.all_data.game_audio_play.play_state);
+
+		DownUpInputMap(.NEXT_MUSIC_SPACE, game_input);
+	}
+	case 4; {
+		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.render_mspace_id);
+		AssertEquals(perm.all_data.all_mspace_data[0].mspace_id, perm.all_data.audio_mspace_id);
+		AssertEquals(true, perm.all_data.game_audio_play.float_x_memory > cast(float64) perm.all_data.all_mspace_data[0].mspace_audio_x_start);
+
+		//TEST mouse click set to the audio x start
+		row_0 : MusicLaneRow = perm.all_data.all_mspace_data[1].all_music_lane_rows[0];
+		play_pos_x : float = GetPlayPosWorldX(row_0, perm.all_data.all_mspace_data[1].mspace_audio_x_start+0.1, perm.all_data.global_rules.memory_unit_width);
+		play_pos_y : float = 0.5 * (row_0.row_world_base_start.y + row_0.row_height);
+		game_input.mouse_cam = WorldSpaceToCameraSpace(Vector2F.{play_pos_x,play_pos_y}, default_base_cam);
+		//TODO USE THIS again ONCE THE jai-Input bug gets fixed. Details at GLOBAL_MOVE_INSTANTLY code in thegame_base.
+		// DownUpThisFrame(.MOUSE_BUTTON_LEFT, .{ctrl_pressed=true}, game_input);
+		DownUpThisFrame(.CTRL, game_input);
+		DownUpThisFrame(.MOUSE_BUTTON_LEFT, game_input);
+	}
+	case 5; {
+		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.render_mspace_id);
+		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.audio_mspace_id);
+		AssertFloat64Equals(perm.all_data.game_audio_play.float_x_memory, cast(float64) perm.all_data.all_mspace_data[1].mspace_audio_x_start);
+
+		//Start playing on next audio mspace
+		DownUpInputMap(.PLAY_PAUSE_MUSIC, game_input);
+	}
+	case 6; {
+		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.render_mspace_id);
+		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.audio_mspace_id);
+		AssertEquals(AudioPlayState.PLAY, perm.all_data.game_audio_play.play_state);
+		AssertEquals(true, perm.all_data.game_audio_play.float_x_memory > cast(float64) perm.all_data.all_mspace_data[1].mspace_audio_x_start);
+
+		//TEST that stopping music brings us back to the current audio mspace
+		DownUpInputMap(.STOP_MUSIC_AT_AUDIO_MSPACE, game_input);
+	}
+	case 7; {
+		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.render_mspace_id);
+		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.audio_mspace_id);
+		AssertEquals(AudioPlayState.STOP, perm.all_data.game_audio_play.play_state);
+		AssertFloat64Equals(cast(float64) perm.all_data.all_mspace_data[1].mspace_audio_x_start, perm.all_data.game_audio_play.float_x_memory);
+
+		//TEST play starts from 
+		DownUpInputMap(.PLAY_PAUSE_MUSIC, game_input);
+	}
+	case 8; {
+		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.render_mspace_id);
+		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.audio_mspace_id);
+		AssertEquals(AudioPlayState.PLAY, perm.all_data.game_audio_play.play_state);
+		AssertEquals(true, perm.all_data.game_audio_play.float_x_memory > cast(float64) perm.all_data.all_mspace_data[1].mspace_audio_x_start);
+
+		//TEST play music goes before bounds
+		row_0 : MusicLaneRow = perm.all_data.all_mspace_data[1].all_music_lane_rows[0];
+		play_pos_x : float = GetPlayPosWorldX(row_0, 0.1, perm.all_data.global_rules.memory_unit_width);
+		play_pos_y : float = 0.5 * (row_0.row_world_base_start.y + row_0.row_height);
+		game_input.mouse_cam = WorldSpaceToCameraSpace(Vector2F.{play_pos_x,play_pos_y}, default_base_cam);
+		// DownUpThisFrame(.MOUSE_BUTTON_LEFT, .{ctrl_pressed=true}, game_input);
+		DownUpThisFrame(.CTRL, game_input);
+		DownUpThisFrame(.MOUSE_BUTTON_LEFT, game_input);
+	}
+	case 9; {
+		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.render_mspace_id);
+		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.audio_mspace_id);
+		AssertEquals(AudioPlayState.PLAY, perm.all_data.game_audio_play.play_state);
+		AssertFloat64Equals(0, perm.all_data.game_audio_play.float_x_memory);
+
+		//TEST stop music brings us mspace audio start of this mspace
+		DownUpInputMap(.STOP_MUSIC_AT_AUDIO_MSPACE, game_input);
+	}
+	case 10; {
+		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.render_mspace_id);
+		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.audio_mspace_id);
+		AssertEquals(AudioPlayState.STOP, perm.all_data.game_audio_play.play_state);
+		AssertFloat64Equals(cast(float64) perm.all_data.all_mspace_data[1].mspace_audio_x_start, perm.all_data.game_audio_play.float_x_memory);
+
+		//TEST stop music brings us back to previous mspace
+		DownUpInputMap(.STOP_MUSIC, game_input);
+	}
+	case 11; {
+		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.render_mspace_id);
+		AssertEquals(perm.all_data.all_mspace_data[0].mspace_id, perm.all_data.audio_mspace_id);
+		AssertEquals(AudioPlayState.STOP, perm.all_data.game_audio_play.play_state);
+		AssertFloat64Equals(0, perm.all_data.game_audio_play.float_x_memory);
+
+		//TEST play music and clicking after bounds should bring us back to previous mspace wrap around
+		DownUpInputMap(.NEXT_MUSIC_SPACE, game_input);
+	}
+	case 12; {
+		AssertEquals(perm.all_data.all_mspace_data[0].mspace_id, perm.all_data.render_mspace_id);
+		AssertEquals(perm.all_data.all_mspace_data[0].mspace_id, perm.all_data.audio_mspace_id);
+		AssertEquals(AudioPlayState.STOP, perm.all_data.game_audio_play.play_state);
+		AssertFloat64Equals(0, perm.all_data.game_audio_play.float_x_memory);
+
+		//TEST play music works on first mspace again
+		DownUpInputMap(.PLAY_PAUSE_MUSIC, game_input);
+	}
+	case 13; {
+		AssertEquals(perm.all_data.all_mspace_data[0].mspace_id, perm.all_data.render_mspace_id);
+		AssertEquals(perm.all_data.all_mspace_data[0].mspace_id, perm.all_data.audio_mspace_id);
+		AssertEquals(AudioPlayState.PLAY, perm.all_data.game_audio_play.play_state);
+		AssertEquals(true, perm.all_data.game_audio_play.float_x_memory > 0);
+
+
+		//TEST should start from audio start here
+		DownUpInputMap(.STOP_MUSIC_AT_AUDIO_MSPACE, game_input);
+	}
+	case 14; {
+		AssertEquals(perm.all_data.all_mspace_data[0].mspace_id, perm.all_data.render_mspace_id);
+		AssertEquals(perm.all_data.all_mspace_data[0].mspace_id, perm.all_data.audio_mspace_id);
+		AssertEquals(AudioPlayState.STOP, perm.all_data.game_audio_play.play_state);
+		AssertFloat64Equals(cast(float64) perm.all_data.all_mspace_data[0].mspace_audio_x_start, perm.all_data.game_audio_play.float_x_memory);
+
+		//TEST next frame should be after next start
+		row_0 : MusicLaneRow = perm.all_data.all_mspace_data[0].all_music_lane_rows[0];
+		play_pos_x : float = GetPlayPosWorldX(row_0, perm.all_data.all_mspace_data[0].mspace_audio_row_size+0.1, perm.all_data.global_rules.memory_unit_width);
+		play_pos_y : float = 0.5 * (row_0.row_world_base_start.y + row_0.row_height);
+		game_input.mouse_cam = WorldSpaceToCameraSpace(Vector2F.{play_pos_x,play_pos_y}, default_base_cam);
+		// DownUpThisFrame(.MOUSE_BUTTON_LEFT, .{ctrl_pressed=true}, game_input);
+		DownUpThisFrame(.CTRL, game_input);
+		DownUpThisFrame(.MOUSE_BUTTON_LEFT, game_input);
+	}
+	case 15; {
+		AssertEquals(perm.all_data.all_mspace_data[0].mspace_id, perm.all_data.render_mspace_id);
+		AssertEquals(perm.all_data.all_mspace_data[0].mspace_id, perm.all_data.audio_mspace_id);
+		AssertEquals(AudioPlayState.STOP, perm.all_data.game_audio_play.play_state);
+		AssertFloat64Equals(cast(float64) perm.all_data.all_mspace_data[0].mspace_audio_row_size, perm.all_data.game_audio_play.float_x_memory);
+
+		//TEST should start from audio start of next mspace here
+		DownUpInputMap(.PLAY_PAUSE_MUSIC, game_input);
+	}
+	case 16; {
+		AssertEquals(perm.all_data.all_mspace_data[0].mspace_id, perm.all_data.render_mspace_id);
+		AssertEquals(perm.all_data.all_mspace_data[1].mspace_id, perm.all_data.audio_mspace_id);
+		AssertEquals(AudioPlayState.PLAY, perm.all_data.game_audio_play.play_state);
+		AssertFloat64Equals(cast(float64) perm.all_data.all_mspace_data[1].mspace_audio_x_start, perm.all_data.game_audio_play.float_x_memory);
+
+		//TEST stops back at start
+		DownUpInputMap(.STOP_MUSIC, game_input);
+	}
+	case 17; {
+		AssertEquals(perm.all_data.all_mspace_data[0].mspace_id, perm.all_data.render_mspace_id);
+		AssertEquals(perm.all_data.all_mspace_data[0].mspace_id, perm.all_data.audio_mspace_id);
+		AssertEquals(AudioPlayState.STOP, perm.all_data.game_audio_play.play_state);
+		AssertFloat64Equals(0, perm.all_data.game_audio_play.float_x_memory);
+	}
+	}
+
+	ContinueTest(*perm.test_data);
+
+} @ITest
+
+Test_UpdateMusicWhileRunning :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	perm : *Persist = GetPermanentStorage(game_memory);
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+
+		//TODO Use InitAllData here once we remove this
+		perm.all_data = InitAllData();
+		perm.all_data.runtime_settings.update_music_while_running = true;
+		ResetAllRendererData(renderer_data);
+
+		SetupMusicAndRows(perm.all_data, .[
+		.{row_section_data=.[.{x_length=4}], row_system_type=.internal_pitch},
+		.{row_section_data=.[.{x_length=4}], row_system_type=.internal_pitch},
+		]);
+
+		//TODO Should we just create generally in here? I guess this makes things consistent across tests.
+		text_file := CreateTestTextFile(*ALL_NEXT_IDS, *perm.all_data.all_text_files);
+		WriteFileString(text_file,
+//TODO Could do sprint if needed to put things in here
+#string DONE
+main :: () {
+  tano(0,0) ~= 0;
+  tano(0,1) ~= 2;
+  tano(0,0) ~= 1;
+  tano(0,2) ~= 3;
+}
+DONE);
+
+		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
+			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+	
+		array_resize(*perm.test_data.all_sub_tests, 9+1);
+	} 
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	if perm.test_data.sub_test_index == {
+	case 0; {
+		open_test := MakeTerminalEvent(.open_op, TEST_TEXT_NAME);
+		array_add(*perm.all_data.all_terminal_events, open_test);
+	}
+	case 1; DownUpInputMap(.TEXT_DEBUG_TOGGLE, game_input);
+	case 2; DownUpInputMap(.TEXT_COMPILE, game_input);
+	case 3; {
+		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
+		CodeBPForTest(3, *text_op.exec_info.debug_info, text_op.text_comp_data);
+		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+	}
+	case 4; {
+		AssertEquals(perm.all_data.all_mspace_data[0].mspace_id, perm.all_data.audio_mspace_id);
+		AssertFloat64Equals(0, perm.all_data.game_audio_play.float_x_memory);
+		AssertEquals(0, perm.all_data.game_audio_play.music_pt_play_index);
+
+		open_test := MakeTerminalEvent(.mp, "1");
+		array_add(*perm.all_data.all_terminal_events, open_test);
+	}
+	case 5; {
+		AssertEquals(perm.all_data.all_mspace_data[0].mspace_id, perm.all_data.audio_mspace_id);
+		AssertFloat64Equals(1, perm.all_data.game_audio_play.float_x_memory);
+		AssertEquals(1, perm.all_data.game_audio_play.music_pt_play_index);
+
+		DownUpInputMap(.PLAY_PAUSE_MUSIC, game_input);
+	}
+	case 6; {
+		AssertEquals(perm.all_data.all_mspace_data[0].mspace_id, perm.all_data.audio_mspace_id);
+		AssertEquals(true, perm.all_data.game_audio_play.float_x_memory > 0);
+		AssertEquals(2, perm.all_data.game_audio_play.music_pt_play_index);
+		AssertFloat64Equals(2.0,
+			perm.all_data.all_mspace_data[0].all_music_pts[perm.all_data.game_audio_play.music_pt_play_index-1].music_pt_float);
+
+		//Add a point before so we music_pt_play index should be up by 1
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 7; {
+		AssertEquals(perm.all_data.all_mspace_data[0].mspace_id, perm.all_data.audio_mspace_id);
+		AssertEquals(true, perm.all_data.game_audio_play.float_x_memory > 0);
+		AssertEquals(3, perm.all_data.game_audio_play.music_pt_play_index);
+		AssertFloat64Equals(2.0,
+			perm.all_data.all_mspace_data[0].all_music_pts[perm.all_data.game_audio_play.music_pt_play_index-1].music_pt_float);
+
+		//Add a point after so it should stay the same
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 8; {
+		AssertEquals(perm.all_data.all_mspace_data[0].mspace_id, perm.all_data.audio_mspace_id);
+		AssertEquals(true, perm.all_data.game_audio_play.float_x_memory > 0);
+		AssertEquals(3, perm.all_data.game_audio_play.music_pt_play_index);
+		AssertFloat64Equals(2.0,
+			perm.all_data.all_mspace_data[0].all_music_pts[perm.all_data.game_audio_play.music_pt_play_index-1].music_pt_float);
+
+		// DownUpInputMap(.PLAY_PAUSE_MUSIC, game_input);
+	}
+	case 9; {
+		AssertEquals(perm.all_data.all_mspace_data[0].mspace_id, perm.all_data.audio_mspace_id);
+		AssertEquals(true, perm.all_data.game_audio_play.float_x_memory > 0);
+		AssertEquals(3, perm.all_data.game_audio_play.music_pt_play_index);
+
+		DownUpInputMap(.PLAY_PAUSE_MUSIC, game_input);
 	}
 	}
 
@@ -12689,6 +13048,18 @@ DONE);
 
 } @ITest
 
+AssertFoundMusicPt :: inline (mp : MusicPoint, all_music_pts : [] MusicPoint) {
+	AssertFoundMusicPt(all_music_pts, mp);
+}
+AssertFoundMusicPt :: inline (all_music_pts : [] MusicPoint, mp : MusicPoint) {
+	found_music_pt : bool = false;
+	for all_music_pts if EqMusicPt(it, mp) {
+		found_music_pt = true;
+		break;
+	}
+	AssertEquals(true, found_music_pt);
+}
+
 Test_TanoTilde :: (
 	test_name : string,
 	game_memory : *GameMemory, 
@@ -12743,16 +13114,19 @@ DONE);
   		// tano(0,1) ~= tano(0,0) ~ 4;
 		count_equal := AssertEquals(3, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[1];
-			AssertFloat64Equals(0., n0.music_pt_float);
-			AssertFloat64Equals(1., n0.x_start_float);
-			AssertFloat64Equals(2., n0.x_end_float);
-			AssertEquals(0, n0.row_index);
-			n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[2];
-			AssertFloat64Equals(4., n1.music_pt_float);
-			AssertFloat64Equals(1., n1.x_start_float);
-			AssertFloat64Equals(2., n1.x_end_float);
-			AssertEquals(0, n1.row_index);
+			mp0 : MusicPoint;
+			mp0.row_index = 0;
+			mp0.music_pt_float = 0;
+			mp0.x_start_float = 1;
+			mp0.x_end_float = 2;
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, mp0);
+
+			mp1 : MusicPoint;
+			mp1.row_index = 0;
+			mp1.music_pt_float = 4;
+			mp1.x_start_float = 1;
+			mp1.x_end_float = 2;
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, mp1);
 		}
 
 		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
@@ -12761,26 +13135,10 @@ DONE);
   		// tano(0,2) ~= tano(0,1) ~ int.[7,11];
 		count_equal := AssertEquals(7, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[3];
-			AssertFloat64Equals(0., n0.music_pt_float);
-			AssertFloat64Equals(2., n0.x_start_float);
-			AssertFloat64Equals(3., n0.x_end_float);
-			AssertEquals(0, n0.row_index);
-			n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[4];
-			AssertFloat64Equals(4., n1.music_pt_float);
-			AssertFloat64Equals(2., n1.x_start_float);
-			AssertFloat64Equals(3., n1.x_end_float);
-			AssertEquals(0, n1.row_index);
-			n2 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[5];
-			AssertFloat64Equals(7., n2.music_pt_float);
-			AssertFloat64Equals(2., n2.x_start_float);
-			AssertFloat64Equals(3., n2.x_end_float);
-			AssertEquals(0, n2.row_index);
-			n3 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[6];
-			AssertFloat64Equals(11., n3.music_pt_float);
-			AssertFloat64Equals(2., n3.x_start_float);
-			AssertFloat64Equals(3., n3.x_end_float);
-			AssertEquals(0, n3.row_index);
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, MakeMusicPoint(0.,0,2.,3.));
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, MakeMusicPoint(4.,0,2.,3.));
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, MakeMusicPoint(7.,0,2.,3.));
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, MakeMusicPoint(11.,0,2.,3.));
 		}
 
 		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
@@ -12871,11 +13229,7 @@ DONE);
 	case 5; {
 		count_equal := AssertEquals(2, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			neume : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[1];
-			AssertFloat64Equals(0., neume.music_pt_float);
-			AssertFloat64Equals(0., neume.x_start_float);
-			AssertFloat64Equals(2., neume.x_end_float);
-			AssertEquals(1, neume.row_index);
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, MakeMusicPoint(0.,1,0.,2.));
 		}
 
 		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
@@ -12883,26 +13237,10 @@ DONE);
 	case 6; {
 		count_equal := AssertEquals(6, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[2];
-			AssertFloat64Equals(7., n1.music_pt_float);
-			AssertFloat64Equals(2., n1.x_start_float);
-			AssertFloat64Equals(4.5, n1.x_end_float);
-			AssertEquals(0, n1.row_index);
-			n2 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[3];
-			AssertFloat64Equals(11., n2.music_pt_float);
-			AssertFloat64Equals(2., n2.x_start_float);
-			AssertFloat64Equals(4.5, n2.x_end_float);
-			AssertEquals(0, n2.row_index);
-			n3 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[4];
-			AssertFloat64Equals(7., n3.music_pt_float);
-			AssertFloat64Equals(2., n3.x_start_float);
-			AssertFloat64Equals(4.5, n3.x_end_float);
-			AssertEquals(1, n3.row_index);
-			n4 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[5];
-			AssertFloat64Equals(11., n4.music_pt_float);
-			AssertFloat64Equals(2., n4.x_start_float);
-			AssertFloat64Equals(4.5, n4.x_end_float);
-			AssertEquals(1, n4.row_index);
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, MakeMusicPoint(7.,0,2.,4.5));
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, MakeMusicPoint(11.,0,2.,4.5));
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, MakeMusicPoint(7.,1,2.,4.5));
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, MakeMusicPoint(11.,1,2.,4.5));
 		}
 
 		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
@@ -12915,36 +13253,13 @@ DONE);
 		//Could also search for neumes if that makes things easier.
 		count_equal := AssertEquals(12, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[6];
-			AssertFloat64Equals(4., n0.music_pt_float);
-			AssertFloat64Equals(8.5, n0.x_start_float);
-			AssertFloat64Equals(9.5, n0.x_end_float);
-			AssertEquals(0, n0.row_index);
-			n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[7];
-			AssertFloat64Equals(0., n1.music_pt_float);
-			AssertFloat64Equals(7.5, n1.x_start_float);
-			AssertFloat64Equals(9.5, n1.x_end_float);
-			AssertEquals(1, n1.row_index);
-			n2 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[8];
-			AssertFloat64Equals(7., n2.music_pt_float);
-			AssertFloat64Equals(5., n2.x_start_float);
-			AssertFloat64Equals(7.5, n2.x_end_float);
-			AssertEquals(0, n2.row_index);
-			n3 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[9];
-			AssertFloat64Equals(11., n3.music_pt_float);
-			AssertFloat64Equals(5., n3.x_start_float);
-			AssertFloat64Equals(7.5, n3.x_end_float);
-			AssertEquals(0, n3.row_index);
-			n4 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[10];
-			AssertFloat64Equals(7., n4.music_pt_float);
-			AssertFloat64Equals(5., n4.x_start_float);
-			AssertFloat64Equals(7.5, n4.x_end_float);
-			AssertEquals(1, n4.row_index);
-			n5 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[11];
-			AssertFloat64Equals(11., n5.music_pt_float);
-			AssertFloat64Equals(5., n5.x_start_float);
-			AssertFloat64Equals(7.5, n5.x_end_float);
-			AssertEquals(1, n5.row_index);
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, 
+				.{music_pt_float=4.,row_index=0,x_start_float=8.5,x_end_float=9.5});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, MakeMusicPoint(0.,1,7.5,9.5));
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, MakeMusicPoint(7.,0,5.0,7.5));
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, MakeMusicPoint(11.,0,5.0,7.5));
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, MakeMusicPoint(7.,0,5.0,7.5));
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, MakeMusicPoint(11.,1,5.0,7.5));
 		}
 
 		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
@@ -13014,16 +13329,29 @@ DONE);
   		//t0 += 1;
 		count_equal := AssertEquals(2, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[0];
-			AssertFloat64Equals(2., n0.music_pt_float);
-			AssertFloat64Equals(0., n0.x_start_float);
-			AssertFloat64Equals(1., n0.x_end_float);
-			AssertEquals(0, n0.row_index);
-			n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[1];
-			AssertFloat64Equals(8., n1.music_pt_float);
-			AssertFloat64Equals(0., n1.x_start_float);
-			AssertFloat64Equals(1., n1.x_end_float);
-			AssertEquals(0, n1.row_index);
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=2.,
+				x_start_float=0.,
+				x_end_float=1.,
+				row_index=0,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=8.,
+				x_start_float=0.,
+				x_end_float=1.,
+				row_index=0,
+			});
+
+			// n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[0];
+			// AssertFloat64Equals(2., n0.music_pt_float);
+			// AssertFloat64Equals(0., n0.x_start_float);
+			// AssertFloat64Equals(1., n0.x_end_float);
+			// AssertEquals(0, n0.row_index);
+			// n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[1];
+			// AssertFloat64Equals(8., n1.music_pt_float);
+			// AssertFloat64Equals(0., n1.x_start_float);
+			// AssertFloat64Equals(1., n1.x_end_float);
+			// AssertEquals(0, n1.row_index);
 		}
 
 		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
@@ -13032,16 +13360,29 @@ DONE);
   		//t0 -= 1;
 		count_equal := AssertEquals(2, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[0];
-			AssertFloat64Equals(1., n0.music_pt_float);
-			AssertFloat64Equals(0., n0.x_start_float);
-			AssertFloat64Equals(1., n0.x_end_float);
-			AssertEquals(0, n0.row_index);
-			n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[1];
-			AssertFloat64Equals(7., n1.music_pt_float);
-			AssertFloat64Equals(0., n1.x_start_float);
-			AssertFloat64Equals(1., n1.x_end_float);
-			AssertEquals(0, n1.row_index);
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=1.,
+				x_start_float=0.,
+				x_end_float=1.,
+				row_index=0,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=7.,
+				x_start_float=0.,
+				x_end_float=1.,
+				row_index=0,
+			});
+
+			// n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[0];
+			// AssertFloat64Equals(1., n0.music_pt_float);
+			// AssertFloat64Equals(0., n0.x_start_float);
+			// AssertFloat64Equals(1., n0.x_end_float);
+			// AssertEquals(0, n0.row_index);
+			// n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[1];
+			// AssertFloat64Equals(7., n1.music_pt_float);
+			// AssertFloat64Equals(0., n1.x_start_float);
+			// AssertFloat64Equals(1., n1.x_end_float);
+			// AssertEquals(0, n1.row_index);
 		}
 
 		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
@@ -13050,16 +13391,29 @@ DONE);
   		//t0 *= 2.0;
 		count_equal := AssertEquals(2, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[0];
-			AssertFloat64Equals(2., n0.music_pt_float);
-			AssertFloat64Equals(0., n0.x_start_float);
-			AssertFloat64Equals(1., n0.x_end_float);
-			AssertEquals(0, n0.row_index);
-			n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[1];
-			AssertFloat64Equals(14., n1.music_pt_float);
-			AssertFloat64Equals(0., n1.x_start_float);
-			AssertFloat64Equals(1., n1.x_end_float);
-			AssertEquals(0, n1.row_index);
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=2.,
+				x_start_float=0.,
+				x_end_float=1.,
+				row_index=0,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=14.,
+				x_start_float=0.,
+				x_end_float=1.,
+				row_index=0,
+			});
+
+			// n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[0];
+			// AssertFloat64Equals(2., n0.music_pt_float);
+			// AssertFloat64Equals(0., n0.x_start_float);
+			// AssertFloat64Equals(1., n0.x_end_float);
+			// AssertEquals(0, n0.row_index);
+			// n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[1];
+			// AssertFloat64Equals(14., n1.music_pt_float);
+			// AssertFloat64Equals(0., n1.x_start_float);
+			// AssertFloat64Equals(1., n1.x_end_float);
+			// AssertEquals(0, n1.row_index);
 		}
 
 		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
@@ -13068,16 +13422,29 @@ DONE);
   		//t0 %= 11.0;
 		count_equal := AssertEquals(2, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[0];
-			AssertFloat64Equals(2., n0.music_pt_float);
-			AssertFloat64Equals(0., n0.x_start_float);
-			AssertFloat64Equals(1., n0.x_end_float);
-			AssertEquals(0, n0.row_index);
-			n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[1];
-			AssertFloat64Equals(3., n1.music_pt_float);
-			AssertFloat64Equals(0., n1.x_start_float);
-			AssertFloat64Equals(1., n1.x_end_float);
-			AssertEquals(0, n1.row_index);
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=2.,
+				x_start_float=0.,
+				x_end_float=1.,
+				row_index=0,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=3.,
+				x_start_float=0.,
+				x_end_float=1.,
+				row_index=0,
+			});
+
+			// n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[0];
+			// AssertFloat64Equals(2., n0.music_pt_float);
+			// AssertFloat64Equals(0., n0.x_start_float);
+			// AssertFloat64Equals(1., n0.x_end_float);
+			// AssertEquals(0, n0.row_index);
+			// n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[1];
+			// AssertFloat64Equals(3., n1.music_pt_float);
+			// AssertFloat64Equals(0., n1.x_start_float);
+			// AssertFloat64Equals(1., n1.x_end_float);
+			// AssertEquals(0, n1.row_index);
 		}
 
 		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
@@ -13089,16 +13456,29 @@ DONE);
   		//t0 /= 2.1;
 		count_equal := AssertEquals(2, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[0];
-			AssertFloat64Equals(2/2.1, n0.music_pt_float);
-			AssertFloat64Equals(0., n0.x_start_float);
-			AssertFloat64Equals(1., n0.x_end_float);
-			AssertEquals(0, n0.row_index);
-			n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[1];
-			AssertFloat64Equals(3/2.1, n1.music_pt_float);
-			AssertFloat64Equals(0., n1.x_start_float);
-			AssertFloat64Equals(1., n1.x_end_float);
-			AssertEquals(0, n1.row_index);
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=2/2.1,
+				x_start_float=0.,
+				x_end_float=1.,
+				row_index=0,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=3/2.1,
+				x_start_float=0.,
+				x_end_float=1.,
+				row_index=0,
+			});
+
+			// n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[0];
+			// AssertFloat64Equals(2/2.1, n0.music_pt_float);
+			// AssertFloat64Equals(0., n0.x_start_float);
+			// AssertFloat64Equals(1., n0.x_end_float);
+			// AssertEquals(0, n0.row_index);
+			// n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[1];
+			// AssertFloat64Equals(3/2.1, n1.music_pt_float);
+			// AssertFloat64Equals(0., n1.x_start_float);
+			// AssertFloat64Equals(1., n1.x_end_float);
+			// AssertEquals(0, n1.row_index);
 		}
 
 		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
@@ -13164,21 +13544,39 @@ DONE);
 	case 4; {
 		count_equal := AssertEquals(3, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[0];
-			AssertFloat64Equals(0., n0.music_pt_float);
-			AssertFloat64Equals(0., n0.x_start_float);
-			AssertFloat64Equals(1., n0.x_end_float);
-			AssertEquals(0, n0.row_index);
-			n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[1];
-			AssertFloat64Equals(4., n1.music_pt_float);
-			AssertFloat64Equals(0., n1.x_start_float);
-			AssertFloat64Equals(1., n1.x_end_float);
-			AssertEquals(0, n1.row_index);
-			n2 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[2];
-			AssertFloat64Equals(5., n2.music_pt_float);
-			AssertFloat64Equals(1., n2.x_start_float);
-			AssertFloat64Equals(2., n2.x_end_float);
-			AssertEquals(0, n2.row_index);
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=0.,
+				x_start_float=0.,
+				x_end_float=1.,
+				row_index=0,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=4.,
+				x_start_float=0.,
+				x_end_float=1.,
+				row_index=0,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=5.,
+				x_start_float=1.,
+				x_end_float=2.,
+				row_index=0,
+			});
+			// n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[0];
+			// AssertFloat64Equals(0., n0.music_pt_float);
+			// AssertFloat64Equals(0., n0.x_start_float);
+			// AssertFloat64Equals(1., n0.x_end_float);
+			// AssertEquals(0, n0.row_index);
+			// n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[1];
+			// AssertFloat64Equals(4., n1.music_pt_float);
+			// AssertFloat64Equals(0., n1.x_start_float);
+			// AssertFloat64Equals(1., n1.x_end_float);
+			// AssertEquals(0, n1.row_index);
+			// n2 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[2];
+			// AssertFloat64Equals(5., n2.music_pt_float);
+			// AssertFloat64Equals(1., n2.x_start_float);
+			// AssertFloat64Equals(2., n2.x_end_float);
+			// AssertEquals(0, n2.row_index);
 		}
 
 		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
@@ -13186,21 +13584,39 @@ DONE);
 	case 5; {
 		count_equal := AssertEquals(6, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[3];
-			AssertFloat64Equals(0+1., n0.music_pt_float);
-			AssertFloat64Equals(2., n0.x_start_float);
-			AssertFloat64Equals(3., n0.x_end_float);
-			AssertEquals(0, n0.row_index);
-			n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[4];
-			AssertFloat64Equals(4+1., n1.music_pt_float);
-			AssertFloat64Equals(2., n1.x_start_float);
-			AssertFloat64Equals(3., n1.x_end_float);
-			AssertEquals(0, n1.row_index);
-			n2 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[5];
-			AssertFloat64Equals(5+1., n2.music_pt_float);
-			AssertFloat64Equals(3., n2.x_start_float);
-			AssertFloat64Equals(4., n2.x_end_float);
-			AssertEquals(0, n2.row_index);
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=0+1.,
+				x_start_float=2.,
+				x_end_float=3.,
+				row_index=0,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=4+1.,
+				x_start_float=2.,
+				x_end_float=3.,
+				row_index=0,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=5+1.,
+				x_start_float=3.,
+				x_end_float=4.,
+				row_index=0,
+			});
+			// n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[3];
+			// AssertFloat64Equals(0+1., n0.music_pt_float);
+			// AssertFloat64Equals(2., n0.x_start_float);
+			// AssertFloat64Equals(3., n0.x_end_float);
+			// AssertEquals(0, n0.row_index);
+			// n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[4];
+			// AssertFloat64Equals(4+1., n1.music_pt_float);
+			// AssertFloat64Equals(2., n1.x_start_float);
+			// AssertFloat64Equals(3., n1.x_end_float);
+			// AssertEquals(0, n1.row_index);
+			// n2 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[5];
+			// AssertFloat64Equals(5+1., n2.music_pt_float);
+			// AssertFloat64Equals(3., n2.x_start_float);
+			// AssertFloat64Equals(4., n2.x_end_float);
+			// AssertEquals(0, n2.row_index);
 		}
 
 
@@ -13211,21 +13627,40 @@ DONE);
 		//Could also search for neumes if that makes things easier.
 		count_equal := AssertEquals(9, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[6];
-			AssertFloat64Equals(0+1., n0.music_pt_float);
-			AssertFloat64Equals(1., n0.x_start_float);
-			AssertFloat64Equals(2., n0.x_end_float);
-			AssertEquals(1, n0.row_index);
-			n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[7];
-			AssertFloat64Equals(4+1., n1.music_pt_float);
-			AssertFloat64Equals(1., n1.x_start_float);
-			AssertFloat64Equals(2., n1.x_end_float);
-			AssertEquals(1, n1.row_index);
-			n2 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[8];
-			AssertFloat64Equals(5+1., n2.music_pt_float);
-			AssertFloat64Equals(0., n2.x_start_float);
-			AssertFloat64Equals(1., n2.x_end_float);
-			AssertEquals(1, n2.row_index);
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=0+1.,
+				x_start_float=1.,
+				x_end_float=2.,
+				row_index=1,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=4+1.,
+				x_start_float=1.,
+				x_end_float=2.,
+				row_index=1,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=5+1.,
+				x_start_float=0.,
+				x_end_float=1.,
+				row_index=1,
+			});
+
+			// n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[6];
+			// AssertFloat64Equals(0+1., n0.music_pt_float);
+			// AssertFloat64Equals(1., n0.x_start_float);
+			// AssertFloat64Equals(2., n0.x_end_float);
+			// AssertEquals(1, n0.row_index);
+			// n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[7];
+			// AssertFloat64Equals(4+1., n1.music_pt_float);
+			// AssertFloat64Equals(1., n1.x_start_float);
+			// AssertFloat64Equals(2., n1.x_end_float);
+			// AssertEquals(1, n1.row_index);
+			// n2 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[8];
+			// AssertFloat64Equals(5+1., n2.music_pt_float);
+			// AssertFloat64Equals(0., n2.x_start_float);
+			// AssertFloat64Equals(1., n2.x_end_float);
+			// AssertEquals(1, n2.row_index);
 		}
 
 		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
@@ -13306,26 +13741,53 @@ DONE);
 	case 4; {
 		count_equal := AssertEquals(4, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[0];
-			AssertFloat64Equals(1., n0.music_pt_float);
-			AssertFloat64Equals(0., n0.x_start_float);
-			AssertFloat64Equals(1., n0.x_end_float);
-			AssertEquals(0, n0.row_index);
-			n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[1];
-			AssertFloat64Equals(8., n1.music_pt_float);
-			AssertFloat64Equals(1., n1.x_start_float);
-			AssertFloat64Equals(2., n1.x_end_float);
-			AssertEquals(0, n1.row_index);
-			n2 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[2];
-			AssertFloat64Equals(12-n0.music_pt_float, n2.music_pt_float);
-			AssertFloat64Equals(2., n2.x_start_float);
-			AssertFloat64Equals(3., n2.x_end_float);
-			AssertEquals(0, n2.row_index);
-			n3 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[3];
-			AssertFloat64Equals(12-n1.music_pt_float, n3.music_pt_float);
-			AssertFloat64Equals(3., n3.x_start_float);
-			AssertFloat64Equals(4., n3.x_end_float);
-			AssertEquals(0, n3.row_index);
+			n0 := MusicPoint.{
+				music_pt_float=1.,
+				x_start_float=0.,
+				x_end_float=1.,
+				row_index=0,
+			};
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, n0);
+			n1 := MusicPoint.{
+				music_pt_float=8.,
+				x_start_float=1.,
+				x_end_float=2.,
+				row_index=0,
+			};
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, n1);
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=12-n0.music_pt_float,
+				x_start_float=2.,
+				x_end_float=3.,
+				row_index=0,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=12-n1.music_pt_float,
+				x_start_float=3.,
+				x_end_float=4.,
+				row_index=0,
+			});
+
+			// n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[0];
+			// AssertFloat64Equals(1., n0.music_pt_float);
+			// AssertFloat64Equals(0., n0.x_start_float);
+			// AssertFloat64Equals(1., n0.x_end_float);
+			// AssertEquals(0, n0.row_index);
+			// n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[1];
+			// AssertFloat64Equals(8., n1.music_pt_float);
+			// AssertFloat64Equals(1., n1.x_start_float);
+			// AssertFloat64Equals(2., n1.x_end_float);
+			// AssertEquals(0, n1.row_index);
+			// n2 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[2];
+			// AssertFloat64Equals(12-n0.music_pt_float, n2.music_pt_float);
+			// AssertFloat64Equals(2., n2.x_start_float);
+			// AssertFloat64Equals(3., n2.x_end_float);
+			// AssertEquals(0, n2.row_index);
+			// n3 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[3];
+			// AssertFloat64Equals(12-n1.music_pt_float, n3.music_pt_float);
+			// AssertFloat64Equals(3., n3.x_start_float);
+			// AssertFloat64Equals(4., n3.x_end_float);
+			// AssertEquals(0, n3.row_index);
 		}
 
 		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
@@ -13371,16 +13833,28 @@ DONE);
 	case 7; {
 		count_equal := AssertEquals(10, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[8];
-			AssertFloat64Equals(1-4., n0.music_pt_float);
-			AssertFloat64Equals(0., n0.x_start_float);
-			AssertFloat64Equals(1., n0.x_end_float);
-			AssertEquals(1, n0.row_index);
-			n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[9];
-			AssertFloat64Equals(8-4., n1.music_pt_float);
-			AssertFloat64Equals(1., n1.x_start_float);
-			AssertFloat64Equals(2., n1.x_end_float);
-			AssertEquals(1, n1.row_index);
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=1-4.,
+				x_start_float=0.,
+				x_end_float=1.,
+				row_index=1,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=8-4.,
+				x_start_float=1.,
+				x_end_float=2.,
+				row_index=1,
+			});
+			// n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[8];
+			// AssertFloat64Equals(1-4., n0.music_pt_float);
+			// AssertFloat64Equals(0., n0.x_start_float);
+			// AssertFloat64Equals(1., n0.x_end_float);
+			// AssertEquals(1, n0.row_index);
+			// n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[9];
+			// AssertFloat64Equals(8-4., n1.music_pt_float);
+			// AssertFloat64Equals(1., n1.x_start_float);
+			// AssertFloat64Equals(2., n1.x_end_float);
+			// AssertEquals(1, n1.row_index);
 		}
 
 
@@ -13448,26 +13922,51 @@ DONE);
 	case 4; {
 		count_equal := AssertEquals(4, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[0];
-			AssertFloat64Equals(0., n0.music_pt_float);
-			AssertFloat64Equals(0., n0.x_start_float);
-			AssertFloat64Equals(1., n0.x_end_float);
-			AssertEquals(0, n0.row_index);
-			n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[1];
-			AssertFloat64Equals(16., n1.music_pt_float);
-			AssertFloat64Equals(0., n1.x_start_float);
-			AssertFloat64Equals(1., n1.x_end_float);
-			AssertEquals(0, n1.row_index);
-			n2 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[2];
-			AssertFloat64Equals(0, n2.music_pt_float);
-			AssertFloat64Equals(1., n2.x_start_float);
-			AssertFloat64Equals(2., n2.x_end_float);
-			AssertEquals(0, n2.row_index);
-			n3 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[3];
-			AssertFloat64Equals(4, n3.music_pt_float);
-			AssertFloat64Equals(1., n3.x_start_float);
-			AssertFloat64Equals(2., n3.x_end_float);
-			AssertEquals(0, n3.row_index);
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=0.,
+				x_start_float=0.,
+				x_end_float=1.,
+				row_index=0,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=16.,
+				x_start_float=0.,
+				x_end_float=1.,
+				row_index=0,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=0.,
+				x_start_float=1.,
+				x_end_float=2.,
+				row_index=0,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=4.,
+				x_start_float=1.,
+				x_end_float=2.,
+				row_index=0,
+			});
+
+			// n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[0];
+			// AssertFloat64Equals(0., n0.music_pt_float);
+			// AssertFloat64Equals(0., n0.x_start_float);
+			// AssertFloat64Equals(1., n0.x_end_float);
+			// AssertEquals(0, n0.row_index);
+			// n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[1];
+			// AssertFloat64Equals(16., n1.music_pt_float);
+			// AssertFloat64Equals(0., n1.x_start_float);
+			// AssertFloat64Equals(1., n1.x_end_float);
+			// AssertEquals(0, n1.row_index);
+			// n2 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[2];
+			// AssertFloat64Equals(0, n2.music_pt_float);
+			// AssertFloat64Equals(1., n2.x_start_float);
+			// AssertFloat64Equals(2., n2.x_end_float);
+			// AssertEquals(0, n2.row_index);
+			// n3 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[3];
+			// AssertFloat64Equals(4, n3.music_pt_float);
+			// AssertFloat64Equals(1., n3.x_start_float);
+			// AssertFloat64Equals(2., n3.x_end_float);
+			// AssertEquals(0, n3.row_index);
 		}
 
 		// DownUpInputMap(.DEBUG_STEP_OVER, game_input);
@@ -13535,26 +14034,51 @@ DONE);
 	case 4; {
 		count_equal := AssertEquals(4, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[0];
-			AssertFloat64Equals(0., n0.music_pt_float);
-			AssertFloat64Equals(0., n0.x_start_float);
-			AssertFloat64Equals(1., n0.x_end_float);
-			AssertEquals(0, n0.row_index);
-			n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[1];
-			AssertFloat64Equals(5., n1.music_pt_float);
-			AssertFloat64Equals(1., n1.x_start_float);
-			AssertFloat64Equals(2., n1.x_end_float);
-			AssertEquals(0, n1.row_index);
-			n2 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[2];
-			AssertFloat64Equals(1., n2.music_pt_float);
-			AssertFloat64Equals(0., n2.x_start_float);
-			AssertFloat64Equals(1., n2.x_end_float);
-			AssertEquals(1, n2.row_index);
-			n3 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[3];
-			AssertFloat64Equals(6., n3.music_pt_float);
-			AssertFloat64Equals(1., n3.x_start_float);
-			AssertFloat64Equals(2., n3.x_end_float);
-			AssertEquals(1, n3.row_index);
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=0.,
+				x_start_float=0.,
+				x_end_float=1.,
+				row_index=0,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=5.,
+				x_start_float=1.,
+				x_end_float=2.,
+				row_index=0,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=1.,
+				x_start_float=0.,
+				x_end_float=1.,
+				row_index=1,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=6.,
+				x_start_float=1.,
+				x_end_float=2.,
+				row_index=1,
+			});
+
+			// n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[0];
+			// AssertFloat64Equals(0., n0.music_pt_float);
+			// AssertFloat64Equals(0., n0.x_start_float);
+			// AssertFloat64Equals(1., n0.x_end_float);
+			// AssertEquals(0, n0.row_index);
+			// n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[1];
+			// AssertFloat64Equals(5., n1.music_pt_float);
+			// AssertFloat64Equals(1., n1.x_start_float);
+			// AssertFloat64Equals(2., n1.x_end_float);
+			// AssertEquals(0, n1.row_index);
+			// n2 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[2];
+			// AssertFloat64Equals(1., n2.music_pt_float);
+			// AssertFloat64Equals(0., n2.x_start_float);
+			// AssertFloat64Equals(1., n2.x_end_float);
+			// AssertEquals(1, n2.row_index);
+			// n3 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[3];
+			// AssertFloat64Equals(6., n3.music_pt_float);
+			// AssertFloat64Equals(1., n3.x_start_float);
+			// AssertFloat64Equals(2., n3.x_end_float);
+			// AssertEquals(1, n3.row_index);
 		}
 
 		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
@@ -13562,26 +14086,51 @@ DONE);
 	case 5; {
 		count_equal := AssertEquals(8, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[4];
-			AssertFloat64Equals(1., n0.music_pt_float);
-			AssertFloat64Equals(2., n0.x_start_float);
-			AssertFloat64Equals(3., n0.x_end_float);
-			AssertEquals(1, n0.row_index);
-			n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[5];
-			AssertFloat64Equals(6., n1.music_pt_float);
-			AssertFloat64Equals(3., n1.x_start_float);
-			AssertFloat64Equals(4., n1.x_end_float);
-			AssertEquals(1, n1.row_index);
-			n2 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[6];
-			AssertFloat64Equals(2, n2.music_pt_float);
-			AssertFloat64Equals(2., n2.x_start_float);
-			AssertFloat64Equals(3., n2.x_end_float);
-			AssertEquals(0, n2.row_index);
-			n3 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[7];
-			AssertFloat64Equals(7, n3.music_pt_float);
-			AssertFloat64Equals(3., n3.x_start_float);
-			AssertFloat64Equals(4., n3.x_end_float);
-			AssertEquals(0, n3.row_index);
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=1.,
+				x_start_float=2.,
+				x_end_float=3.,
+				row_index=1,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=6.,
+				x_start_float=3.,
+				x_end_float=4.,
+				row_index=1,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=2.,
+				x_start_float=2.,
+				x_end_float=3.,
+				row_index=0,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=7.,
+				x_start_float=3.,
+				x_end_float=4.,
+				row_index=0,
+			});
+
+			// n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[4];
+			// AssertFloat64Equals(1., n0.music_pt_float);
+			// AssertFloat64Equals(2., n0.x_start_float);
+			// AssertFloat64Equals(3., n0.x_end_float);
+			// AssertEquals(1, n0.row_index);
+			// n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[5];
+			// AssertFloat64Equals(6., n1.music_pt_float);
+			// AssertFloat64Equals(3., n1.x_start_float);
+			// AssertFloat64Equals(4., n1.x_end_float);
+			// AssertEquals(1, n1.row_index);
+			// n2 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[6];
+			// AssertFloat64Equals(2, n2.music_pt_float);
+			// AssertFloat64Equals(2., n2.x_start_float);
+			// AssertFloat64Equals(3., n2.x_end_float);
+			// AssertEquals(0, n2.row_index);
+			// n3 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[7];
+			// AssertFloat64Equals(7, n3.music_pt_float);
+			// AssertFloat64Equals(3., n3.x_start_float);
+			// AssertFloat64Equals(4., n3.x_end_float);
+			// AssertEquals(0, n3.row_index);
 		}
 
 
@@ -13650,11 +14199,17 @@ DONE);
 	case 4; {
 		count_equal := AssertEquals(1, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[0];
-			AssertFloat64Equals(0., n0.music_pt_float);
-			AssertFloat64Equals(2., n0.x_start_float);
-			AssertFloat64Equals(3., n0.x_end_float);
-			AssertEquals(2, n0.row_index);
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=0.,
+				x_start_float=2.,
+				x_end_float=3.,
+				row_index=2,
+			});
+			// n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[0];
+			// AssertFloat64Equals(0., n0.music_pt_float);
+			// AssertFloat64Equals(2., n0.x_start_float);
+			// AssertFloat64Equals(3., n0.x_end_float);
+			// AssertEquals(2, n0.row_index);
 		}
 
 		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
@@ -13662,11 +14217,17 @@ DONE);
 	case 5; {
 		count_equal := AssertEquals(2, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[1];
-			AssertFloat64Equals(1., n0.music_pt_float);
-			AssertFloat64Equals(0., n0.x_start_float);
-			AssertFloat64Equals(1., n0.x_end_float);
-			AssertEquals(0, n0.row_index);
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=1.,
+				x_start_float=0.,
+				x_end_float=1.,
+				row_index=0,
+			});
+			// n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[1];
+			// AssertFloat64Equals(1., n0.music_pt_float);
+			// AssertFloat64Equals(0., n0.x_start_float);
+			// AssertFloat64Equals(1., n0.x_end_float);
+			// AssertEquals(0, n0.row_index);
 		}
 
 		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
@@ -13750,11 +14311,17 @@ DONE);
 	case 4; {
 		count_equal := AssertEquals(1, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[0];
-			AssertFloat64Equals(0., n0.music_pt_float);
-			AssertFloat64Equals(0., n0.x_start_float);
-			AssertFloat64Equals(1., n0.x_end_float);
-			AssertEquals(0, n0.row_index);
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=0.,
+				x_start_float=0.,
+				x_end_float=1.,
+				row_index=0,
+			});
+			// n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[0];
+			// AssertFloat64Equals(0., n0.music_pt_float);
+			// AssertFloat64Equals(0., n0.x_start_float);
+			// AssertFloat64Equals(1., n0.x_end_float);
+			// AssertEquals(0, n0.row_index);
 		}
 
 		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
@@ -13762,11 +14329,17 @@ DONE);
 	case 5; {
 		count_equal := AssertEquals(2, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[1];
-			AssertFloat64Equals(1., n0.music_pt_float);
-			AssertFloat64Equals(2., n0.x_start_float);
-			AssertFloat64Equals(3., n0.x_end_float);
-			AssertEquals(3, n0.row_index);
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=1.,
+				x_start_float=2.,
+				x_end_float=3.,
+				row_index=3,
+			});
+			// n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[1];
+			// AssertFloat64Equals(1., n0.music_pt_float);
+			// AssertFloat64Equals(2., n0.x_start_float);
+			// AssertFloat64Equals(3., n0.x_end_float);
+			// AssertEquals(3, n0.row_index);
 		}
 
 		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
@@ -13774,11 +14347,17 @@ DONE);
 	case 6; {
 		count_equal := AssertEquals(3, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[2];
-			AssertFloat64Equals(2., n0.music_pt_float);
-			AssertFloat64Equals(4., n0.x_start_float);
-			AssertFloat64Equals(5., n0.x_end_float);
-			AssertEquals(2, n0.row_index);
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=2.,
+				x_start_float=4.,
+				x_end_float=5.,
+				row_index=2,
+			});
+			// n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[2];
+			// AssertFloat64Equals(2., n0.music_pt_float);
+			// AssertFloat64Equals(4., n0.x_start_float);
+			// AssertFloat64Equals(5., n0.x_end_float);
+			// AssertEquals(2, n0.row_index);
 		}
 
 		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
@@ -13786,11 +14365,17 @@ DONE);
 	case 7; {
 		count_equal := AssertEquals(4, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[3];
-			AssertFloat64Equals(3., n0.music_pt_float);
-			AssertFloat64Equals(4., n0.x_start_float);
-			AssertFloat64Equals(5., n0.x_end_float);
-			AssertEquals(3, n0.row_index);
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=3.,
+				x_start_float=4.,
+				x_end_float=5.,
+				row_index=3,
+			});
+			// n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[3];
+			// AssertFloat64Equals(3., n0.music_pt_float);
+			// AssertFloat64Equals(4., n0.x_start_float);
+			// AssertFloat64Equals(5., n0.x_end_float);
+			// AssertEquals(3, n0.row_index);
 		}
 
 		// DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
@@ -13863,16 +14448,18 @@ DONE);
 	case 4; {
 		count_equal := AssertEquals(4, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[2];
-			AssertFloat64Equals(12-1., n0.music_pt_float);
-			AssertFloat64Equals(0., n0.x_start_float);
-			AssertFloat64Equals(1., n0.x_end_float);
-			AssertEquals(1, n0.row_index);
-			n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[3];
-			AssertFloat64Equals(12-8., n1.music_pt_float);
-			AssertFloat64Equals(0., n1.x_start_float);
-			AssertFloat64Equals(1., n1.x_end_float);
-			AssertEquals(1, n1.row_index);
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=12-1.,
+				x_start_float=0.,
+				x_end_float=1.,
+				row_index=1,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=12-8.,
+				x_start_float=0.,
+				x_end_float=1.,
+				row_index=1,
+			});
 		}
 
 		// DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
@@ -13945,16 +14532,18 @@ DONE);
 	case 4; {
 		count_equal := AssertEquals(4, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[2];
-			AssertFloat64Equals(3+1., n0.music_pt_float);
-			AssertFloat64Equals(0., n0.x_start_float);
-			AssertFloat64Equals(1., n0.x_end_float);
-			AssertEquals(1, n0.row_index);
-			n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[3];
-			AssertFloat64Equals(3+8., n1.music_pt_float);
-			AssertFloat64Equals(0., n1.x_start_float);
-			AssertFloat64Equals(1., n1.x_end_float);
-			AssertEquals(1, n1.row_index);
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=3+1.,
+				x_start_float=0.,
+				x_end_float=1.,
+				row_index=1,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=3+8.,
+				x_start_float=0.,
+				x_end_float=1.,
+				row_index=1,
+			});
 		}
 
 		// DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
@@ -14022,16 +14611,18 @@ DONE);
 	case 4; {
 		count_equal := AssertEquals(2, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[0];
-			AssertFloat64Equals(0., n0.music_pt_float);
-			AssertFloat64Equals(0., n0.x_start_float);
-			AssertFloat64Equals(1., n0.x_end_float);
-			AssertEquals(0, n0.row_index);
-			n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[1];
-			AssertFloat64Equals(4., n1.music_pt_float);
-			AssertFloat64Equals(0., n1.x_start_float);
-			AssertFloat64Equals(1., n1.x_end_float);
-			AssertEquals(0, n1.row_index);
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=0.,
+				x_start_float=0.,
+				x_end_float=1.,
+				row_index=0,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=4.,
+				x_start_float=0.,
+				x_end_float=1.,
+				row_index=0,
+			});
 		}
 
 		// DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
@@ -14144,22 +14735,24 @@ DONE);
 
 		count_equal := AssertEquals(4, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[1];
-			AssertFloat64Equals(1.5, n0.music_pt_float);
-			AssertFloat64Equals(1., n0.x_start_float);
-			AssertFloat64Equals(2.5, n0.x_end_float);
-			AssertEquals(0, n0.row_index);
-			n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[2];
-			AssertFloat64Equals(10.5, n1.music_pt_float);
-			AssertFloat64Equals(1., n1.x_start_float);
-			AssertFloat64Equals(2.5, n1.x_end_float);
-			AssertEquals(0, n1.row_index);
-
-			n_rev : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[3];
-			AssertFloat64Equals(1.5, n_rev.music_pt_float);
-			AssertFloat64Equals(3.5, n_rev.x_start_float);
-			AssertFloat64Equals(5., n_rev.x_end_float);
-			AssertEquals(1, n_rev.row_index);
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=1.5,
+				x_start_float=1.,
+				x_end_float=2.5,
+				row_index=0,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=10.5,
+				x_start_float=1.,
+				x_end_float=2.5,
+				row_index=0,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=1.5,
+				x_start_float=3.5,
+				x_end_float=5.0,
+				row_index=1,
+			});
 		}
 
 		// DownUpInputMap(.DEBUG_STEP_OVER, game_input);
@@ -14233,22 +14826,41 @@ DONE);
 	case 4; {
 		count_equal := AssertEquals(3, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[0];
-			AssertFloat64Equals(0., n0.music_pt_float);
-			AssertFloat64Equals(0., n0.x_start_float);
-			AssertFloat64Equals(1., n0.x_end_float);
-			AssertEquals(0, n0.row_index);
-			n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[1];
-			AssertFloat64Equals(6., n1.music_pt_float);
-			AssertFloat64Equals(0., n1.x_start_float);
-			AssertFloat64Equals(1., n1.x_end_float);
-			AssertEquals(0, n1.row_index);
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=0,
+				x_start_float=0,
+				x_end_float=1,
+				row_index=0,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=6,
+				x_start_float=0,
+				x_end_float=1,
+				row_index=0,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+				music_pt_float=4,
+				x_start_float=1,
+				x_end_float=2.5,
+				row_index=0,
+			});
 
-			n2 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[2];
-			AssertFloat64Equals(4., n2.music_pt_float);
-			AssertFloat64Equals(1., n2.x_start_float);
-			AssertFloat64Equals(2.5, n2.x_end_float);
-			AssertEquals(0, n2.row_index);
+			// n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[0];
+			// AssertFloat64Equals(0., n0.music_pt_float);
+			// AssertFloat64Equals(0., n0.x_start_float);
+			// AssertFloat64Equals(1., n0.x_end_float);
+			// AssertEquals(0, n0.row_index);
+			// n1 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[1];
+			// AssertFloat64Equals(6., n1.music_pt_float);
+			// AssertFloat64Equals(0., n1.x_start_float);
+			// AssertFloat64Equals(1., n1.x_end_float);
+			// AssertEquals(0, n1.row_index);
+
+			// n2 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[2];
+			// AssertFloat64Equals(4., n2.music_pt_float);
+			// AssertFloat64Equals(1., n2.x_start_float);
+			// AssertFloat64Equals(2.5, n2.x_end_float);
+			// AssertEquals(0, n2.row_index);
 		}
 
 		// DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);

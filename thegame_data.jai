@@ -8744,7 +8744,7 @@ leaving the AudioEvent method just in case the order does
 eventually matter.
 */
 SetAudioPositionData :: struct {
-	is_set : bool;
+	is_set_audio : bool;
 
 	set_audio_mspace_id : int;
 

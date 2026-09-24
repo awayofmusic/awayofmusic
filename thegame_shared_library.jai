@@ -489,6 +489,7 @@ MusicSpaceData :: struct {
 	//TODO Should we rename this something clearer?
 	//Maybe mspace_right_bound_x?
 	mspace_audio_row_size : int;
+	mspace_audio_x_start : int = 0;
 
 	//TODO Could put ids here or set a pointer to global ids if we want different ids for all rows
 	all_music_lane_rows : [..] MusicLaneRow;
@@ -612,6 +613,9 @@ UpdateMSpaceData :: struct {
 	update_mspace_audio_row_size : bool;
 	set_fixed_audio_row_size : bool;
 	mspace_audio_row_size : int;
+
+	update_mspace_audio_x_start : bool;
+	mspace_audio_x_start : int;
 }
 UpdateMusicSpace :: (
 	update : UpdateMSpaceData,
@@ -655,11 +659,15 @@ UpdateMusicSpace :: (
 	}
 	if update.update_mspace_audio_row_size {
 		mspace.is_fixed_audio_row_size = update.set_fixed_audio_row_size;
+		max_row_size : int = ArrayFindMaxByNameId(mspace.all_music_lane_rows, "row_size", 0);
 		if update.set_fixed_audio_row_size {
-			mspace.mspace_audio_row_size = update.mspace_audio_row_size;
+			mspace.mspace_audio_row_size = min(update.mspace_audio_row_size, max_row_size);
 		} else {
-			mspace.mspace_audio_row_size = ArrayFindMaxByNameId(mspace.all_music_lane_rows, "row_size", 0);
+			mspace.mspace_audio_row_size = max_row_size;
 		}
+	}
+	if update.update_mspace_audio_x_start {
+		mspace.mspace_audio_x_start = Clamp(0, update.mspace_audio_x_start, mspace.mspace_audio_row_size);
 	}
 
 	return true, "";
@@ -756,6 +764,11 @@ RuntimeSettingsData :: struct {
 	terminal_size : Vector2F = OP_SPACE_DEFAULT_SIZE;
 	text_op_size : Vector2F = DEFAULT_TEXT_OP_SIZE;
 	default_op_space_size : Vector2F = OP_SPACE_DEFAULT_SIZE;
+
+	//TODO This should be true by default
+	//THIS SHOULD NOT BE CHANGED to false as I am only using it for tests that access music points by index
+	//which gets altered when we sort after every execution. Inconvenient for tests but necessary for regular play
+	update_music_while_running : bool = true;
 }
 
 //TODO We don't use most of the things in here anymore so we
@@ -1695,6 +1708,7 @@ GetTanoNumOfPoints :: inline (t : tano, all_music_pts : [] MusicPoint) -> int {
 	return dim;
 }
 //This is not used and untested right now but is useful in general
+//TODO Can likely to a regular remove and then a DefaultSortNeumes
 RemoveTanoMusicPts :: inline (t : tano, all_music_pts : [] MusicPoint) {
 	music_pts : [..] MusicPoint;
 	music_pts.allocator = context.allocator;

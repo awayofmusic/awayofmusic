@@ -11911,41 +11911,79 @@ DONE);
 		AssertEquals(text_op.exec_info.exec_state, .NOT_RUNNING);
 		// AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
 
-		mp0 := perm.all_data.all_mspace_data[0].all_music_pts[0];
-		AssertEquals(0, mp0.row_index);
-		AssertFloat64Equals(0, mp0.music_pt_float);
-		AssertFloat64Equals(0, mp0.x_start_float);
-		AssertFloat64Equals(2, mp0.x_end_float);
+		AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+			row_index=0,
+			music_pt_float=0,
+			x_start_float=0,
+			x_end_float=2,
+		});
+		AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+			row_index=0,
+			music_pt_float=4,
+			x_start_float=0,
+			x_end_float=2,
+		});
+		AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+			row_index=0,
+			music_pt_float=7,
+			x_start_float=0,
+			x_end_float=2,
+		});
+		AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+			row_index=1,
+			music_pt_float=0.5,
+			x_start_float=2,
+			x_end_float=4.25,
+		});
+		AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+			row_index=1,
+			music_pt_float=4.5,
+			x_start_float=2,
+			x_end_float=4.25,
+		});
+		AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+			row_index=1,
+			music_pt_float=7.5,
+			x_start_float=2,
+			x_end_float=4.25,
+		});
 
-		mp1 := perm.all_data.all_mspace_data[0].all_music_pts[1];
-		AssertEquals(0, mp1.row_index);
-		AssertFloat64Equals(4, mp1.music_pt_float);
-		AssertFloat64Equals(0, mp1.x_start_float);
-		AssertFloat64Equals(2, mp1.x_end_float);
 
-		mp2 := perm.all_data.all_mspace_data[0].all_music_pts[2];
-		AssertEquals(0, mp2.row_index);
-		AssertFloat64Equals(7, mp2.music_pt_float);
-		AssertFloat64Equals(0, mp2.x_start_float);
-		AssertFloat64Equals(2, mp2.x_end_float);
+		// mp0 := perm.all_data.all_mspace_data[0].all_music_pts[0];
+		// AssertEquals(0, mp0.row_index);
+		// AssertFloat64Equals(0, mp0.music_pt_float);
+		// AssertFloat64Equals(0, mp0.x_start_float);
+		// AssertFloat64Equals(2, mp0.x_end_float);
 
-		mp3 := perm.all_data.all_mspace_data[0].all_music_pts[3];
-		AssertEquals(1, mp3.row_index);
-		AssertFloat64Equals(0.5, mp3.music_pt_float);
-		AssertFloat64Equals(2, mp3.x_start_float);
-		AssertFloat64Equals(4.25, mp3.x_end_float);
+		// mp1 := perm.all_data.all_mspace_data[0].all_music_pts[1];
+		// AssertEquals(0, mp1.row_index);
+		// AssertFloat64Equals(4, mp1.music_pt_float);
+		// AssertFloat64Equals(0, mp1.x_start_float);
+		// AssertFloat64Equals(2, mp1.x_end_float);
 
-		mp4 := perm.all_data.all_mspace_data[0].all_music_pts[4];
-		AssertEquals(1, mp4.row_index);
-		AssertFloat64Equals(4.5, mp4.music_pt_float);
-		AssertFloat64Equals(2, mp4.x_start_float);
-		AssertFloat64Equals(4.25, mp4.x_end_float);
+		// mp2 := perm.all_data.all_mspace_data[0].all_music_pts[2];
+		// AssertEquals(0, mp2.row_index);
+		// AssertFloat64Equals(7, mp2.music_pt_float);
+		// AssertFloat64Equals(0, mp2.x_start_float);
+		// AssertFloat64Equals(2, mp2.x_end_float);
 
-		mp5 := perm.all_data.all_mspace_data[0].all_music_pts[5];
-		AssertEquals(1, mp5.row_index);
-		AssertFloat64Equals(7.5, mp5.music_pt_float);
-		AssertFloat64Equals(2, mp5.x_start_float);
-		AssertFloat64Equals(4.25, mp5.x_end_float);
+		// mp3 := perm.all_data.all_mspace_data[0].all_music_pts[3];
+		// AssertEquals(1, mp3.row_index);
+		// AssertFloat64Equals(0.5, mp3.music_pt_float);
+		// AssertFloat64Equals(2, mp3.x_start_float);
+		// AssertFloat64Equals(4.25, mp3.x_end_float);
+
+		// mp4 := perm.all_data.all_mspace_data[0].all_music_pts[4];
+		// AssertEquals(1, mp4.row_index);
+		// AssertFloat64Equals(4.5, mp4.music_pt_float);
+		// AssertFloat64Equals(2, mp4.x_start_float);
+		// AssertFloat64Equals(4.25, mp4.x_end_float);
+
+		// mp5 := perm.all_data.all_mspace_data[0].all_music_pts[5];
+		// AssertEquals(1, mp5.row_index);
+		// AssertFloat64Equals(7.5, mp5.music_pt_float);
+		// AssertFloat64Equals(2, mp5.x_start_float);
+		// AssertFloat64Equals(4.25, mp5.x_end_float);
 	}
 	}
 
@@ -12021,35 +12059,67 @@ DONE);
 		// AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
 		AssertEquals(text_op.exec_info.exec_state, .NOT_RUNNING);
 
-		mp0 := perm.all_data.all_mspace_data[0].all_music_pts[0];
-		AssertEquals(0, mp0.row_index);
-		AssertFloat64Equals(0, mp0.music_pt_float);
-		AssertFloat64Equals(1, mp0.x_start_float);
-		AssertFloat64Equals(2, mp0.x_end_float);
+		AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+			row_index=0,
+			music_pt_float=0,
+			x_start_float=1,
+			x_end_float=2,
+		});
+		AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+			row_index=0,
+			music_pt_float=4,
+			x_start_float=1,
+			x_end_float=2,
+		});
+		AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+			row_index=0,
+			music_pt_float=7,
+			x_start_float=1,
+			x_end_float=2,
+		});
+		AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+			row_index=1,
+			music_pt_float=1,
+			x_start_float=3.5,
+			x_end_float=5,
+		});
+		AssertFoundMusicPt(perm.all_data.all_mspace_data[0].all_music_pts, .{
+			row_index=1,
+			music_pt_float=6.2,
+			x_start_float=3.5,
+			x_end_float=5,
+		});
 
-		mp1 := perm.all_data.all_mspace_data[0].all_music_pts[1];
-		AssertEquals(0, mp1.row_index);
-		AssertFloat64Equals(4, mp1.music_pt_float);
-		AssertFloat64Equals(1, mp1.x_start_float);
-		AssertFloat64Equals(2, mp1.x_end_float);
 
-		mp2 := perm.all_data.all_mspace_data[0].all_music_pts[2];
-		AssertEquals(0, mp2.row_index);
-		AssertFloat64Equals(7, mp2.music_pt_float);
-		AssertFloat64Equals(1, mp2.x_start_float);
-		AssertFloat64Equals(2, mp2.x_end_float);
+		// mp0 := perm.all_data.all_mspace_data[0].all_music_pts[0];
+		// AssertEquals(0, mp0.row_index);
+		// AssertFloat64Equals(0, mp0.music_pt_float);
+		// AssertFloat64Equals(1, mp0.x_start_float);
+		// AssertFloat64Equals(2, mp0.x_end_float);
 
-		mp3 := perm.all_data.all_mspace_data[0].all_music_pts[3];
-		AssertEquals(1, mp3.row_index);
-		AssertFloat64Equals(1, mp3.music_pt_float);
-		AssertFloat64Equals(3.5, mp3.x_start_float);
-		AssertFloat64Equals(5, mp3.x_end_float);
+		// mp1 := perm.all_data.all_mspace_data[0].all_music_pts[1];
+		// AssertEquals(0, mp1.row_index);
+		// AssertFloat64Equals(4, mp1.music_pt_float);
+		// AssertFloat64Equals(1, mp1.x_start_float);
+		// AssertFloat64Equals(2, mp1.x_end_float);
 
-		mp4 := perm.all_data.all_mspace_data[0].all_music_pts[4];
-		AssertEquals(1, mp4.row_index);
-		AssertFloat64Equals(6.2, mp4.music_pt_float);
-		AssertFloat64Equals(3.5, mp4.x_start_float);
-		AssertFloat64Equals(5, mp4.x_end_float);
+		// mp2 := perm.all_data.all_mspace_data[0].all_music_pts[2];
+		// AssertEquals(0, mp2.row_index);
+		// AssertFloat64Equals(7, mp2.music_pt_float);
+		// AssertFloat64Equals(1, mp2.x_start_float);
+		// AssertFloat64Equals(2, mp2.x_end_float);
+
+		// mp3 := perm.all_data.all_mspace_data[0].all_music_pts[3];
+		// AssertEquals(1, mp3.row_index);
+		// AssertFloat64Equals(1, mp3.music_pt_float);
+		// AssertFloat64Equals(3.5, mp3.x_start_float);
+		// AssertFloat64Equals(5, mp3.x_end_float);
+
+		// mp4 := perm.all_data.all_mspace_data[0].all_music_pts[4];
+		// AssertEquals(1, mp4.row_index);
+		// AssertFloat64Equals(6.2, mp4.music_pt_float);
+		// AssertFloat64Equals(3.5, mp4.x_start_float);
+		// AssertFloat64Equals(5, mp4.x_end_float);
 	}
 	}
 

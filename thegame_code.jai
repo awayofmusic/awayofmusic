@@ -12560,6 +12560,23 @@ ExecuteManyInstructions :: inline (exec : *ExecutionInfo, ad : *AllData) -> CPUE
 		// print("Ended execution.\n");
 	}
 
+	//This is only there for testing so it should be true by default.
+	//TODO It is false now so we just need to update tests that access music_pts by index directly.
+	//Maybe it's useful for other reasons as well not sure...
+	//ALSO maybe this does not actually work so this would be a good way to test it in general.
+	//TODO We could also pull this out and only ahve it happen in thegame_base after this function
+	// if ad.runtime_settings.update_music_while_running {
+	// if ad.game_audio_play.play_state == .PLAY {
+		audio_mspace := GetAudioMSpace(ad);
+		for ad.all_mspace_data DefaultSortNeumes(it.all_music_pts);
+		ad.game_audio_play.music_pt_play_index = 0;
+		while ad.game_audio_play.music_pt_play_index < audio_mspace.all_music_pts.count &&
+				audio_mspace.all_music_pts[ad.game_audio_play.music_pt_play_index].x_start_float < ad.game_audio_play.float_x_memory
+		{
+			ad.game_audio_play.music_pt_play_index += 1;
+		}
+	// }
+
 	//NOTE : This will be no error if we don't return an error from the instruction execution.
 	return err;
 }
