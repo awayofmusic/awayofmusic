@@ -12560,21 +12560,33 @@ ExecuteManyInstructions :: inline (exec : *ExecutionInfo, ad : *AllData) -> CPUE
 		// print("Ended execution.\n");
 	}
 
-	//This is only there for testing so it should be true by default.
-	//TODO It is false now so we just need to update tests that access music_pts by index directly.
-	//Maybe it's useful for other reasons as well not sure...
-	//ALSO maybe this does not actually work so this would be a good way to test it in general.
-	//TODO We could also pull this out and only ahve it happen in thegame_base after this function
+	/*We sort neumes and update music_pt_play_index after every instruction execution here.
+	This way anytime we add or remove or update neumes, we will still play the right ones
+	and we also don't have to sort neumes anywhere else this way.
+	Play will also update the music_pt_play_index with PLAY_NOTES_AT_CURRENT_MEMORY.
+
+	1 caveat is that if the position that is currently playing is updated, then those notes
+	will continue playing. Otherwise we would have to stop everytime and this would create
+	an audio hiccup everytime. This way we don't get an audio hiccup BUT we don't get the notes
+	that are update at the current playing location. So you need to make sure to only update before or after
+	the current memory unit. One way to ensure this is to only update mspaces that are not currently playing.
+	That can be adjusted based on playing/creating of the music live as well.
+	*/
+	//I'll leave this setting here as a reminder but I am removing it since this should always happen to ensure correct
+	//music placement and tests should be written around it as well.
 	// if ad.runtime_settings.update_music_while_running {
-	// if ad.game_audio_play.play_state == .PLAY {
+	for ad.all_mspace_data DefaultSortNeumes(it.all_music_pts);
+	//Only need to update if playing. Otherwise we are stopped and will update this index when we start playing 
+	//either at RESET_AUDIO_TO_MEMORY_UNIT or PLAY_NOTES_AT_CURRENT_MEMORY.
+	if ad.game_audio_play.play_state == .PLAY {
 		audio_mspace := GetAudioMSpace(ad);
-		for ad.all_mspace_data DefaultSortNeumes(it.all_music_pts);
 		ad.game_audio_play.music_pt_play_index = 0;
 		while ad.game_audio_play.music_pt_play_index < audio_mspace.all_music_pts.count &&
 				audio_mspace.all_music_pts[ad.game_audio_play.music_pt_play_index].x_start_float < ad.game_audio_play.float_x_memory
 		{
 			ad.game_audio_play.music_pt_play_index += 1;
 		}
+	}
 	// }
 
 	//NOTE : This will be no error if we don't return an error from the instruction execution.

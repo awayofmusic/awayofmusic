@@ -86,6 +86,9 @@ SharedLibraryData :: struct {
 	all_chosen_entities : [] ChosenEntity;
 	frame_hover_entities : [] HoverEntity;
 
+	is_row_hovering : bool;
+	row_hover_info : RowHoverInfo;
+
 	//TODO How should we pass this in? Or should we pass it in at all?
 	//I guess we need to pass it for each function that creates things as we add them.
 	//Is there a better way of generating ids?
@@ -765,10 +768,26 @@ RuntimeSettingsData :: struct {
 	text_op_size : Vector2F = DEFAULT_TEXT_OP_SIZE;
 	default_op_space_size : Vector2F = OP_SPACE_DEFAULT_SIZE;
 
-	//TODO This should be true by default
-	//THIS SHOULD NOT BE CHANGED to false as I am only using it for tests that access music points by index
-	//which gets altered when we sort after every execution. Inconvenient for tests but necessary for regular play
-	update_music_while_running : bool = true;
+	show_row_hover : bool = true;
+	//TODO I think this should be removed now in favor of just running code in ExternalPerFrame
+	//I will leave here for now just as a reminder and update afterwards.
+	use_row_hover_string_func : bool = false;
+	row_hover_string_func : RowHoverStringFuncType;
+
+	//TODO Leaving here as a reminder in case used later for tests or educational purposes for some reason 
+	// update_music_while_running : bool = true;
+}
+RowHoverStringFuncType :: #type (rhi : RowHoverInfo, sld : *SharedLibraryData);
+//TODO Could use a default row hover instead for consistency or just hardcode it.
+// DefaultRowHover :: (pos : float64, octave : int, tuning_system : TuningSystem, tuning_pitches : [] TuningPitch) -> string {
+
+// }
+RowHoverInfo :: struct {
+	tuning_system : TuningSystem;
+	pos_mod : float64;
+	octave : int;
+	x_float : float64;
+	render_order : int;
 }
 
 //TODO We don't use most of the things in here anymore so we

@@ -3029,7 +3029,7 @@ Test_MusicRows :: (
 	rows[0].num_of_points = 12;
 	rows[0].use_num_of_points = true;
 	rows[0].row_section_data = RowSectionData.[
-		MakeRowSectionData(perm.all_data.all_tuning_systems[13].id, 2),
+		MakeRowSectionData(perm.all_data.all_tuning_systems[8].id, 2),
 		MakeRowSectionData(perm.all_data.all_tuning_systems[0].id, 2),
 		MakeRowSectionData(perm.all_data.all_tuning_systems[1].id, 2),
 		// MakeRowSectionData(perm.all_data.all_tuning_systems[1].id, 2),
@@ -10743,9 +10743,7 @@ Test_UpdateMusicWhileRunning :: (
 	if !perm.test_data.initialized_test {
 		perm.test_data.initialized_test = true;
 
-		//TODO Use InitAllData here once we remove this
 		perm.all_data = InitAllData();
-		perm.all_data.runtime_settings.update_music_while_running = true;
 		ResetAllRendererData(renderer_data);
 
 		SetupMusicAndRows(perm.all_data, .[

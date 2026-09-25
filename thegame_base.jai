@@ -546,7 +546,7 @@ if active_cam != null {
 if IsInputMapPress(.PLAY_PAUSE_MUSIC, .DOWN_THIS_FRAME, game_input) {
 	//TODO We do the sort here whenever we play audio for convenience for now.
 	// quick_sort(perm.all_data.all_mspace_data[0].all_music_pts, (m1,m2) => m1.x_start_float - m2.x_start_float);
-	for perm.all_data.all_mspace_data DefaultSortNeumes(it.all_music_pts);
+	// for perm.all_data.all_mspace_data DefaultSortNeumes(it.all_music_pts);
 
 	if perm.all_data.game_audio_play.play_state == {
 	case AudioPlayState.STOP; {
@@ -572,7 +572,7 @@ else if IsInputMapPress(.STOP_MUSIC, .DOWN_THIS_FRAME, game_input) {
 	// quick_sort(perm.all_data.all_mspace_data[0].all_music_pts, (m1,m2) => m1.x_start_float - m2.x_start_float);
 	//Should we sort all of them or or just not sort at all?
 	//We could remove this once we sort on instruction execution since thats the only place we add music pts
-	for perm.all_data.all_mspace_data DefaultSortNeumes(it.all_music_pts);
+	// for perm.all_data.all_mspace_data DefaultSortNeumes(it.all_music_pts);
 	// array_add(*perm.all_data.all_audio_events, MakeAudioEvent(.STOP_ALL_MUSIC_PTS));
 	// array_add(*perm.all_data.all_audio_events, MakeAudioEvent(.RESET_AUDIO_TO_MEMORY_UNIT, 0));
 	perm.all_data.game_audio_play.play_state = AudioPlayState.STOP;
@@ -584,7 +584,7 @@ else if IsInputMapPress(.STOP_MUSIC, .DOWN_THIS_FRAME, game_input) {
 	print("audio_state : %\n", perm.all_data.game_audio_play.play_state);
 }
 else if IsInputMapPress(.STOP_MUSIC_AT_AUDIO_MSPACE, .DOWN_THIS_FRAME, game_input) {
-	for perm.all_data.all_mspace_data DefaultSortNeumes(it.all_music_pts);
+	// for perm.all_data.all_mspace_data DefaultSortNeumes(it.all_music_pts);
 	audio_mspace : *MusicSpaceData = GetAudioMSpace(perm.all_data);
 	// array_add(*perm.all_data.all_audio_events, MakeAudioEvent(.STOP_ALL_MUSIC_PTS));
 	// array_add(*perm.all_data.all_audio_events, MakeAudioEvent(.RESET_AUDIO_TO_MEMORY_UNIT, audio_mspace.mspace_audio_x_start));
@@ -6297,6 +6297,10 @@ if IsInputMapPress(.RUN_EXTERNAL_UPDATE, .DOWN_THIS_FRAME, game_input) {
 		break;
 	}
 }
+
+//TODO Is there a problem with just running this here every frame and then updating the my_per_dl_data for each dl?
+// AllDataToSharedLibraryData(*perm.all_data.shared_lib_data, null, renderer_data, audio_data, game_input, 
+// 	*frame_hover_entities, perm);
 /*This needs ot run before dl running per frame functions since this is assumed to be able to be used as
 either a run once at a time function OR a data initialization function.
 */
@@ -6311,6 +6315,8 @@ for * dl : global_dynamic_libraries if dl.is_running_once_dl {
 	//TODO We happens if we have an invalid function pointer here, I guess we can't really know and crash.
 	//So we should set ExternalRunOnce to null whenever that is possible to avoid issues.
 
+	//TODO I think it's enough to just have thi sline and we could just load shared lib once before
+	// perm.all_data.shared_lib_data.my_per_dl_data = dl.my_per_dl_data;
 	// We could reload as a terminal command but we do in here for now so it is clearer.
 	// Although we compile the file as a terminal command for now but we could also do it here.
 	AllDataToSharedLibraryData(*perm.all_data.shared_lib_data, dl, renderer_data, audio_data, game_input, 
@@ -6334,6 +6340,7 @@ for * dl : global_dynamic_libraries if dl.is_running_dl_per_frame {
 	}
 
 	//TODO We could have these arrays be in 1 struct in AllData so we can just copy it over directly
+	// perm.all_data.shared_lib_data.my_per_dl_data = dl.my_per_dl_data;
 	AllDataToSharedLibraryData(*perm.all_data.shared_lib_data, dl, renderer_data, audio_data, game_input, 
 		*frame_hover_entities, perm);
 
@@ -6558,6 +6565,9 @@ next_order : int = S64_MIN+order_increment;
 PushSetShaderColor(renderer_data.base_render_group, next_order);
 // PushShaderEntries(renderer_data.post_row_group, 10000, 0, S64_MAX);
 // PushSetShaderColor(renderer_data.row_group, next_order);
+//TODO Move this up to input if we process this on input later
+is_row_hovering : bool = false;
+rhi : RowHoverInfo;
 for row, row_index : render_mspace.all_music_lane_rows {
 	defer next_order += order_increment;
 	//NOTE : We cap the order since everything > 0 will be drawn on top of rows.
@@ -6572,8 +6582,8 @@ for row, row_index : render_mspace.all_music_lane_rows {
 	coll := ArrayFindFirstByAndOp(render_mspace.all_base_collision_entities, 
 		EntityType.LANE_ROW_WITH_SECTIONS, "entity_type",
 		row.id, "entity_id");
-	cam_rect := WorldRectToCamRect(coll.rect, default_base_cam);
-	pixel_rect := CamRectToPixelRect(cam_rect, renderer_data.base_render_group);
+	coll_cam_rect := WorldRectToCamRect(coll.rect, default_base_cam);
+	pixel_rect := CamRectToPixelRect(coll_cam_rect, renderer_data.base_render_group);
 	if !RectanglesIntersect(renderer_data.base_render_group.render_viewport, pixel_rect) &&
 		!ContainsRectangle(renderer_data.base_render_group.render_viewport, pixel_rect) 
 	{
@@ -6593,6 +6603,7 @@ for row, row_index : render_mspace.all_music_lane_rows {
 			ArrayFindFirstByNameId(perm.all_data.all_tuning_systems,
 				section.tuning_system_id, "id");
 		assert(found_tuning_system);
+		// tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
 
 		//NOTE : We use this whenever we need to adjust a size to the octave. This adjusts size both to the row's
 		//given octave_height AND also to the compass interval of the particular interval. So something
@@ -6681,11 +6692,27 @@ for row, row_index : render_mspace.all_music_lane_rows {
 				cam_rect.max.x += (section.end_x - section.start_x - 1) * perm.all_data.global_rules.memory_unit_width;
 				PushRectangle(cam_rect, alpha*point.color, renderer_data.base_render_group, order = next_order+5);
 				PushRectangleOutline(cam_rect, GREY_BLACKER_V, renderer_data.base_render_group, r = 1.0, order = next_order+6);
+
+				//This is being scissored so we draw text afterwards so we can see the hover box outside the scissored row.
+				//The problem is that we would have to check everything in the input if we did not want this here.
+				//It could be 1 frame off though and maybe people are ok with that and we set this in runtime_settings directly
+				is_hovering := ArrayFindFirstByNameId(frame_hover_entities, 
+					EntityType.LANE_ROW_WITH_SECTIONS, "entity_type");
+		   	if is_hovering && IsInRectangle(mouse_cam, coll_cam_rect) && IsInRectangle(mouse_cam, cam_rect) {
+		   		is_row_hovering = true;
+
+		   		rhi.tuning_system = tuning_system;
+	   			rhi.x_float = 0.5 + ((world_mouse.x - rect_diff.x) / perm.all_data.global_rules.memory_unit_width);
+	   			rhi.octave = octave;
+	   			rhi.pos_mod = cast(float64) point.int_pos.x;
+	   			rhi.render_order = next_order+9;
+		   	}
 			}
 		}	
 
 		//TODO If we split equal and proportional this would also simplify to not needing the SpacePoint fetch.
 		//TODO This can be more efficient once we sort by row_index and x_start
+		//TODO We could reuse this with MusicPtSectionRect for the op linear rows below. Just need to make sure its the same
 		for music_pt : render_mspace.all_music_pts {
 			if music_pt.row_index == row_index && 
 				MusicPtStartInRange(section.start_x, music_pt, section.end_x)
@@ -6764,7 +6791,40 @@ for row, row_index : render_mspace.all_music_lane_rows {
 // PushSetScissor(renderer_data.base_render_group.render_viewport, renderer_data.all_render_groups[0], order = next_order);
 PushSetScissor(renderer_data.base_render_group.render_viewport, renderer_data.base_render_group, order = next_order);
 // PushSetScissor(renderer_data.base_render_group.render_viewport, renderer_data.row_group, order = next_order);
-
+perm.all_data.shared_lib_data.is_row_hovering = false;
+if is_row_hovering {
+	//This makes this a frame off so we can just bring it up to the input above eventually if that's a problem
+	perm.all_data.shared_lib_data.is_row_hovering = true;
+	perm.all_data.shared_lib_data.row_hover_info = rhi;
+	if perm.all_data.runtime_settings.show_row_hover {
+		// perm.all_data.shared_lib_data.my_per_dl_data = dl.my_per_dl_data;
+		//TODO I really like this way for more complicated triggers. In general we can just write anything in the
+		//dl so we could copy paste the check here and do the check ourself, but this is simpler / more efficient
+		//for more complicated cases like row hovering here for example. BUT it's also more limited
+		if perm.all_data.runtime_settings.use_row_hover_string_func && perm.all_data.runtime_settings.row_hover_string_func != null {
+			//If we do this anywhere else then we update there as well.
+			//THIS IS AN EXPERIMENT. In general we shoudl just use ExternalPerFrame but because this data is more easily
+			//accessible here we are trying this out. We could just pass in row hover info through runtime settings directly
+			//and then have it be 1 frame off OR do duplicate the input code and make it into a function.
+			//This is fine for now if we are just customizing the hovering
+			AllDataToSharedLibraryData(*perm.all_data.shared_lib_data, null, renderer_data, audio_data, game_input, 
+				*frame_hover_entities, perm);
+			perm.all_data.runtime_settings.row_hover_string_func(rhi, *perm.all_data.shared_lib_data);
+		} else {
+			//TODO We could have a setting here to show the frequency as well or other info but customizable on top is the way to go
+			// music_pt_pos := cast(float64) (point.int_pos.x + octave*tuning_system.music_pt_count);
+			// frequency : float = MusicPtToFrequency(music_pt_pos, tuning_system, tuning_pitches);
+			// text := tprint("%,%,%", music_pt_pos, tuning_system.short_name, formatFloat(frequency,trailing_width=3,zero_removal=.NO));
+			text := tprint("%,%,%", rhi.pos_mod, rhi.octave, rhi.tuning_system.short_name);
+			hover_cam := mouse_cam + Vector2F.{1,0};
+			rect_dim := Vector2F.{text.count*perm.text_editor_data.code_font_1_char_width_world,
+				1.1*perm.text_editor_data.char_height / renderer_data.base_render_group.pixels_per_square};
+			hover_rect : Rectangle2 = RectMinDim(hover_cam - Vector2F.{0,0.65*rect_dim.y}, rect_dim);
+			PushRectangle(hover_rect, GREY_BLACKER_V, renderer_data.base_render_group, order = next_order+9);
+			PushText(hover_cam, text, GREY_DARK_V, renderer_data.base_render_group, order = next_order+10);
+		}
+	}
+}
 
 for * op_space : perm.all_data.all_open_op_spaces {
 if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
@@ -7340,11 +7400,18 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 					{
 						music_pt_int := cast(int) music_pt.music_pt_float;
 						octave, point_index := ComputeQuotientAndRemainder2(music_pt_int, section_points.count);
+						#if 1 {
+						//TODO For now we allow negative values to see how this goes. Maybe we don' later,
+						//I am not sure this fully works with rendering so if not we can just compile this out and change point to use point_index directly. 
+						//Maybe there is a cleaner way if we keep it with compute quotient and remainder with negative values
+						mod_index : int = PosMod(point_index, section_points.count);
+						if point_index < 0 octave -= 1;
+						}
 
 						//TODO This is overkill for equal so maybe best to split it up.
 						//TODO Don't need this for equal either so maybe we should split this with equal and proportional.
-						point : SpacePoint = section_points[point_index];
-						next_point : SpacePoint = section_points[(point_index+1) % section_points.count];
+						point : SpacePoint = section_points[mod_index];
+						next_point : SpacePoint = section_points[(mod_index+1) % section_points.count];
 						next_rect_y_dim : float = next_point.dspace_pos.y * octave_mult;
 
 						//TODO Could make this the diff between this point and the next point instead
