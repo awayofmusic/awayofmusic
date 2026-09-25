@@ -8428,6 +8428,255 @@ DONE,,unit_test_alloc);
 
 } @UnitTest
 
+Test_TanoMSpace :: () {
+	cs : CompileSettings;
+	cd : *CompilationData;
+	count_equal : bool;
+
+	cd = CompileCode(cs,
+#string DONE
+main :: () {
+	x : int = 1;
+	tano(0,0,x) ~= tano(0,0,0);
+	tano(1..2,3.1..4.2,1) ~= int.[0,4];
+	tano(1,4.0,1) += 2;
+}
+DONE,,unit_test_alloc);
+	comp_success := AssertEquals(false, IsCompilationFail(cd));
+	if !comp_success return;
+	// print(cd.disassembly);
+
+	vars_equal : bool = TestManyVarDeclSameStack(cd.all_variables, .[
+		VarDecl("x", *cd.int_type_info)
+	]);
+	if !vars_equal return;
+	x_var := cd.all_variables[0];
+
+	instr_index : int = 0;
+	t0_op := RamMem(.sbp,8);
+	t1_op := RamMem(.sbp,48);
+	TestNextManyInstr(*instr_index, cd, .[
+		//x : int = 1;
+		MakeMI(.mov, x_var.op, Imm(1), Imm(cd.int_type_info.runtime_size)),
+
+		//tano(0,0,0)
+		MakeMI(.mov, AddOperandOffset(0,t0_op), Imm(0), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mov, AddOperandOffset(8,t0_op), Imm(0), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mov, AddOperandOffset(16,t0_op), Imm(0), Imm(cd.float_type_info.runtime_size)),
+		MakeMI(.itof, AddOperandOffset(16,t0_op), AddOperandOffset(16,t0_op)),
+		MakeFloatInstr(.add, AddOperandOffset(24,t0_op), AddOperandOffset(16,t0_op), FImm(1)),
+		MakeMI(.mov, AddOperandOffset(32,t0_op), Imm(0), Imm(cd.int_type_info.runtime_size)),
+
+		//tano(0,0,x)
+		MakeMI(.mov, AddOperandOffset(0,t1_op), Imm(0), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mov, AddOperandOffset(8,t1_op), Imm(0), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mov, AddOperandOffset(16,t1_op), Imm(0), Imm(cd.float_type_info.runtime_size)),
+		MakeMI(.itof, AddOperandOffset(16,t1_op), AddOperandOffset(16,t1_op)),
+		MakeFloatInstr(.add, AddOperandOffset(24,t1_op), AddOperandOffset(16,t1_op), FImm(1)),
+		MakeMI(.mov, AddOperandOffset(32,t1_op), x_var.op, Imm(cd.int_type_info.runtime_size)),
+
+		MakeMI(.tmov, t1_op, t0_op),
+	]);
+
+	//Size of the fixed array int.[0,4]
+	fa : int = 24;
+	TestNextManyInstr(*instr_index, cd, .[
+		//int.[7,11]
+		MakeMI(.mov, RamMem(.sbp,8), Imm(0), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mov, RamMem(.sbp,16), Imm(4), Imm(cd.int_type_info.runtime_size)),
+
+		//tano(1..2,3.1..4.2,1)
+		MakeMI(.mov, RamMem(.sbp,fa+0), Imm(1), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mov, RamMem(.sbp,fa+8), Imm(2), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mov, RamMem(.sbp,fa+16), FImm(3.1), Imm(cd.float_type_info.runtime_size)),
+		MakeMI(.mov, RamMem(.sbp,fa+24), FImm(4.2), Imm(cd.float_type_info.runtime_size)),
+		MakeMI(.mov, RamMem(.sbp,fa+32), Imm(1), Imm(cd.int_type_info.runtime_size)),
+
+		//tano(0,0) ~= int.[0,4];
+		MakeMI(.add, RegMem(.ax), RegMem(.sbp), Imm(8)),
+		MakeMI(.tmov, RamMem(.sbp,fa), RamArray(2,RegDef.ax)),
+	]);
+
+	TestNextManyInstr(*instr_index, cd, .[
+		//tano(1,4.0,1) += 2;
+		MakeMI(.mov, AddOperandOffset(0,t0_op), Imm(1), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mov, AddOperandOffset(8,t0_op), Imm(1), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mov, AddOperandOffset(16,t0_op), FImm(4.0), Imm(cd.float_type_info.runtime_size)),
+		MakeFloatInstr(.add, AddOperandOffset(24,t0_op), AddOperandOffset(16,t0_op), FImm(1)),
+		MakeMI(.mov, AddOperandOffset(32,t0_op), Imm(1), Imm(cd.int_type_info.runtime_size)),
+
+		//tano(1,4.0,1) += 2;
+		MakeMI(.mov, RegMem(.ax), Imm(2)),
+		MakeMI(.tadd, t0_op, RegMem(.ax)),
+
+		MakeMI(.exit),
+	]);
+
+	//TEST float tano should not work
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	tano(0,0,1.1) ~= 1;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, cd.comp_errors.all_compiler_errors.count > 0);
+
+		cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	tano(0,0,0..1) ~= 1;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, cd.comp_errors.all_compiler_errors.count > 0);
+
+} @UnitTest
+
+Test_InvalidTano :: () {
+	// ptd := MakeParseTestData();
+	// ResetCodeLexer(*ptd.cd.lexer);
+	// LexCodeTokens(*ptd.cd.lexer, "tano(,,)");
+	// ParseExpression(ptd.cd, S64_MIN);
+
+	cs : CompileSettings;
+	cd : *CompilationData;
+
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	tano( ~= 1;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, cd.comp_errors.all_compiler_errors.count > 0);
+
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	tano) ~= 1;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, cd.comp_errors.all_compiler_errors.count > 0);
+
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	tano + 1;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, cd.comp_errors.all_compiler_errors.count > 0);
+
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	tano
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, cd.comp_errors.all_compiler_errors.count > 0);
+
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	i := tano;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, cd.comp_errors.all_compiler_errors.count > 0);
+
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	tano(0 ~= 1;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, cd.comp_errors.all_compiler_errors.count > 0);
+
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	tano(0,) ~= 1;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, cd.comp_errors.all_compiler_errors.count > 0);
+
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	tano(,0) ~= 1;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, cd.comp_errors.all_compiler_errors.count > 0);
+
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	tano(,,) ~= 1;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, cd.comp_errors.all_compiler_errors.count > 0);
+
+		cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	foo(,,) ~= 1;
+}
+foo :: (x : int) {}
+DONE,,unit_test_alloc);
+	AssertEquals(true, cd.comp_errors.all_compiler_errors.count > 0);
+
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	tano() ~= 1;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, cd.comp_errors.all_compiler_errors.count > 0);
+
+	//TEST Invalid identifier in tano
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	tano(x) ~= 1;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, cd.comp_errors.all_compiler_errors.count > 0);
+
+	//TEST Invalid identifier in tano
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	tano(0,x) ~= 1;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, cd.comp_errors.all_compiler_errors.count > 0);
+
+	//TEST Unknown identifier on RHS
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	tano(0,0) ~= x;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, cd.comp_errors.all_compiler_errors.count > 0);
+
+	//TEST Unknown identifier on RHS with op
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	tano(0,0) ~= x + 1;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, cd.comp_errors.all_compiler_errors.count > 0);
+
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	arr : [3] int;
+	arr[x] = 1;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, cd.comp_errors.all_compiler_errors.count > 0);
+
+
+} @UnitTest
+
 TanoIntIntTestInstr :: (
 	op : MusicOperand, 
 	row_op : MusicOperand,
@@ -16990,22 +17239,96 @@ Test_TMov :: () {
 
 } @UnitTest
 
-//TODO Could put this other tests for tmov and tmov array if that is clearer
-Test_TMovNeume :: () {
+Test_TMovMSpace :: () {
 	ci : MusicInstruction;
 	ad : *AllData = InitAllData(,,unit_test_alloc);
 	SetupMusicAndRows(ad, TWO_ROWS);
 
-	t0 := tano.{x_start=0,x_end=5};
+	gcmd : GetOrCreateMSpaceData;
+	gcmd.mspace_name = "test";
+	mspace_1 := GetOrCreateMusicSpace(gcmd, ad.runtime_settings, *ad.all_mspace_data, *ad.free_mspace_data_pool);
+	for TWO_ROWS {
+		crd : CreateRowData = it;
+		crd.mspace_id = mspace_1.mspace_id;
+		CreateMusicRow(crd, ad);
+	}
+
+	t0 := tano.{x_start=0,x_end=1};
+	t0_address := PushRAMValue(t0, *ad.ram_memory);
+	ci = Instr(.tmov, RamMem(t0_address), Imm(0), d=ad);
+	ExecMInstr(ci, ad);
+	ci = Instr(.tmov, RamMem(t0_address), Imm(4), d=ad);
+	ExecMInstr(ci, ad);
+	ci = Instr(.tmov, RamMem(t0_address), Imm(7), d=ad);
+	ExecMInstr(ci, ad);
+
+	AssertArrayEquals(float64.[0,4,7], GetAllMusicPtFloat(t0.row_start,t0.x_start,ad.all_mspace_data[0].all_music_pts));
+	t0_music_pts := GetAllMusicPtPosByPosition(t0.row_start, t0.x_start, ad.all_mspace_data[0].all_music_pts, MusicPoint);
+	for t0_music_pts {
+		AssertEquals(t0.row_start, it.row_index);
+		AssertEquals(t0.row_end, it.row_index);
+		AssertFloat64Equals(t0.x_start, it.x_start_float);
+		AssertFloat64Equals(t0.x_end, it.x_end_float);
+	}
+
+	t1 := tano.{x_start=1,x_end=2,mspace_start=1};
+	t1_address := PushRAMValue(t1, *ad.ram_memory);
+	ci = FInstr(.tmov, RamMem(t1_address), RamMem(t0_address), d=ad);
+	ExecMInstr(ci, ad);
+	ci = FInstr(.mov, RegMem(.ax), FImm(5.5), d=ad);
+	ExecMInstr(ci, ad);
+	ci = FInstr(.tmov, RamMem(t1_address), RegMem(.ax), d=ad);
+	ExecMInstr(ci, ad);
+
+	AssertArrayEquals(float64.[0,4,7,5.5], GetAllMusicPtFloat(t1.row_start,t1.x_start,ad.all_mspace_data[1].all_music_pts));
+	t1_music_pts := GetAllMusicPtPosByPosition(t1.row_start, t1.x_start, ad.all_mspace_data[1].all_music_pts, MusicPoint);
+	for t1_music_pts {
+		AssertEquals(t1.row_start, it.row_index);
+		AssertEquals(t1.row_end, it.row_index);
+		AssertFloat64Equals(t1.x_start, it.x_start_float);
+		AssertFloat64Equals(t1.x_end, it.x_end_float);
+	}
+
+} @UnitTest
+
+//TODO Could put this other tests for tmov and tmov array if that is clearer
+Test_TMovNeume :: () {
+	ad : *AllData = InitAllData(,,unit_test_alloc);
+	SetupMusicAndRows(ad, TWO_ROWS);
+
+	GeneralTMovNeumeTest(0, ad);
+
+} @UnitTest
+Test_TMovNeumeMSpace :: () {
+	ad : *AllData = InitAllData(,,unit_test_alloc);
+	SetupMusicAndRows(ad, TWO_ROWS);
+
+	gcmd : GetOrCreateMSpaceData;
+	gcmd.mspace_name = "test";
+	mspace_1 := GetOrCreateMusicSpace(gcmd, ad.runtime_settings, *ad.all_mspace_data, *ad.free_mspace_data_pool);
+	for TWO_ROWS {
+		crd : CreateRowData = it;
+		crd.mspace_id = mspace_1.mspace_id;
+		CreateMusicRow(crd, ad);
+	}
+
+	GeneralTMovNeumeTest(1, ad);
+
+} @UnitTest
+GeneralTMovNeumeTest :: (mspace_index : int, ad : *AllData) {
+	mspace := *ad.all_mspace_data[mspace_index];
+
+	ci : MusicInstruction;
+	t0 := tano.{x_start=0,x_end=5,mspace_start=mspace_index};
 	t0_address := PushRAMValue(t0, *ad.ram_memory);
 	n0 := Neume.{4,0,0,2};
 	n0_address := PushRAMValue(n0, *ad.ram_memory);
 	ci = Instr(.tmov, RamMem(t0_address), RamMem(n0_address), ImmEnum(TMovRamType.NEUME), d=ad);
 	ExecMInstr(ci, ad);
 
-	count_equal := AssertEquals(1, ad.all_mspace_data[0].all_music_pts.count);
+	count_equal := AssertEquals(1, mspace.all_music_pts.count);
 	if !count_equal return;
-	mp0 := ad.all_mspace_data[0].all_music_pts[0];
+	mp0 := mspace.all_music_pts[0];
 	AssertFloat64Equals(n0.svara, mp0.music_pt_float);
 	AssertEquals(n0.row, mp0.row_index);
 	AssertFloat64Equals(n0.x_start, mp0.x_start_float);
@@ -17017,14 +17340,14 @@ Test_TMovNeume :: () {
 	ci = FInstr(.tmov, RamMem(t0_address), RamArray(c3,d3), ImmEnum(TMovArrayType.NEUME), d=ad);
 	ExecMInstr(ci, ad);
 
-	count_equal = AssertEquals(3, ad.all_mspace_data[0].all_music_pts.count);
+	count_equal = AssertEquals(3, mspace.all_music_pts.count);
 	if !count_equal return;
-	mp1 := ad.all_mspace_data[0].all_music_pts[1];
+	mp1 := mspace.all_music_pts[1];
 	AssertFloat64Equals(neume_array[0].svara, mp1.music_pt_float);
 	AssertEquals(neume_array[0].row, mp1.row_index);
 	AssertFloat64Equals(neume_array[0].x_start, mp1.x_start_float);
 	AssertFloat64Equals(neume_array[0].x_end, mp1.x_end_float);
-	mp2 := ad.all_mspace_data[0].all_music_pts[2];
+	mp2 := mspace.all_music_pts[2];
 	AssertFloat64Equals(neume_array[1].svara, mp2.music_pt_float);
 	AssertEquals(neume_array[1].row, mp2.row_index);
 	AssertFloat64Equals(neume_array[1].x_start, mp2.x_start_float);
@@ -17032,14 +17355,14 @@ Test_TMovNeume :: () {
 
 
 	//Reverse tano and check we are placing neumes starting from x_start > x_end and row_start > row_end
-	t_rev := tano.{row_start=1,row_end=0,x_start=5,x_end=0};
+	t_rev := tano.{row_start=1,row_end=0,x_start=5,x_end=0,mspace_start=mspace_index};
 	t_rev_address := PushRAMValue(t_rev, *ad.ram_memory);
 	ci = Instr(.tmov, RamMem(t_rev_address), RamMem(n0_address), ImmEnum(TMovRamType.NEUME), d=ad);
 	ExecMInstr(ci, ad);
 
-	count_equal = AssertEquals(4, ad.all_mspace_data[0].all_music_pts.count);
+	count_equal = AssertEquals(4, mspace.all_music_pts.count);
 	if !count_equal return;
-	mp_rev_0 := ad.all_mspace_data[0].all_music_pts[3];
+	mp_rev_0 := mspace.all_music_pts[3];
 	AssertFloat64Equals(n0.svara, mp_rev_0.music_pt_float);
 	AssertEquals(t_rev.row_start, mp_rev_0.row_index);
 	AssertFloat64Equals(t_rev.x_start-n0.x_end, mp_rev_0.x_start_float);
@@ -17048,14 +17371,14 @@ Test_TMovNeume :: () {
 	ci = FInstr(.tmov, RamMem(t_rev_address), RamArray(c3,d3), ImmEnum(TMovArrayType.NEUME), d=ad);
 	ExecMInstr(ci, ad);
 
-	count_equal = AssertEquals(6, ad.all_mspace_data[0].all_music_pts.count);
+	count_equal = AssertEquals(6, mspace.all_music_pts.count);
 	if !count_equal return;
-	mp_rev_a1 := ad.all_mspace_data[0].all_music_pts[4];
+	mp_rev_a1 := mspace.all_music_pts[4];
 	AssertFloat64Equals(neume_array[0].svara, mp_rev_a1.music_pt_float);
 	AssertEquals(t_rev.row_start, mp_rev_a1.row_index);
 	AssertFloat64Equals(t_rev.x_start-neume_array[0].x_end, mp_rev_a1.x_start_float);
 	AssertFloat64Equals(t_rev.x_start-neume_array[0].x_start, mp_rev_a1.x_end_float);
-	mp_rev_a2 := ad.all_mspace_data[0].all_music_pts[5];
+	mp_rev_a2 := mspace.all_music_pts[5];
 	AssertFloat64Equals(neume_array[1].svara, mp_rev_a2.music_pt_float);
 	AssertEquals(t_rev.row_start, mp_rev_a2.row_index);
 	AssertFloat64Equals(t_rev.x_start-neume_array[1].x_end, mp_rev_a2.x_start_float);
@@ -17097,8 +17420,7 @@ Test_TMovNeume :: () {
 	AssertEquals(neume_array[1].row, na_2.row);
 	AssertFloat64Equals(neume_array[1].x_start, na_2.x_start);
 	AssertFloat64Equals(neume_array[1].x_end, na_2.x_end);
-
-} @UnitTest
+}
 
 //TODO Continue this test a bit once we have base unit tests
 //for TMovMusicPt working
@@ -17249,11 +17571,30 @@ Test_TMovMusicPt :: () {
 } @UnitTest
 
 Test_TArith :: () {
-	ci : MusicInstruction;
+	ad : *AllData = InitAllData(,,unit_test_alloc);
+	SetupMusicAndRows(ad, TWO_ROWS);
+	GeneralTArithTest(0, ad);
+} @UnitTest
+Test_TArithMSpace :: () {
 	ad : *AllData = InitAllData(,,unit_test_alloc);
 	SetupMusicAndRows(ad, TWO_ROWS);
 
-	t0 := tano.{x_start=0,x_end=1};
+	gcmd : GetOrCreateMSpaceData;
+	gcmd.mspace_name = "test";
+	mspace_1 := GetOrCreateMusicSpace(gcmd, ad.runtime_settings, *ad.all_mspace_data, *ad.free_mspace_data_pool);
+	for TWO_ROWS {
+		crd : CreateRowData = it;
+		crd.mspace_id = mspace_1.mspace_id;
+		CreateMusicRow(crd, ad);
+	}
+
+	GeneralTArithTest(1, ad);
+} @UnitTest
+GeneralTArithTest :: (mspace_index : int, ad : *AllData) {
+	mspace := *ad.all_mspace_data[mspace_index];
+
+	ci : MusicInstruction;
+	t0 := tano.{x_start=0,x_end=1,mspace_start=mspace_index};
 	t0_address := PushRAMValue(t0, *ad.ram_memory);
 	ci = Instr(.tmov, RamMem(t0_address), Imm(0), d=ad);
 	ExecMInstr(ci, ad);
@@ -17266,43 +17607,43 @@ Test_TArith :: () {
 	ci = Instr(.mov, RegMem(.ax), Imm(1), d=ad);
 	ci = Instr(.tadd, RamMem(t0_address), Imm(1), d=ad);
 	ExecMInstr(ci, ad);
-	AssertArrayEquals(float64.[1,5,8], GetAllMusicPtFloat(t0.row_start,t0.x_start,ad.all_mspace_data[0].all_music_pts));
+	AssertArrayEquals(float64.[1,5,8], GetAllMusicPtFloat(t0.row_start,t0.x_start,mspace.all_music_pts));
 
 	ci = Instr(.tsub, Imm(12), RamMem(t0_address), d=ad);
 	ExecMInstr(ci, ad);
-	AssertArrayEquals(float64.[11,7,4], GetAllMusicPtFloat(t0.row_start,t0.x_start,ad.all_mspace_data[0].all_music_pts));
+	AssertArrayEquals(float64.[11,7,4], GetAllMusicPtFloat(t0.row_start,t0.x_start,mspace.all_music_pts));
 
 	ci = Instr(.tmul, RamMem(t0_address), Imm(2), d=ad);
 	ExecMInstr(ci, ad);
-	AssertArrayEquals(float64.[22,14,8], GetAllMusicPtFloat(t0.row_start,t0.x_start,ad.all_mspace_data[0].all_music_pts));
+	AssertArrayEquals(float64.[22,14,8], GetAllMusicPtFloat(t0.row_start,t0.x_start,mspace.all_music_pts));
 
 	ci = Instr(.tmul, Imm(2), RamMem(t0_address), d=ad);
 	ExecMInstr(ci, ad);
-	AssertArrayEquals(float64.[44,28,16], GetAllMusicPtFloat(t0.row_start,t0.x_start,ad.all_mspace_data[0].all_music_pts));
+	AssertArrayEquals(float64.[44,28,16], GetAllMusicPtFloat(t0.row_start,t0.x_start,mspace.all_music_pts));
 
 	ci = Instr(.tdiv, RamMem(t0_address), Imm(2), d=ad);
 	ExecMInstr(ci, ad);
-	AssertArrayEquals(float64.[22,14,8], GetAllMusicPtFloat(t0.row_start,t0.x_start,ad.all_mspace_data[0].all_music_pts));
+	AssertArrayEquals(float64.[22,14,8], GetAllMusicPtFloat(t0.row_start,t0.x_start,mspace.all_music_pts));
 
 	ci = Instr(.tmod, RamMem(t0_address), Imm(10), d=ad);
 	ExecMInstr(ci, ad);
-	AssertArrayEquals(float64.[2,4,8], GetAllMusicPtFloat(t0.row_start,t0.x_start,ad.all_mspace_data[0].all_music_pts));
+	AssertArrayEquals(float64.[2,4,8], GetAllMusicPtFloat(t0.row_start,t0.x_start,mspace.all_music_pts));
 
 
 	a1 := int.[0,3,7];
 	c1, d1 := PushRAMArray(a1, *ad.ram_memory);
-	t1 := MakeTano(1,1,1,2);
+	t1 := MakeTano(1,1,1,2,mspace_index);
 	t1_address := PushRAMValue(t1, *ad.ram_memory);
 	ci = Instr(.tmov, RamMem(t1_address), RamArray(c1,d1), d=ad);
 	ExecMInstr(ci, ad);
 
 
 	//Multi-row / multi-x test
-	t2 := MakeTano(0,1,0,2);
+	t2 := MakeTano(0,1,0,2,mspace_index);
 	t2_address := PushRAMValue(t2, *ad.ram_memory);
 	ci = Instr(.tadd, RamMem(t2_address), Imm(1), d=ad);
 	ExecMInstr(ci, ad);
-	t_mps := GetTanoMusicPts(t2, ad.all_mspace_data[0].all_music_pts);
+	t_mps := GetTanoMusicPts(t2, mspace.all_music_pts);
 	count_equals := AssertEquals(6, t_mps.count);
 	if count_equals {
 		AssertFloat64Equals(3, t_mps[0].music_pt_float);
@@ -17330,17 +17671,34 @@ Test_TArith :: () {
 		AssertEquals(1, t_mps[5].row_index);
 	}
 
-} @UnitTest
+}
 
-//TODO FROM HERE write tests for .tshr and .trol before
-//going back to add code.
-//Can also implement return arrays to go array = tano
-//We already have tano = array
 Test_TShift :: () {
-	ci : MusicInstruction;
+	ad : *AllData = InitAllData(,,unit_test_alloc);
+	SetupMusicAndRows(ad, TWO_ROWS);
+	GeneralTShiftTest(0, ad);
+} @UnitTest
+Test_TShiftMSpace :: () {
 	ad : *AllData = InitAllData(,,unit_test_alloc);
 	SetupMusicAndRows(ad, TWO_ROWS);
 
+	gcmd : GetOrCreateMSpaceData;
+	gcmd.mspace_name = "test";
+	mspace_1 := GetOrCreateMusicSpace(gcmd, ad.runtime_settings, *ad.all_mspace_data, *ad.free_mspace_data_pool);
+	for TWO_ROWS {
+		crd : CreateRowData = it;
+		crd.mspace_id = mspace_1.mspace_id;
+		CreateMusicRow(crd, ad);
+	}
+
+	GeneralTShiftTest(1, ad);
+} @UnitTest
+GeneralTShiftTest :: (mspace_index : int, ad : *AllData) {
+	ci : MusicInstruction;
+	mspace := *ad.all_mspace_data[mspace_index];
+
+	ci = Instr(.mov, RegMem(.dfms), Imm(mspace_index), d=ad);
+	ExecMInstr(ci, ad);	
 	ci = Instr(.mov, MusicMem(0,0), Imm(0), d=ad);
 	ExecMInstr(ci, ad);
 	ci = Instr(.mov, MusicMem(0,1), Imm(4), d=ad);
@@ -17349,92 +17707,113 @@ Test_TShift :: () {
 	ExecMInstr(ci, ad);
 
 
-	t0 := tano.{0,0,0,3,0};
+	t0 := tano.{0,0,0,3,mspace_index};
 	t0_address := PushRAMValue(t0, *ad.ram_memory);
 	ci = Instr(.tshr, RamMem(t0_address), Imm(2), d=ad);
 	ExecMInstr(ci, ad);
-	AssertFloat64Equals(0, ad.all_mspace_data[0].all_music_pts[0].music_pt_float);
-	AssertEquals(0, ad.all_mspace_data[0].all_music_pts[0].row_index);
-	AssertFloat64Equals(2, ad.all_mspace_data[0].all_music_pts[0].x_start_float);
-	AssertFloat64Equals(3, ad.all_mspace_data[0].all_music_pts[0].x_end_float);
+	AssertFloat64Equals(0, mspace.all_music_pts[0].music_pt_float);
+	AssertEquals(0, mspace.all_music_pts[0].row_index);
+	AssertFloat64Equals(2, mspace.all_music_pts[0].x_start_float);
+	AssertFloat64Equals(3, mspace.all_music_pts[0].x_end_float);
 
-	AssertFloat64Equals(4, ad.all_mspace_data[0].all_music_pts[1].music_pt_float);
-	AssertEquals(0, ad.all_mspace_data[0].all_music_pts[1].row_index);
-	AssertFloat64Equals(3, ad.all_mspace_data[0].all_music_pts[1].x_start_float);
-	AssertFloat64Equals(4, ad.all_mspace_data[0].all_music_pts[1].x_end_float);
+	AssertFloat64Equals(4, mspace.all_music_pts[1].music_pt_float);
+	AssertEquals(0, mspace.all_music_pts[1].row_index);
+	AssertFloat64Equals(3, mspace.all_music_pts[1].x_start_float);
+	AssertFloat64Equals(4, mspace.all_music_pts[1].x_end_float);
 
-	AssertFloat64Equals(7, ad.all_mspace_data[0].all_music_pts[2].music_pt_float);
-	AssertEquals(0, ad.all_mspace_data[0].all_music_pts[2].row_index);
-	AssertFloat64Equals(4, ad.all_mspace_data[0].all_music_pts[2].x_start_float);
-	AssertFloat64Equals(5, ad.all_mspace_data[0].all_music_pts[2].x_end_float);
+	AssertFloat64Equals(7, mspace.all_music_pts[2].music_pt_float);
+	AssertEquals(0, mspace.all_music_pts[2].row_index);
+	AssertFloat64Equals(4, mspace.all_music_pts[2].x_start_float);
+	AssertFloat64Equals(5, mspace.all_music_pts[2].x_end_float);
 
 
-	t1 := MakeTano(0,0,0,5);
+	t1 := MakeTano(0,0,0,5,mspace_index);
 	t1_address := PushRAMValue(t1, *ad.ram_memory);
 	ci = Instr(.tshl, RamMem(t1_address), Imm(2), d=ad);
 	ExecMInstr(ci, ad);
-	AssertFloat64Equals(0, ad.all_mspace_data[0].all_music_pts[0].music_pt_float);
-	AssertEquals(0, ad.all_mspace_data[0].all_music_pts[0].row_index);
-	AssertFloat64Equals(0, ad.all_mspace_data[0].all_music_pts[0].x_start_float);
-	AssertFloat64Equals(1, ad.all_mspace_data[0].all_music_pts[0].x_end_float);
+	AssertFloat64Equals(0, mspace.all_music_pts[0].music_pt_float);
+	AssertEquals(0, mspace.all_music_pts[0].row_index);
+	AssertFloat64Equals(0, mspace.all_music_pts[0].x_start_float);
+	AssertFloat64Equals(1, mspace.all_music_pts[0].x_end_float);
 
-	AssertFloat64Equals(4, ad.all_mspace_data[0].all_music_pts[1].music_pt_float);
-	AssertEquals(0, ad.all_mspace_data[0].all_music_pts[1].row_index);
-	AssertFloat64Equals(1, ad.all_mspace_data[0].all_music_pts[1].x_start_float);
-	AssertFloat64Equals(2, ad.all_mspace_data[0].all_music_pts[1].x_end_float);
+	AssertFloat64Equals(4, mspace.all_music_pts[1].music_pt_float);
+	AssertEquals(0, mspace.all_music_pts[1].row_index);
+	AssertFloat64Equals(1, mspace.all_music_pts[1].x_start_float);
+	AssertFloat64Equals(2, mspace.all_music_pts[1].x_end_float);
 
-	AssertFloat64Equals(7, ad.all_mspace_data[0].all_music_pts[2].music_pt_float);
-	AssertEquals(0, ad.all_mspace_data[0].all_music_pts[2].row_index);
-	AssertFloat64Equals(2, ad.all_mspace_data[0].all_music_pts[2].x_start_float);
-	AssertFloat64Equals(3, ad.all_mspace_data[0].all_music_pts[2].x_end_float);
+	AssertFloat64Equals(7, mspace.all_music_pts[2].music_pt_float);
+	AssertEquals(0, mspace.all_music_pts[2].row_index);
+	AssertFloat64Equals(2, mspace.all_music_pts[2].x_start_float);
+	AssertFloat64Equals(3, mspace.all_music_pts[2].x_end_float);
 
 
 	//Reminder : t0 = tano.{0,0,0,3};
 	ci = Instr(.tror, RamMem(t0_address), Imm(1), d=ad);
 	ExecMInstr(ci, ad);
-	AssertFloat64Equals(0, ad.all_mspace_data[0].all_music_pts[0].music_pt_float);
-	AssertEquals(0, ad.all_mspace_data[0].all_music_pts[0].row_index);
-	AssertFloat64Equals(1, ad.all_mspace_data[0].all_music_pts[0].x_start_float);
-	AssertFloat64Equals(2, ad.all_mspace_data[0].all_music_pts[0].x_end_float);
+	AssertFloat64Equals(0, mspace.all_music_pts[0].music_pt_float);
+	AssertEquals(0, mspace.all_music_pts[0].row_index);
+	AssertFloat64Equals(1, mspace.all_music_pts[0].x_start_float);
+	AssertFloat64Equals(2, mspace.all_music_pts[0].x_end_float);
 
-	AssertFloat64Equals(4, ad.all_mspace_data[0].all_music_pts[1].music_pt_float);
-	AssertEquals(0, ad.all_mspace_data[0].all_music_pts[1].row_index);
-	AssertFloat64Equals(2, ad.all_mspace_data[0].all_music_pts[1].x_start_float);
-	AssertFloat64Equals(3, ad.all_mspace_data[0].all_music_pts[1].x_end_float);
+	AssertFloat64Equals(4, mspace.all_music_pts[1].music_pt_float);
+	AssertEquals(0, mspace.all_music_pts[1].row_index);
+	AssertFloat64Equals(2, mspace.all_music_pts[1].x_start_float);
+	AssertFloat64Equals(3, mspace.all_music_pts[1].x_end_float);
 
-	AssertFloat64Equals(7, ad.all_mspace_data[0].all_music_pts[2].music_pt_float);
-	AssertEquals(0, ad.all_mspace_data[0].all_music_pts[2].row_index);
-	AssertFloat64Equals(0, ad.all_mspace_data[0].all_music_pts[2].x_start_float);
-	AssertFloat64Equals(1, ad.all_mspace_data[0].all_music_pts[2].x_end_float);
+	AssertFloat64Equals(7, mspace.all_music_pts[2].music_pt_float);
+	AssertEquals(0, mspace.all_music_pts[2].row_index);
+	AssertFloat64Equals(0, mspace.all_music_pts[2].x_start_float);
+	AssertFloat64Equals(1, mspace.all_music_pts[2].x_end_float);
 
 
 	//Reminder : t0 = tano.{0,0,0,3};
 	ci = Instr(.trol, RamMem(t0_address), Imm(2), d=ad);
 	ExecMInstr(ci, ad);
-	AssertFloat64Equals(0, ad.all_mspace_data[0].all_music_pts[0].music_pt_float);
-	AssertEquals(0, ad.all_mspace_data[0].all_music_pts[0].row_index);
-	AssertFloat64Equals(2, ad.all_mspace_data[0].all_music_pts[0].x_start_float);
-	AssertFloat64Equals(3, ad.all_mspace_data[0].all_music_pts[0].x_end_float);
+	AssertFloat64Equals(0, mspace.all_music_pts[0].music_pt_float);
+	AssertEquals(0, mspace.all_music_pts[0].row_index);
+	AssertFloat64Equals(2, mspace.all_music_pts[0].x_start_float);
+	AssertFloat64Equals(3, mspace.all_music_pts[0].x_end_float);
 
-	AssertFloat64Equals(4, ad.all_mspace_data[0].all_music_pts[1].music_pt_float);
-	AssertEquals(0, ad.all_mspace_data[0].all_music_pts[1].row_index);
-	AssertFloat64Equals(0, ad.all_mspace_data[0].all_music_pts[1].x_start_float);
-	AssertFloat64Equals(1, ad.all_mspace_data[0].all_music_pts[1].x_end_float);
+	AssertFloat64Equals(4, mspace.all_music_pts[1].music_pt_float);
+	AssertEquals(0, mspace.all_music_pts[1].row_index);
+	AssertFloat64Equals(0, mspace.all_music_pts[1].x_start_float);
+	AssertFloat64Equals(1, mspace.all_music_pts[1].x_end_float);
 
-	AssertFloat64Equals(7, ad.all_mspace_data[0].all_music_pts[2].music_pt_float);
-	AssertEquals(0, ad.all_mspace_data[0].all_music_pts[2].row_index);
-	AssertFloat64Equals(1, ad.all_mspace_data[0].all_music_pts[2].x_start_float);
-	AssertFloat64Equals(2, ad.all_mspace_data[0].all_music_pts[2].x_end_float);
+	AssertFloat64Equals(7, mspace.all_music_pts[2].music_pt_float);
+	AssertEquals(0, mspace.all_music_pts[2].row_index);
+	AssertFloat64Equals(1, mspace.all_music_pts[2].x_start_float);
+	AssertFloat64Equals(2, mspace.all_music_pts[2].x_end_float);
 
-} @UnitTest
+}
 
 //TODO Should we rename this Test_TMovToArray?
 Test_TanoToArray :: () {
-	ci : MusicInstruction;
+	ad : *AllData = InitAllData(,,unit_test_alloc);
+	SetupMusicAndRows(ad, TWO_ROWS);
+	GeneralTanoToArrayTest(0, ad);
+} @UnitTest
+Test_TanoToArrayMSpace :: () {
 	ad : *AllData = InitAllData(,,unit_test_alloc);
 	SetupMusicAndRows(ad, TWO_ROWS);
 
+	gcmd : GetOrCreateMSpaceData;
+	gcmd.mspace_name = "test";
+	mspace_1 := GetOrCreateMusicSpace(gcmd, ad.runtime_settings, *ad.all_mspace_data, *ad.free_mspace_data_pool);
+	for TWO_ROWS {
+		crd : CreateRowData = it;
+		crd.mspace_id = mspace_1.mspace_id;
+		CreateMusicRow(crd, ad);
+	}
+
+	GeneralTanoToArrayTest(1, ad);
+} @UnitTest
+GeneralTanoToArrayTest :: (mspace_index : int, ad : *AllData) {
+	ci : MusicInstruction;
+	mspace := *ad.all_mspace_data[mspace_index];
+
 	//TEST tano to int array
+	ci = Instr(.mov, RegMem(.dfms), Imm(mspace_index), d=ad);
+	ExecMInstr(ci, ad);
 	chord := int.[0,4,7];
 	ci = Instr(.mov, MusicMem(0,0), Imm(chord[0]), d=ad);
 	ExecMInstr(ci, ad);
@@ -17455,7 +17834,7 @@ Test_TanoToArray :: () {
 	t2a_settings.return_array_type = .DEFAULT;
 	settings_address := PushRAMValue(t2a_settings, *ad.ram_memory);
 
-	from_tano := MakeTano(0,0,0,3);
+	from_tano := MakeTano(0,0,0,3,mspace_index);
 	tano_address := PushRAMValue(from_tano, *ad.ram_memory);
 	ci = Instr(.tmov, RamArray(0,0), RamMem(tano_address), RamMem(settings_address), d=ad);
 	ExecMInstr(ci, ad);
@@ -17500,7 +17879,7 @@ Test_TanoToArray :: () {
 
 	float_heap_address := ad.all_register_memory[RegDef.hcp].int_value;
 
-	float_tano := MakeTano(0,0,cast(float64)f_start_x,cast(float64)(f_end_x+1));
+	float_tano := MakeTano(0,0,cast(float64)f_start_x,cast(float64)(f_end_x+1),mspace_index);
 	float_tano_address := PushRAMValue(float_tano, *ad.ram_memory);
 	//NOTE : The instruciton type here is what makes the return array float
 	ci = CreateFloatInstr(.tmov, RamArray(0,0), RamMem(float_tano_address), RamMem(float_settings_address), d=ad);
@@ -17518,7 +17897,7 @@ Test_TanoToArray :: () {
 	cf_2 : float64 = GetMemValue(float_heap_address + 2*size_of(float64), float64,ad.ram_memory);
 	AssertFloat64Equals(chord_f[2], cf_2);
 
-} @UnitTest
+}
 
 //TODO Should I split this up for each operation. What if we add floating point instructions separately?
 Test_Arithmetic :: () {

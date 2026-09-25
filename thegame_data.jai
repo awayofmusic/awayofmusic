@@ -8061,14 +8061,19 @@ to be able to get the music_pts array from any music space with this.
 I am not sure if I want to set the stack music space to be -1 or something else (88?).
 This leaves it ambiguous for now.
 */
-GetMSpaceNeumes :: inline (mspace_index : int, ad : *AllData) -> *[..] MusicPoint {
+GetMSpaceNeumes :: inline (mspace_index : int, ad : *AllData) -> *[..] MusicPoint, CPUError {
 	//TODO I Think we can just use negative mspace_index for tano since we can't
 	//access those in the array anyways and then have a separate tano_stack_mspace_data
 	//array where we take the absolute value of the mspace_index and grab by index like that.
-	if mspace_index != 0 {
-		return *ad.tano_stack_music_pts;
+	if mspace_index == TANO_STACK_MSPACE {
+		return *ad.tano_stack_music_pts, NO_CPU_ERROR;
 	}
-	return *ad.all_mspace_data[0].all_music_pts;
+
+	mspace, mspace_err := FindMSpace(mspace_index, ad.all_mspace_data, ad.all_register_memory); 
+	if mspace_err.is_error {
+		return null, mspace_err;
+	}
+	return *mspace.all_music_pts, NO_CPU_ERROR;
 }
 
 //TODO Not sure we need this anymore.

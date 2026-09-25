@@ -14869,6 +14869,109 @@ DONE);
 
 } @ITest
 
+Test_TanoMSpace :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	perm : *Persist = GetPermanentStorage(game_memory);
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+		perm.all_data = InitAllData();
+		ResetAllRendererData(renderer_data);
+		SetupMusicAndRows(perm.all_data, TWO_ROWS);
+
+		gcmd : GetOrCreateMSpaceData;
+		gcmd.mspace_name = "test";
+		mspace_1 := GetOrCreateMusicSpace(gcmd, perm.all_data.runtime_settings, *perm.all_data.all_mspace_data,
+			*perm.all_data.free_mspace_data_pool);
+		for TWO_ROWS {
+			crd : CreateRowData = it;
+			crd.mspace_id = mspace_1.mspace_id;
+			CreateMusicRow(crd, perm.all_data);
+		}
+
+		text_file := CreateTestTextFile(*ALL_NEXT_IDS, *perm.all_data.all_text_files);
+		WriteFileString(text_file,
+#string DONE
+main :: () {
+	tano(0,0,0) ~= int.[3,5];
+	tano(0,0,1) ~= tano(0,0,0);
+
+	n1 : neume;
+	n1.svara = 10.5;
+	n1.x_end = 1.5;
+	tano(0,1.0..2.0,1) ~= n1;
+
+	tano(1,3.1..4.2,1) ~= int.[0,4];
+	tano(1,3.1,1) += 2;
+}
+DONE);
+
+		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
+			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+	
+		array_resize(*perm.test_data.all_sub_tests, 4+1);
+	} 
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	if perm.test_data.sub_test_index == {
+	case 0; {
+		open_test := MakeTerminalEvent(.open_op, TEST_TEXT_NAME);
+		array_add(*perm.all_data.all_terminal_events, open_test);
+	}
+	case 1; DownUpInputMap(.TEXT_DEBUG_TOGGLE, game_input);
+	case 2; DownUpInputMap(.TEXT_COMPILE, game_input);
+	case 3; {
+		// text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
+		// CodeBPForTest(6, *text_op.exec_info.debug_info, text_op.text_comp_data);
+		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+	}
+	case 4; {
+		count_equal := AssertEquals(5, perm.all_data.all_mspace_data[1].all_music_pts.count);
+		if count_equal {
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[1].all_music_pts, .{
+				music_pt_float=3,
+				x_start_float=0,
+				x_end_float=1,
+				row_index=0,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[1].all_music_pts, .{
+				music_pt_float=5,
+				x_start_float=0,
+				x_end_float=1,
+				row_index=0,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[1].all_music_pts, .{
+				music_pt_float=10.5,
+				x_start_float=1,
+				x_end_float=2.5,
+				row_index=0,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[1].all_music_pts, .{
+				music_pt_float=2,
+				x_start_float=3.1,
+				x_end_float=4.2,
+				row_index=1,
+			});
+			AssertFoundMusicPt(perm.all_data.all_mspace_data[1].all_music_pts, .{
+				music_pt_float=6,
+				x_start_float=3.1,
+				x_end_float=4.2,
+				row_index=1,
+			});
+		}
+	}
+	}
+
+	ContinueTest(*perm.test_data);
+
+} @ITest
+
 AssertTextSplitLine :: (test : TextSplitLine, tsl : TextSplitLine) {
 	AssertTextCursor(test.cursor, tsl.cursor);
 	AssertEquals(test.split_lines.count, tsl.split_lines.count, "split_lines.count");

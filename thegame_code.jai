@@ -1278,6 +1278,8 @@ ParseIncreasingPrecedence :: (
 				EatNextToken(*cd.lexer); //Eat "("
 				right := ParseExpression(cd, GetCodePrec(#char ")",pl), pl); //")" is currently S64_MIN
 				// right := ParseExpression(cd,S64_MIN);
+				//TODO We could just return on a null here if that makes more sense since null means error
+				if right == null return null;
 				if right.value.token_type != #char ")" {
 					//TODO Check that this or right.token_type is ")" otherwise CompilerError
 					EatNextToken(*cd.lexer); //Eat ")"
@@ -1395,6 +1397,7 @@ ParseExpression :: (cd : *CompilationData, min_prec : int, pl : ParserLevel = .S
 	if left == null return null; //Error out here
 	while true {
 		node := ParseIncreasingPrecedence(cd, left, min_prec, pl);
+		if node == null return null; //Could try erroring out early here if needed
 		if node == left break;
 		left = node;
 	}
@@ -4427,7 +4430,6 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 		//BUT maybe it is better to do relative offsets with [] to differentiate... although
 		//maybe we don't want to allow negative values in arrays at all
 
-		
 		var_nodes : [] *BinaryNode = CommaNodeArrayEmptyToken(node.right, #char ")", cd);
 		if !AllOrEquals(var_nodes.count, int.[1,2,3]) {
 			CreateCompErr(cd, .EVALUATION, node,
@@ -4620,9 +4622,9 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 					x_start_node := x_node.left;
 					x_end_node := x_node.right;
 					//TODO This could be int or float and we can convert to float with .itof if it's an int.
-					if x_start_node == null || 
+					if x_start_node == null || x_start_node.code_ir.t_info == null ||
 						!AllOrEquals(x_start_node.code_ir.t_info.type_enum, .[.INTEGER, .FLOAT]) ||
-						x_end_node == null || 
+						x_end_node == null || x_end_node.code_ir.t_info == null ||
 						!AllOrEquals(x_end_node.code_ir.t_info.type_enum, .[.INTEGER, .FLOAT])
 					{
 						CreateCompErr(cd, .EVALUATION, node,
@@ -4640,7 +4642,7 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 						CreateMInstr(.itof, new_x_end_op, new_x_end_op, d=cd);
 					}
 				} 
-				else if x_node != null &&
+				else if x_node != null && x_node.code_ir.t_info != null &&
 						  AllOrEquals(x_node.code_ir.t_info.type_enum, .[.INTEGER, .FLOAT])
 				{
 					//TODO If we have an int, then we can conver to integer here for convenience
@@ -4683,6 +4685,30 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 				//so best to just leave it separate for now. NEVERMIND since we removed the mspace_end_op for now
 				//so it's not the same since we only have 1 value.
 				new_mspace_start_op : MusicOperand;
+				if var_nodes[2] != null && var_nodes[2].code_ir.t_info != null && 
+					var_nodes[2].code_ir.t_info.type_enum == .INTEGER 
+				{
+					new_mspace_start_op = PushStackMov(var_nodes[2], cd);
+					//NOTE : By default we push on the same mspace_start == mspace_end
+					// new_mspace_end_op = PushStackMov(var_nodes[2], cd);
+				} 
+				else {
+					CreateCompErr(cd, .EVALUATION, node,
+					"Invalid tano mspace - eg valid is tano(row,x,mspace).");
+					return false;
+				}
+
+				//NOTE : tano is assumed tano(0,0) so we don't need to add an offset since it's already from 0.
+				//TODO Should we have relative tano for mspace_index as well?
+				if node.left.value.token_type != .KEYWORD_TANO {
+					rel_tano_mspace_start_op : MusicOperand = GetValueOpReuseReg(node.left, cd);
+					CreateMInstr(.add, new_mspace_start_op, rel_tano_mspace_start_op, Imm(cd.int_type_info.runtime_size), d=cd);
+					// CreateMInstr(.add, new_mspace_end_op, rel_tano_mspace_start_op, Imm(cd.int_type_info.runtime_size), d=cd);
+				}
+				//These cases are not valid for mspace since we don't have a range of mspace in the tano
+				//MSpace points are separated by mspaces so this will not happen
+				//A loop can be easily used to do that
+				#if 0 {
 				// new_mspace_end_op : MusicOperand;
 				if var_nodes[2].value.token_type == #char ":" {
 					mspace_start_node := var_nodes[2].left;
@@ -4708,7 +4734,8 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 				else if var_nodes[2].value.token_type == .DOUBLE_DOT {
 					mspace_start_node := var_nodes[2].left;
 					// mspace_end_node := var_nodes[2].right;
-					if mspace_start_node == null || mspace_start_node.code_ir.t_info.type_enum != .INTEGER
+					if mspace_start_node == null || mspace_start_node.code_ir.t_info == null || 
+						mspace_start_node.code_ir.t_info.type_enum != .INTEGER
 						// mspace_end_node == null || mspace_end_node.code_ir.t_info.type_enum != .INTEGER
 					{
 						CreateCompErr(cd, .EVALUATION, node,
@@ -4719,23 +4746,6 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 					new_mspace_start_op = PushStackMov(mspace_start_node, cd);
 					// new_mspace_end_op = PushStackMov(mspace_end_node, cd);
 				} 
-				else if var_nodes[2] != null && var_nodes[2].code_ir.t_info.type_enum == .INTEGER {
-					new_mspace_start_op = PushStackMov(var_nodes[2], cd);
-					//NOTE : By default we push on the same mspace_start == mspace_end
-					// new_mspace_end_op = PushStackMov(var_nodes[2], cd);
-				} 
-				else {
-					CreateCompErr(cd, .EVALUATION, node,
-					"Invalid tano mspace - eg valid is tano(row,x,mspace).");
-					return false;
-				}
-
-				//NOTE : tano is assumed tano(0,0) so we don't need to add an offset since it's already from 0.
-				//TODO Should we have relative tano for mspace_index as well?
-				if node.left.value.token_type != .KEYWORD_TANO {
-					rel_tano_mspace_start_op : MusicOperand = GetValueOpReuseReg(node.left, cd);
-					CreateMInstr(.add, new_mspace_start_op, rel_tano_mspace_start_op, Imm(cd.int_type_info.runtime_size), d=cd);
-					// CreateMInstr(.add, new_mspace_end_op, rel_tano_mspace_start_op, Imm(cd.int_type_info.runtime_size), d=cd);
 				}
 			} else {
 				//Default case where we push on default mspace_start=.dfms and mspace_end=.dfms
@@ -12742,7 +12752,8 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		case .REGISTER; #through;
 		case .INTEGER; {
 			mspace_index : int = ComputeOperandInt(ci.operands[0], ad.all_register_memory, ad.ram_memory);
-			mspace_neumes : *[..] MusicPoint = GetMSpaceNeumes(mspace_index, ad);
+			mspace_neumes, mspace_err := GetMSpaceNeumes(mspace_index, ad);
+			if mspace_err.is_error return mspace_err;
 			//No need to do anything if we have no neumes in this mspace
 			if mspace_neumes.count == 0 return NO_CPU_ERROR;
 
@@ -13474,7 +13485,9 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 			if err.is_error return err;
 
 			to_t_norm : tano = NormalizeTano(to_tano);
-			to_neumes : *[..] MusicPoint = GetMSpaceNeumes(to_tano.mspace_start, ad);
+			// to_neumes : *[..] MusicPoint = GetMSpaceNeumes(to_tano.mspace_start, ad);
+			to_neumes, to_mspace_err := GetMSpaceNeumes(to_tano.mspace_start, ad);
+			if to_mspace_err.is_error return to_mspace_err;
 			// to_tano_lias : *[..] MusicPoint;
 			// to_tano_liyas : *[..] MusicPoint;
 			// to_tano_leyas : *[..] MusicPoint;
@@ -13517,8 +13530,11 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 					if err.is_error return err;
 
 					//TODO If we allow mspace ranges then we would copy from each mspace depending on the order.
-					from_neumes : [] MusicPoint = GetMSpaceNeumes(from_tano.mspace_start, ad).*;
-					for mp : TanoLoop.{from_tano,from_neumes} {
+					// from_neumes : [] MusicPoint = GetMSpaceNeumes(from_tano.mspace_start, ad).*;
+					from_neumes, from_mspace_err := GetMSpaceNeumes(from_tano.mspace_start, ad);
+					if from_mspace_err.is_error return from_mspace_err;
+
+					for mp : TanoLoop.{from_tano,from_neumes.*} {
 						new_mp : MusicPoint = TMovMusicPt(mp, from_tano, to_tano);
 						//TOOD What should the default here be? Remove or leave or cut?
 						//TODO We could have a register with a setting here OR ci.operands[2] which cuts or removes instead of leaving.
@@ -13585,7 +13601,9 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 
 				if tmov_array_type == .DEFAULT {
 					from_values : [] float64 = ComputeMultiMemoryFloat(ci.instr_type, ci.operands[1],
-						ad.all_register_memory, ad.ram_memory, df_mspace.all_music_pts);
+						//This will always be ram_array so the all_music_pts we pass in here is not used since we are grabbing from memory
+						ad.all_register_memory, ad.ram_memory, .[]);
+						// ad.all_register_memory, ad.ram_memory, df_mspace.all_music_pts);
 					for row_index : to_t_norm.row_start..to_t_norm.row_end {
 						CreateManyMusicPtsInMemory(from_values, row_index, to_t_norm.x_start, to_t_norm.x_end, to_neumes);
 					}
@@ -13627,6 +13645,8 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 			from_address : int = ComputeRAMLocation(ci.operands[1], ad.all_register_memory, ad.ram_memory);
 			from_tano, err := GetMemValue(from_address, tano, ad.ram_memory);
 			if err.is_error return err;
+			from_neumes, from_mspace_err := GetMSpaceNeumes(from_tano.mspace_start, ad);
+			if from_mspace_err.is_error return from_mspace_err;
 
 			//TODO get operands[2] to allow for different array return types like MusicPoint
 			//CAN ALSO specify if we want to update an already given resizable array as RAM_ARRAY
@@ -13644,13 +13664,13 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 				if ci.instr_type == {
 				case .INTEGER; {
 					//TODO If we have an allocator for each instruction then we should set this to that allocator eventually.
-					tano_music_pts : [] int = GetTanoMusicPts(from_tano, df_mspace.all_music_pts, type=int);
+					tano_music_pts : [] int = GetTanoMusicPts(from_tano, from_neumes.*, type=int);
 					array_count = tano_music_pts.count;
 					array_data = cast(*u8) tano_music_pts.data;
 					mem_size = size_of(int) * tano_music_pts.count;
 				}
 				case .FLOAT; {
-					tano_music_pts : [] float64 = GetTanoMusicPts(from_tano, df_mspace.all_music_pts, type=float64);
+					tano_music_pts : [] float64 = GetTanoMusicPts(from_tano, from_neumes.*, type=float64);
 					array_count = tano_music_pts.count;
 					array_data = cast(*u8) tano_music_pts.data;
 					mem_size = size_of(float64) * tano_music_pts.count;
@@ -13659,7 +13679,7 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 			}
 			case .NEUME; {
 				//TODO Need to cleanup MusicPoint and add it to code before we can use this properly.
-				tano_neumes : [] Neume = GetTanoMusicPts(from_tano, df_mspace.all_music_pts, type=Neume);
+				tano_neumes : [] Neume = GetTanoMusicPts(from_tano, from_neumes.*, type=Neume);
 				array_count = tano_neumes.count;
 				array_data = cast(*u8) tano_neumes.data;
 				mem_size = size_of(Neume) * tano_neumes.count;
@@ -13710,16 +13730,18 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 			to_tano, err := GetMemValue(to_address, tano, ad.ram_memory);
 			if err.is_error return err;
 
-			to_neumes : [] MusicPoint = GetMSpaceNeumes(to_tano.mspace_start, ad).*;
+			// to_neumes : [] MusicPoint = GetMSpaceNeumes(to_tano.mspace_start, ad).*;
+			to_neumes, to_mspace_err := GetMSpaceNeumes(to_tano.mspace_start, ad);
+			if to_mspace_err.is_error return to_mspace_err;
 
 			mv : MemoryValue = ComputeMemoryValue(value_operand, ad.all_register_memory, ad.ram_memory);
 			fv, iv := MVToFVAndIV(mv, ci.instr_type);
 			if ci.operands[0].operand_type == .RAM_MEMORY {
-				for * mp : TanoLoop.{to_tano,to_neumes} {
+				for * mp : TanoLoop.{to_tano,to_neumes.*} {
 					DirectionArithmeticOp(ci.op_code, mp.music_pt_float, fv, mp);
 				}				
 			} else if ci.operands[1].operand_type == .RAM_MEMORY {
-				for * mp : TanoLoop.{to_tano,to_neumes} {
+				for * mp : TanoLoop.{to_tano,to_neumes.*} {
 					DirectionArithmeticOp(ci.op_code, fv, mp.music_pt_float, mp);
 				}
 			}
@@ -13732,11 +13754,16 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 			  tmov so then this would remain 1 way unless we do a .t_mode instruction and then adjust from there.
 
 			  FOR NOW THIS IS UNTESTED UNLESS WE END UP USING IT IN CODE. OTHERWISE CAN REMOVE IT LATER
+
+			  YES I THINK ITS BEST TO REMOVE THIS TO NOT HAVE A COMPLICATED CASE HERE
+			  DO NOT USE THIS AND JUST USE THE 2 operand case above unless someone else wants to maintain this
 			*/
 			//ci.operands[0] == .RAM_MEMORY from ValidateMusicInstruction
 			to_address : int = ComputeRAMLocation(ci.operands[0], ad.all_register_memory, ad.ram_memory);
 			to_tano, err := GetMemValue(to_address, tano, ad.ram_memory);
 			if err.is_error return err;
+			to_neumes, to_mspace_err := GetMSpaceNeumes(to_tano.mspace_start, ad);
+			if to_mspace_err.is_error return to_mspace_err;
 
 			to_t_norm : tano = NormalizeTano(to_tano);
 
@@ -13754,19 +13781,21 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 			from_address : int = ComputeRAMLocation(from_tano_operand, ad.all_register_memory, ad.ram_memory);
 			from_tano, from_err := GetMemValue(from_address, tano, ad.ram_memory);
 			if from_err.is_error return from_err;
+			from_neumes, from_mspace_err := GetMSpaceNeumes(from_tano.mspace_start, ad);
+			if from_mspace_err.is_error return from_mspace_err;
 
 			mv : MemoryValue = ComputeMemoryValue(value_operand, ad.all_register_memory, ad.ram_memory);
 			fv, iv := MVToFVAndIV(mv, ci.instr_type);
 			//TODO FROM HERE I think make 1 loop here and then implement "~=" and move assignment code
 			//and then write unit tests for "~="
-			for * mp : TanoLoop.{from_tano,df_mspace.all_music_pts} {
+			for * mp : TanoLoop.{from_tano,from_neumes.*} {
 				new_mp : MusicPoint = TMovMusicPt(mp, from_tano, to_tano);
 				if ci.operands[1].operand_type == .RAM_MEMORY {
 					DirectionArithmeticOp(ci.op_code, new_mp.music_pt_float, fv, *new_mp);
 				} else if ci.operands[2].operand_type == .RAM_MEMORY {
 					DirectionArithmeticOp(ci.op_code, fv, new_mp.music_pt_float, *new_mp);
 				}
-				CreateMusicPtInMemory(new_mp, *df_mspace.all_music_pts);
+				CreateMusicPtInMemory(new_mp, to_neumes);
 			}				
 		}
 	}
@@ -13782,6 +13811,8 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		to_address : int = ComputeRAMLocation(ci.operands[0], ad.all_register_memory, ad.ram_memory);
 		to_tano, err := GetMemValue(to_address, tano, ad.ram_memory);
 		if err.is_error return err;
+		to_neumes, to_mspace_err := GetMSpaceNeumes(to_tano.mspace_start, ad);
+		if to_mspace_err.is_error return to_mspace_err;
 
 		to_t_norm : tano = NormalizeTano(to_tano);
 
@@ -13802,7 +13833,7 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		norm_bound : float64 = upper_bound - lower_bound;
 		// norm_bound : float64 = TanoXLength(to_t_norm);
 		// range_size : float64 = TanoXLength(to_t_norm);
-		for * mp : TanoLoop.{to_tano,df_mspace.all_music_pts} {
+		for * mp : TanoLoop.{to_tano,to_neumes.*} {
 			if ci.op_code == {
 			//TODO Could pull this out into a function if we need to reuse the logic.
 			case OpCode.tshr;

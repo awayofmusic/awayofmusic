@@ -6801,6 +6801,8 @@ if is_row_hovering {
 		//TODO I really like this way for more complicated triggers. In general we can just write anything in the
 		//dl so we could copy paste the check here and do the check ourself, but this is simpler / more efficient
 		//for more complicated cases like row hovering here for example. BUT it's also more limited
+		//ACTUALLY BEST TO REMOVE THIS NOW we have an off by one frame row hover above and I think that's ok for now.
+		//We can pull out or duplicate the row hovering above if we are on a row and just set the date
 		if perm.all_data.runtime_settings.use_row_hover_string_func && perm.all_data.runtime_settings.row_hover_string_func != null {
 			//If we do this anywhere else then we update there as well.
 			//THIS IS AN EXPERIMENT. In general we shoudl just use ExternalPerFrame but because this data is more easily
@@ -6817,6 +6819,8 @@ if is_row_hovering {
 			// text := tprint("%,%,%", music_pt_pos, tuning_system.short_name, formatFloat(frequency,trailing_width=3,zero_removal=.NO));
 			text := tprint("%,%,%", rhi.pos_mod, rhi.octave, rhi.tuning_system.short_name);
 			hover_cam := mouse_cam + Vector2F.{1,0};
+			//TODO PULL THIS OUT TO HAVE TextBackgroundRect2D be reusable for all hovering text
+			//and then reuse in startup_dl
 			rect_dim := Vector2F.{text.count*perm.text_editor_data.code_font_1_char_width_world,
 				1.1*perm.text_editor_data.char_height / renderer_data.base_render_group.pixels_per_square};
 			hover_rect : Rectangle2 = RectMinDim(hover_cam - Vector2F.{0,0.65*rect_dim.y}, rect_dim);

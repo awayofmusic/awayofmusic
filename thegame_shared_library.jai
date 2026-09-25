@@ -1477,6 +1477,10 @@ tano :: struct {
 	//it is more practical than just making some functions or operator overloads for it.
 	// mspace_end : int = 0;
 }
+MakeTano :: inline (rs : int, re : int, xs : float64, xe : float64, ms : int) -> tano {
+	t := tano.{rs,re,xs,xe,ms};
+	return t;
+}
 MakeTano :: inline (rs : int, re : int, xs : float64, xe : float64) -> tano {
 	t := tano.{rs,re,xs,xe,0};
 	return t;
@@ -1728,6 +1732,9 @@ GetTanoNumOfPoints :: inline (t : tano, all_music_pts : [] MusicPoint) -> int {
 }
 //This is not used and untested right now but is useful in general
 //TODO Can likely to a regular remove and then a DefaultSortNeumes
+//We can just do that now since we sort after every instruction execution
+//BUT WE SHOUDL write NotOrdered and leave a comment here saying we should
+//sort after this or may one with order that sorts after calling this
 RemoveTanoMusicPts :: inline (t : tano, all_music_pts : [] MusicPoint) {
 	music_pts : [..] MusicPoint;
 	music_pts.allocator = context.allocator;
