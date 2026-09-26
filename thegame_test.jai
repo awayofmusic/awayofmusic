@@ -10064,7 +10064,7 @@ Test_CreateMSpace :: (
 	AssertEquals(1, perm.all_data.all_mspace_data[0].all_music_lane_rows.count);
 	AssertEquals(1, perm.all_data.all_mspace_data[0].all_section_to_row.count);
 	AssertEquals("", perm.all_data.all_mspace_data[0].mspace_name);
-	AssertEquals(perm.all_data.runtime_settings.default_tano_x_unit_width, 
+	AssertEquals(perm.all_data.runtime_settings.default_music_row_unit_width, 
 		perm.all_data.all_mspace_data[0].tano_x_unit_width);
 
 	gcmd : GetOrCreateMSpaceData;
@@ -10082,7 +10082,7 @@ Test_CreateMSpace :: (
 		AssertEquals(2, perm.all_data.all_mspace_data[1].all_music_lane_rows.count);
 		AssertEquals(2, perm.all_data.all_mspace_data[1].all_section_to_row.count);
 		AssertEquals(gcmd.mspace_name, perm.all_data.all_mspace_data[1].mspace_name);
-		AssertEquals(perm.all_data.runtime_settings.default_tano_x_unit_width,
+		AssertEquals(perm.all_data.runtime_settings.default_music_row_unit_width,
 			perm.all_data.all_mspace_data[1].tano_x_unit_width);
 	}
 
@@ -10106,7 +10106,7 @@ Test_CreateMSpace :: (
 		AssertEquals(3, perm.all_data.all_mspace_data[2].all_music_lane_rows.count);
 		AssertEquals(3, perm.all_data.all_mspace_data[2].all_section_to_row.count);
 		AssertEquals(gcmd_2.mspace_name, perm.all_data.all_mspace_data[2].mspace_name);
-		AssertEquals(perm.all_data.runtime_settings.default_tano_x_unit_width,
+		AssertEquals(perm.all_data.runtime_settings.default_music_row_unit_width,
 			perm.all_data.all_mspace_data[2].tano_x_unit_width);
 	}
 
@@ -10132,7 +10132,7 @@ Test_CreateMSpace :: (
 		AssertEquals(0, perm.all_data.all_mspace_data[2].all_music_lane_rows.count);
 		AssertEquals(0, perm.all_data.all_mspace_data[2].all_section_to_row.count);
 		AssertEquals(gcmd.mspace_name, perm.all_data.all_mspace_data[2].mspace_name);
-		AssertEquals(perm.all_data.runtime_settings.default_tano_x_unit_width,
+		AssertEquals(perm.all_data.runtime_settings.default_music_row_unit_width,
 			perm.all_data.all_mspace_data[2].tano_x_unit_width);
 
 		for TWO_ROWS {
@@ -10176,7 +10176,7 @@ Test_MSpaceAudio :: (
 		AssertEquals(1, perm.all_data.all_mspace_data[0].all_music_lane_rows.count);
 		AssertEquals(1, perm.all_data.all_mspace_data[0].all_section_to_row.count);
 		AssertEquals("", perm.all_data.all_mspace_data[0].mspace_name);
-		AssertEquals(perm.all_data.runtime_settings.default_tano_x_unit_width, 
+		AssertEquals(perm.all_data.runtime_settings.default_music_row_unit_width, 
 			perm.all_data.all_mspace_data[0].tano_x_unit_width);
 
 		gcmd : GetOrCreateMSpaceData;
@@ -10194,7 +10194,7 @@ Test_MSpaceAudio :: (
 			AssertEquals(2, perm.all_data.all_mspace_data[1].all_music_lane_rows.count);
 			AssertEquals(2, perm.all_data.all_mspace_data[1].all_section_to_row.count);
 			AssertEquals(gcmd.mspace_name, perm.all_data.all_mspace_data[1].mspace_name);
-			AssertEquals(perm.all_data.runtime_settings.default_tano_x_unit_width,
+			AssertEquals(perm.all_data.runtime_settings.default_music_row_unit_width,
 				perm.all_data.all_mspace_data[1].tano_x_unit_width);
 		}
 
@@ -10487,7 +10487,7 @@ Test_MSpaceAudioStart :: (
 		AssertEquals(1, perm.all_data.all_mspace_data[0].all_music_lane_rows.count);
 		AssertEquals(1, perm.all_data.all_mspace_data[0].all_section_to_row.count);
 		AssertEquals("", perm.all_data.all_mspace_data[0].mspace_name);
-		AssertEquals(perm.all_data.runtime_settings.default_tano_x_unit_width, 
+		AssertEquals(perm.all_data.runtime_settings.default_music_row_unit_width, 
 			perm.all_data.all_mspace_data[0].tano_x_unit_width);
 
 		gcmd : GetOrCreateMSpaceData;
@@ -10505,7 +10505,7 @@ Test_MSpaceAudioStart :: (
 			AssertEquals(2, perm.all_data.all_mspace_data[1].all_music_lane_rows.count);
 			AssertEquals(2, perm.all_data.all_mspace_data[1].all_section_to_row.count);
 			AssertEquals(gcmd.mspace_name, perm.all_data.all_mspace_data[1].mspace_name);
-			AssertEquals(perm.all_data.runtime_settings.default_tano_x_unit_width,
+			AssertEquals(perm.all_data.runtime_settings.default_music_row_unit_width,
 				perm.all_data.all_mspace_data[1].tano_x_unit_width);
 		}
 

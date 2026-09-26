@@ -126,7 +126,7 @@ GlobalRules :: struct {
 	//or move these to a more appropriate place
 	//for overall lane and row dimensions.
 	row_size : int;
-	memory_unit_width : float;
+	memory_unit_width : float = MUSIC_ROW_UNIT_WIDTH_DEFAULT;
 
 	//TODO should we have a global scale as well?
 }
@@ -507,7 +507,7 @@ MusicSpaceData :: struct {
 
 	//TODO Could have a different struct for this without the
 	//op_space_id and maybe just rect if that's the only shape in the base.
-	all_base_collision_entities : [..] CollisionEntity;	
+	all_base_collision_entities : [..] CollisionEntity;
 
 	//TODO I can put a void pointer in here if that helps store data for dynamic libraries
 	// my_mspace_data : *void;
@@ -658,7 +658,7 @@ UpdateMusicSpace :: (
 	if update.update_tano_x_unit_width {
 		mspace.tano_x_unit_width = update.tano_x_unit_width;
 	} else {
-		mspace.tano_x_unit_width = rsd.default_tano_x_unit_width;
+		mspace.tano_x_unit_width = rsd.default_music_row_unit_width;
 	}
 	if update.update_mspace_audio_row_size {
 		mspace.is_fixed_audio_row_size = update.set_fixed_audio_row_size;
@@ -732,15 +732,21 @@ ClearMusicSpace :: (mspace_data : *MusicSpaceData, reset_camera : bool = false) 
 		"array_reset_keeping_memory(*mspace_data.%);\n");
 
 	if reset_camera ResetCamera2D(*mspace_data.mspace_cam);
+
+	mspace_data.is_fixed_audio_row_size = false;
+	mspace_data.mspace_audio_row_size  = 0;
+	mspace_data.mspace_audio_x_start = 0;
 }
 
+MUSIC_ROW_UNITS_PER_SECOND_DEFAULT :: 1.0;
+MUSIC_ROW_UNIT_WIDTH_DEFAULT :: 1.75;
 OP_SPACE_DEFAULT_SIZE :: Vector2F.{40,30};
 DEFAULT_TEXT_OP_SIZE : Vector2F : #run 1.115*OP_SPACE_DEFAULT_SIZE;
 RuntimeSettingsData :: struct {
 	//TODO Add these to ParsedRuntimeSettings
 	default_zero_pitch_frequency : float64 = C4;
-	default_tano_x_units_per_second : float64 = 1.0;
-	default_tano_x_unit_width : float64 = 1.75;
+	default_music_row_units_per_second : float64 = MUSIC_ROW_UNITS_PER_SECOND_DEFAULT;
+	default_music_row_unit_width : float64 = MUSIC_ROW_UNIT_WIDTH_DEFAULT;
 
 	//TODO What is a good default here? Should we test it somehow?
 	//Will likely be different on different cpus
@@ -764,9 +770,13 @@ RuntimeSettingsData :: struct {
 	default_text_op_background_color : Vector4F;
 	default_text_op_border_color : Vector4F;
 
-	terminal_size : Vector2F = OP_SPACE_DEFAULT_SIZE;
-	text_op_size : Vector2F = DEFAULT_TEXT_OP_SIZE;
 	default_op_space_size : Vector2F = OP_SPACE_DEFAULT_SIZE;
+	terminal_size : Vector2F = OP_SPACE_DEFAULT_SIZE;
+
+	text_op_size : Vector2F = DEFAULT_TEXT_OP_SIZE;
+	text_op_open_with_status_bar : bool = false;
+	//TODO Could add text op default proportions for debugging
+	//TODO Could also add default debug watch rows by name for example but not parsed so only from dl (or an array of strings for now)
 
 	show_row_hover : bool = true;
 	//TODO I think this should be removed now in favor of just running code in ExternalPerFrame
@@ -1344,7 +1354,7 @@ MusicPtToFrequency :: (
 	//so that we can easily change the base or octave of any TuningSystem
 	//without having to create a new one. For example we could get this from
 	//SectionToRow for the world linear structure.
-	base_freq : float = C4) 
+	base_freq : float64 = C4) 
 -> float
 {
 	//TODO MAYBE WE RETURN frequency = 0 if music_pt_float < 0
@@ -2307,13 +2317,14 @@ CreateMusicRow :: inline (
 
 	row.row_size = last_section_x;
 	if !mspace_data.is_fixed_audio_row_size {
-		mspace_data.mspace_audio_row_size = max(row.row_size, mspace_data.mspace_audio_row_size);
+		max_row_size : int = ArrayFindMaxByNameId(mspace_data.all_music_lane_rows, "row_size", 0);
+		mspace_data.mspace_audio_row_size = max(max_row_size, mspace_data.mspace_audio_row_size);
 	}
 
-
+	#if 0 {
 	linear_grid_dim : Vector2F = ---;
-	linear_grid_dim.x = global_rules.memory_unit_width * last_section_x;
-	linear_grid_dim.y = create_row_data.row_height;
+	linear_grid_dim.x = global_rules.memory_unit_width * row.row_size;
+	linear_grid_dim.y = row.row_height;
 	//TODO We could store this rectangle in a separate linear space for op space struct with grid_size etc...
 	// world_min_pos : Vector2F = points_in_space[0].rect_mesh.min + row.row_world_base_start;
 	//row.row_world_base_start is the min_center so we subtract half the width the get the bottom left
@@ -2321,15 +2332,38 @@ CreateMusicRow :: inline (
 	world_min_pos : Vector2F = row.row_world_base_start - Vector2F.{0.5*global_rules.memory_unit_width,0};
 	linear_grid_rect : Rectangle2 = RectMinDim(world_min_pos, linear_grid_dim);
 	linear_world_center : Vector2F = GetCenter(linear_grid_rect);
+	}
 
 	coll : *CollisionEntity = array_add(*mspace_data.all_base_collision_entities);
 	coll.entity_id = row.id;
 	coll.entity_type = EntityType.LANE_ROW_WITH_SECTIONS;
 	coll.shape = CollisionShape.RECTANGLE;
-	coll.rect = RectCenterDim(linear_world_center, linear_grid_dim);
+	// coll.rect = RectCenterDim(linear_world_center, linear_grid_dim);
+	coll.rect = ComputeRowCollRect(row, global_rules.memory_unit_width);
 
 	return row;
 }
+//TODO Could pass in settings here if we use more later
+ComputeRowCollRect :: inline (
+	row : MusicLaneRow,
+	memory_unit_width : float)
+-> Rectangle2 
+{
+	linear_grid_dim : Vector2F = ---;
+	linear_grid_dim.x = memory_unit_width * row.row_size;
+	linear_grid_dim.y = row.row_height;
+	//TODO We could store this rectangle in a separate linear space for op space struct with grid_size etc...
+	// world_min_pos : Vector2F = points_in_space[0].rect_mesh.min + row.row_world_base_start;
+	//row.row_world_base_start is the min_center so we subtract half the width the get the bottom left
+	//without having to use the space_points so we can compute this anywhere instead.
+	world_min_pos : Vector2F = row.row_world_base_start - Vector2F.{0.5*memory_unit_width,0};
+	linear_grid_rect : Rectangle2 = RectMinDim(world_min_pos, linear_grid_dim);
+	linear_world_center : Vector2F = GetCenter(linear_grid_rect);
+
+	rect := RectCenterDim(linear_world_center, linear_grid_dim);
+	return rect;
+}
+
 GetOrCreateLinearTuning :: inline (
 	tuning_system_id : int, 
 	linear_view : LinearPitchSpaceView, 
@@ -2715,6 +2749,7 @@ MusicLaneRow :: struct {
 	op_row_type : OpRowType;
 	copy_music_row_id : int;
 }
+
 OpRowType :: enum {
 	MULTI_SECTION;
 	SINGLE_SECTION;

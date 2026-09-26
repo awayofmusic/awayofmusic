@@ -1708,6 +1708,7 @@ FloatBothEqual :: inline (f1 : $T, f2 : T) -> bool {
 	else #if T == float64 return Float64Equal(f1,f2);
 }
 
+FEqual :: FloatEqual;
 FloatEqual :: inline (
 	f1 : float, f2 : float, 
 	bound : float = VF_EPSILON) 
@@ -1715,12 +1716,6 @@ FloatEqual :: inline (
 {
 	result : bool = abs(f1 - f2) <= bound;
 	return result;
-}
-
-FEqual :: inline (f1 : float, f2 : float) 
--> bool 
-{
-	return FloatEqual(f1,f2);
 }
 
 FloatEqualInBound :: inline (

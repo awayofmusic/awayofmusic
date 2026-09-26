@@ -65,35 +65,52 @@ updating so that the each person does that
 //TODO We could test these conversion functions but meh
 ParsedToRuntimeSettings :: inline (prs : ParsedRuntimeSettings) -> RuntimeSettingsData {
 	rsd : RuntimeSettingsData;
+
+	rsd.default_zero_pitch_frequency = prs.default_zero_pitch_frequency;
+	rsd.default_music_row_units_per_second = prs.default_music_row_units_per_second;
+	rsd.default_music_row_unit_width = prs.default_music_row_unit_width;
+
 	// rsd.default_input_mappings_file = copy_string(prs.default_input_mappings_file);
 	rsd.save_file_on_focus_lost = prs.save_file_on_focus_lost;
 
 	rsd.terminal_size = Dim2DSettingToVector2F(prs.terminal_size);
-	rsd.text_op_size = Dim2DSettingToVector2F(prs.text_op_size);
 	rsd.default_op_space_size = Dim2DSettingToVector2F(prs.default_op_space_size);
 
 	rsd.default_font_size = prs.default_font_size;
 	rsd.default_font_color = RGBASettingToVector4F(prs.default_font_color);
+
+	rsd.text_op_size = Dim2DSettingToVector2F(prs.text_op_size);
+	rsd.text_op_open_with_status_bar = prs.text_op_open_with_status_bar;
 	rsd.default_text_op_background_color = RGBASettingToVector4F(prs.default_text_op_background_color);
 	rsd.default_text_op_border_color = RGBASettingToVector4F(prs.default_text_op_border_color);
 	return rsd;
 }
 RuntimeToParsedSettings :: inline (rsd : RuntimeSettingsData) -> ParsedRuntimeSettings {
 	prs : ParsedRuntimeSettings;
+	prs.default_zero_pitch_frequency = rsd.default_zero_pitch_frequency;
+	prs.default_music_row_units_per_second = rsd.default_music_row_units_per_second;
+	prs.default_music_row_unit_width = rsd.default_music_row_unit_width;
+
 	// prs.default_input_mappings_file = copy_string(rsd.default_input_mappings_file);
 	prs.save_file_on_focus_lost = rsd.save_file_on_focus_lost;
 
 	prs.terminal_size = Vector2FToDim2DSetting(rsd.terminal_size);
-	prs.text_op_size = Vector2FToDim2DSetting(rsd.text_op_size);
 	prs.default_op_space_size = Vector2FToDim2DSetting(rsd.default_op_space_size);
 
 	prs.default_font_size = rsd.default_font_size;
 	prs.default_font_color = Vector4FToRGBASetting(rsd.default_font_color);
+
+	prs.text_op_size = Vector2FToDim2DSetting(rsd.text_op_size);
+	prs.text_op_open_with_status_bar = rsd.text_op_open_with_status_bar;
 	prs.default_text_op_background_color = Vector4FToRGBASetting(rsd.default_text_op_background_color);
 	prs.default_text_op_border_color = Vector4FToRGBASetting(rsd.default_text_op_border_color);
 	return prs;
 }
 ParsedRuntimeSettings :: struct {
+	default_zero_pitch_frequency : float64 = C4;
+	default_music_row_units_per_second : float64 = MUSIC_ROW_UNITS_PER_SECOND_DEFAULT;
+	default_music_row_unit_width : float64 = MUSIC_ROW_UNIT_WIDTH_DEFAULT;
+
 	// default_input_mappings_file : string = INPUT_MAPPINGS_REL_PATH;
 	save_file_on_focus_lost : bool = false;
 
@@ -106,12 +123,14 @@ ParsedRuntimeSettings :: struct {
 	//Theme settings
 	default_font_size : float = 18.0;
 	default_font_color : RGBASetting;
-	default_text_op_background_color : RGBASetting;
-	default_text_op_border_color : RGBASetting;	
 
 	terminal_size : Dim2DSetting = #run Vector2FToDim2DSetting(OP_SPACE_DEFAULT_SIZE);
-	text_op_size : Dim2DSetting = #run Vector2FToDim2DSetting(DEFAULT_TEXT_OP_SIZE);
 	default_op_space_size : Dim2DSetting = #run Vector2FToDim2DSetting(OP_SPACE_DEFAULT_SIZE);
+
+	text_op_size : Dim2DSetting = #run Vector2FToDim2DSetting(DEFAULT_TEXT_OP_SIZE);
+	text_op_open_with_status_bar : bool = false;
+	default_text_op_background_color : RGBASetting;
+	default_text_op_border_color : RGBASetting;	
 }
 Dim2DSetting :: struct {
 	width : float;
@@ -240,6 +259,30 @@ UpdateRuntimeSettings :: inline (
 	perm : *Persist, 
 	rd : *RendererData)
 {
+	perm.all_data.runtime_settings.default_zero_pitch_frequency = new_rs.default_zero_pitch_frequency;
+
+	//TODO We could just use the settings for these directly. Would need to update some functions and pass settings in
+	//and also possibly update some tests which are checking these are update for example.
+	if !FloatBothEqual(perm.all_data.runtime_settings.default_music_row_units_per_second, new_rs.default_music_row_units_per_second) {
+		perm.all_data.runtime_settings.default_music_row_units_per_second = new_rs.default_music_row_units_per_second;
+		perm.all_data.game_audio_play.memory_units_per_second = perm.all_data.runtime_settings.default_music_row_units_per_second;
+		SetAudioFloatX(perm.all_data.game_audio_play.float_x_memory, *perm.all_data.game_audio_play);
+	}
+	if !FloatBothEqual(perm.all_data.runtime_settings.default_music_row_unit_width, new_rs.default_music_row_unit_width) {
+		perm.all_data.runtime_settings.default_music_row_unit_width = new_rs.default_music_row_unit_width;
+		perm.all_data.global_rules.memory_unit_width = cast(float) perm.all_data.runtime_settings.default_music_row_unit_width;
+		//Doing this every frame feels more natural in case the rows change in other places then we would not have to worry about it.
+		//I prefer doing it every frame for now (it is not less efficient since we are just creating 1 rect and on rendering we already have the row).
+		//Maybe if updating it on every change is worthwhile later we can do that but right now every frame is more natural.
+		// for mspace : perm.all_data.all_mspace_data {
+		// 	for * coll : mspace.all_base_collision_entities if coll.entity_type == .LANE_ROW_WITH_SECTIONS {
+		// 		row, found_row := ArrayFindFirstByNameId(mspace.all_music_lane_rows, coll.entity_id, "id");
+		// 		assert(found_row);
+		// 		coll.rect = ComputeRowCollRect(row, perm.all_data.global_rules.memory_unit_width);
+		// 	}
+		// }
+	}
+
 	//TODO I am updating this every time because otherwise we don't pickup the update if the font size is
 	//the regular size like with macos laptop. I could pass in a force all update flag but maybe better
 	//to always update so that we keep things consistent for now
@@ -261,10 +304,12 @@ UpdateRuntimeSettings :: inline (
 		}
 	// }
 	perm.all_data.runtime_settings.terminal_size = ClampDimV2FSetting(new_rs.terminal_size);
-	perm.all_data.runtime_settings.text_op_size = ClampDimV2FSetting(new_rs.text_op_size);
 	perm.all_data.runtime_settings.default_op_space_size = ClampDimV2FSetting(new_rs.default_op_space_size);
 	perm.all_data.runtime_settings.save_file_on_focus_lost = new_rs.save_file_on_focus_lost;
 	perm.all_data.runtime_settings.default_font_color = ClampV4Color(new_rs.default_font_color);
+
+	perm.all_data.runtime_settings.text_op_size = ClampDimV2FSetting(new_rs.text_op_size);
+	perm.all_data.runtime_settings.text_op_open_with_status_bar = new_rs.text_op_open_with_status_bar;
 	perm.all_data.runtime_settings.default_text_op_background_color = ClampV4Color(new_rs.default_text_op_background_color);
 	perm.all_data.runtime_settings.default_text_op_border_color = ClampV4Color(new_rs.default_text_op_border_color);
 

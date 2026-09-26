@@ -1,4 +1,7 @@
 {
+	"default_zero_pitch_frequency": 261.6256,
+	"default_music_row_units_per_second": 1,
+	"default_music_row_unit_width": 1.75,
 	"save_file_on_focus_lost": false,
 	"default_font_size": 18,
 	"default_font_color": {
@@ -7,6 +10,19 @@
 		"b": 0,
 		"a": 0
 	},
+	"terminal_size": {
+		"width": 40,
+		"height": 30
+	},
+	"default_op_space_size": {
+		"width": 40,
+		"height": 30
+	},
+	"text_op_size": {
+		"width": 44.599998,
+		"height": 33.450001
+	},
+	"text_op_open_with_status_bar": true,
 	"default_text_op_background_color": {
 		"r": 0,
 		"g": 0,
@@ -18,17 +34,5 @@
 		"g": 0,
 		"b": 0,
 		"a": 0
-	},
-	"terminal_size": {
-		"width": 40,
-		"height": 30
-	},
-	"text_op_size": {
-		"width": 44.599998,
-		"height": 33.450001
-	},
-	"default_op_space_size": {
-		"width": 40,
-		"height": 30
 	}
 }

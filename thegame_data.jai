@@ -281,7 +281,8 @@ InitAllData :: () -> *AllData {
 	GetOrCreateSimpleSynth(.{}, *all_data.all_simple_synths, *all_data.free_simple_synth_pool);
 
    // all_data.global_rules.memory_unit_width = 2.0;
-   all_data.global_rules.memory_unit_width = 1.75;
+   // all_data.global_rules.memory_unit_width = 1.75;
+   all_data.global_rules.memory_unit_width = MUSIC_ROW_UNIT_WIDTH_DEFAULT;
 
    //TODO Could increase this by default or just let people who use it increase it how they want.
 	// init(*all_data.extern_pool, Megabytes(1));
@@ -6444,7 +6445,7 @@ SetupMusicData :: struct {
 	//TODO I think this should just be memory_units_per_second
 	//TODO WE TAKE THIS FROM music lane rows now so remove its
 	row_size : int = 12;
-	memory_units_per_second : float64 = 1.0;
+	memory_units_per_second : float64 = MUSIC_ROW_UNITS_PER_SECOND_DEFAULT;
 	// default_pitch_zero_freq : float64 = C4;
 	//TODO Maybe we can set which music space is default here and put that in a register
 	//or somewhere in global rules or something like that and then use that

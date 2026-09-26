@@ -69,7 +69,7 @@ PitchWithOctaveToFrequency :: inline (
 	pitch_with_octave : $T,
 	note_count : int,
 	compass_interval : float64,
-	ref_freq : float = C0)
+	ref_freq : float64 = C0)
 -> float64
 {
 #assert(T == float64 || T == float || T == int);
@@ -100,7 +100,7 @@ RatioToFrequency :: inline (
 	ratio : float64,
 	compass_multiple : int, //octave - should this be float?
 	compass_interval : float64,
-	ref_freq : float = C0)
+	ref_freq : float64 = C0)
 -> float64
 {
 	//TODO integer Pow
@@ -1073,9 +1073,11 @@ GameAudioPlay :: struct {
 
 	rel_initial_time : float64;
 	rel_play_time : float64;
+	//I think I want to remove the concept of a beat entirely from this whole software
 	rel_play_beat : float64; //TODO Do we really need this?
 
 	float_x_memory : float64;
+	//This is just the float casted to int so lets remove it since were not using it
 	current_x_memory : int;
 
 	//TODO this should be last_played_unit
@@ -1108,17 +1110,23 @@ IncrementRelAudioTime :: inline (
 	at : AudioTiming) 
 {
 	g.rel_play_time += at.time_delta;
+	UpdateAudioMemoryUnitPos(g);
 }
-
-UpdateAudioMemoryUnitPos :: (
-	g : *GameAudioPlay,
-	at : AudioTiming)
+SetAudioFloatX :: inline (
+	new_x_float : float64,
+	g : *GameAudioPlay)
 {
+//We could clamp this but if the audio is < 0 there might be an issue
+// assert(FloatBothEqual(new_x_float, 0) || new_x_float > 0);
+	g.rel_play_time = new_x_float / g.memory_units_per_second;
+	UpdateAudioMemoryUnitPos(g);
+}
+UpdateAudioMemoryUnitPos :: inline (g : *GameAudioPlay) {
 	g.float_x_memory = g.rel_play_time * g.memory_units_per_second;
 	g.current_x_memory = cast(int) g.float_x_memory;
 
 	//TODO Do we even need this?
-	g.rel_play_beat = g.rel_play_time * at.bps;
+	// g.rel_play_beat = g.rel_play_time * at.bps;
 	
 	//Old rel_play_time calculation for remembering
 	// g.rel_play_time = 

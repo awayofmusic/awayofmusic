@@ -257,6 +257,97 @@ if(Window) {
 	// ma_device_stop(*device);
 	}
 
+	//TODO Probably only need 1 of these once we only use jai input.
+	//Maybe we can even remove old_input now since it does not seem like we use it other than in old windows input code.
+	// old_input : GameInput;
+	//TODO rename this to game_input I think now
+	new_input : GameInput;
+
+	/*Trying to load initalized state in platform file now. We used to do it in thegame_base but
+	having it here allows use to set runtime settings here like framerate and audio buffer offsets.
+	Also it ensures that all the data is initialized before anything else happens which was causing
+	issues on input for example. We could put it in thegame_mode too but here allows any setting
+	to be runtime if needed.
+	*/
+	#if 1 {
+	game_state := cast(*GameState) game_memory.PermanentStorage;
+	perm := *game_state.persist;
+
+	// if !game_state.is_initialized {
+	// ProfileProcedure();
+	assert(game_memory.PermanentStorageSize >= size_of(GameState) &&
+	        game_memory.IsInitialized);
+	//TODO can do this in thegame_update_mode
+    // game_state.memory.base = (cast(*u8) game_memory.PermanentStorage) + size_of(GameState);
+    // game_state.memory.size = game_memory.PermanentStorageSize - size_of(GameState);
+
+	//Level setup
+	//TODO Could have an initial setup function which is not done per level 
+	//to initialize things like terminal and also command string and anything 
+	//else that does not change per level
+	//TODO Use this for non in-game commands now
+	//TODO WHY NOT JUST DO THIS AT THE SYSTEM LEVEL BEFORE THE MAIN LOOP?
+	perm.text_command_string.total_allocated_bytes = 500;
+	perm.text_command_string.text_string = alloc_string(perm.text_command_string.total_allocated_bytes);
+	perm.text_command_string.text_string.count = 0;
+
+	SetupTerminalData(*perm.terminal_data);
+	//TODO I think we can set this up in win_thegame so we don't need Dynamic_Font in here
+	SetupTextEditorData(*perm.text_editor_data, renderer_data);
+
+
+	ResetAllRendererData(*renderer_data);
+	perm.all_data = InitAllData();
+	/*DOC : Load files here after initializing data. We can make this it's own function if needed.
+	This way this does not interefere with tests but always runs on startup so that we start with the input mappings
+	and runtimesettings loaded up.
+	NOTE : WE COULD ALSO remove the text files afterwards although we would have to free the string data for names and such
+	in that case so maybe can think of a way to allocate that data like reusing strings or with an allocator maybe.
+	IF we use dynamic libraries then none of this is a an issues since we could remove this and just use dls instead.
+
+	TODO THIS CAN BE REMOVED ONCE JAI IS PUBLIC NOW THAT WE SET IT UP WITH DYNAMIC LIBRARY startup_dl below
+	which is simpler to update and also more efficient and more robust as to when and how it is updated
+	LIKELY STILL NEED TO SET DEFAULT FOR INPUT MAPPINGS HERE SINCE ITS AN ARRAY
+	*/
+	SetupGameInputMappings(*new_input, *perm.all_data.all_text_files, INPUT_MAPPINGS_REL_PATH);
+	//DOC : If this is invalid on startup then we just keep the default settings and do nothing since nothing is open yet.
+	rsr : RuntimeSettingsReturn = ParseRuntimeSettingsFile(*perm.all_data.all_text_files, RUNTIME_SETTINGS_REL_PATH);
+	if rsr.success {
+		UpdateRuntimeSettings(rsr.new_settings, perm, *renderer_data);
+	}
+	//This will set the default created mspace with id = 0 to the runtime_settings
+	UpdateMusicSpace(.{}, perm.all_data.runtime_settings, *perm.all_data.all_mspace_data);
+	//TODO Can make an UpdateAllDataWithRuntimeSettings here or just set each thing, since maybe we only set mspace for now.
+
+	// BuildCodeLevelsTable(perm);
+	ASM_INSTRUCTION_MANUAL = GenerateAsmInstructionManual();
+
+
+	//startup_dl terminal events
+	//TODO This is not tested for now since all the terminal events themselves should be tested but maybe we can later
+	//once we remove all the other runtime settings and input mappings file and code
+	//TODO Once we remove the old ones then we can likely remove this startup setting and just always load it by default
+	//LIKELY STILL NEED TO SET DEFAULT FOR INPUT MAPPINGS HERE SINCE ITS AN ARRAY and double check for runtime settings when we remove that
+	if GLOBAL_STARTUP_SETTINGS.load_startup_dl {
+		//TODO We could compile the startup_dl here as well
+		array_add(*perm.all_data.all_terminal_events, MakeTerminalEvent(.jai, STARTUP_JAI_NAME));
+		array_add(*perm.all_data.all_terminal_events, MakeTerminalEvent(.load_dl, STARTUP_DL_NAME));
+		array_add(*perm.all_data.all_terminal_events, MakeTerminalEvent(.run_dl_once, STARTUP_DL_NAME));
+		array_add(*perm.all_data.all_terminal_events, MakeTerminalEvent(.start_dl_per_frame, STARTUP_DL_NAME));
+	}
+
+
+	//TODO Could set this from a file when we allow updating input mappings.
+	//Then we just need to pull in 1 file since that will be updated and initially set to defaults.
+	//Could keep an internal default in case people want to reset safely.
+	// ALL_INPUT_MAPPINGS = DEFAULT_INPUT_MAPPINGS;
+	//TODO Make this a terminal command so people can generate it when needed to do the new added input mappings
+	// GenerateInputMappingsFile(DEFAULT_INPUT_MAPPINGS);
+
+	game_state.is_initialized = true;
+	// }
+	}
+
 	//Timing code
 	/*TODO 
 	https://chromium.googlesource.com/chromium/src/+/refs/heads/main/ui/gl/vsync_provider_win.cc
@@ -270,11 +361,6 @@ if(Window) {
 	target_sec_per_frame : float64 = cast(float64) 1 / target_fps;
 	target_apollo : Apollo_Time = to_apollo(target_sec_per_frame);
 
-	//TODO Probably only need 1 of these once we only use jai input.
-	//Maybe we can even remove old_input now since it does not seem like we use it other than in old windows input code.
-	old_input : GameInput;
-	//TODO rename this to game_input I think now
-	new_input : GameInput;
 	new_input.dtPerFrame = cast(float) target_sec_per_frame;
 	//TODO old_keyboard, new_keyboard?
 	keyboard := *new_input.Controllers[0];

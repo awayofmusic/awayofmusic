@@ -6,9 +6,8 @@ The top bar can be used to move it around.
 To learn about programming:
 load_op programming guides/programming/intro
 
-To start making music:
-Try this out :
-- ctrl+f7 to toggle the text status bar
+To start making music try this out :
+- ctrl+f7 toggles the text status bar for general info
 - ctrl+alt+d to toggle debug mode
 - ctrl+alt+c to compile
 Always compile before executing
@@ -96,12 +95,17 @@ Buttons appear when hovering the top bar.
 The rectangle will fix this op space to the background (mspace).
 By default it is fixed to the camera.
 The size can be adjusted from the bottom right corner.
+
 Other settings can be adjusted from startup_settings,
 runtime_settings and input_mappings.
 These can be copied from the "generated_" files and renamed
 by removing the "generated_" and then modified as needed.
+To learn how to generate settings run command
+"generate_runtime_settings -help" 
+"generate_startup_settings -help"
+"generate_input_mappings -help"
 
-The programming language below can be compiled to 
+The programming language can be compiled to 
 assembly instructions with "ctrl+alt+c".
 The assembly instructions can be viewed with "ctrl+alt+i".
 Compilation information can be viewed with "ctrl+alt+o".
@@ -110,6 +114,8 @@ Debug mode is toggled with "ctrl+alt+d".
 The assembly instructions can be run with "F5".
 Running can only happen in debug mode.
 Compilation can be done without debug mode.
+"shift+F5" to stop execution.
+"ctrl+shift+F5" to restart execution.
 
 It is recommended to read through the code and think about it.
 Feelings should also be recognized and acknowledged.
@@ -122,6 +128,7 @@ Text file tabs are toggled with "ctrl+F8".
 New tabs can be opened with "ctrl+o".
 
 If there are any issues, "ctrl+alt+F12" will refresh the text op space.
+Issues from the system terminal can be reported on discord.
 
 If we click off the op space, then we are in the mspace (music space).
 "WASD" can be used to move the camera.

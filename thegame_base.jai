@@ -15,12 +15,12 @@ game_state := cast(*GameState) game_memory.PermanentStorage;
 keyboard := game_input.Controllers[0];
 perm := *game_state.persist;
 
+//Move initialization code to platform_thegame file. If everything works there then we can remove all this here
 #if 0 {
 if !renderer_data.is_initialized
 {
 	//Note : currently this is done in SetupRendererData()
     renderer_data.is_initialized = true;
-}
 }
 //TODO this can be more efficiently called in the platform layer before starting
 //YES I think it likely is better to put this in the platform layer so then we also don't have
@@ -110,6 +110,8 @@ if !trans.is_initialized {
 
 	trans.is_initialized = true;
 }
+}
+
 
 //TODO Set these here for convenience when we pass in perm.all_data but maybe best to remove it
 //We use audio_data in ExecMInstr for example for the sample_rate since we already passed in all_data
@@ -701,7 +703,18 @@ if hovering_top_op_space && !found_moving_op_space {
 	// ***TODO could just check all rectangles eventually and then select from there, that would be
 	// the most efficient and eventually SIMDable and parallelizable***
 	for ce : mspace_for_input.all_base_collision_entities {
-		if ce.shape == {
+		if ce.entity_type == .LANE_ROW_WITH_SECTIONS {
+			row, found_row := ArrayFindFirstByNameId(mspace_for_input.all_music_lane_rows, ce.entity_id, "id");
+			assert(found_row);
+			coll_rect := ComputeRowCollRect(row, perm.all_data.global_rules.memory_unit_width);
+			cam_rect := WorldRectToCamRect(coll_rect, default_base_cam);
+			if IsInRectangle(mouse_cam, cam_rect) {
+				hover_row : *HoverEntity = array_add(*frame_hover_entities);
+				hover_row.id = ce.entity_id;
+				hover_row.entity_type = ce.entity_type;
+			}			
+		}
+		else if ce.shape == {
 		case CollisionShape.RECTANGLE;
 			cam_rect := WorldRectToCamRect(ce.rect, default_base_cam);
 			if IsInRectangle(mouse_cam, cam_rect) {
@@ -779,7 +792,7 @@ if frame_hover_entities.count > 0 {
 						tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
 						assert(tuning_system.music_pt_count == tuning_pitches.count);					
 						for hover_shape.pitch_set {
-							frequency : float = MusicPtToFrequency(it, tuning_system, tuning_pitches);
+							frequency : float = MusicPtToFrequency(it, tuning_system, tuning_pitches, perm.all_data.runtime_settings.default_zero_pitch_frequency);
 							UpdateWaveFrequency(frequency, *custom_g.synth.simple_waves[it_index], audio_data.*);
 						}
 					}
@@ -1309,7 +1322,7 @@ if frame_hover_entities.count > 0 {
 					} else {
 					PushRectangle(hover_cam_rect, LBLUE_V, top_op_space.render_groups.scissor_group, order = hover_rect.render_order+2);
 					if hover_rect.pitch_set.count > 0 {
-						frequency : float = MusicPtToFrequency(hover_rect.pitch_set[0], tuning_system, tuning_pitches);
+						frequency : float = MusicPtToFrequency(hover_rect.pitch_set[0], tuning_system, tuning_pitches, perm.all_data.runtime_settings.default_zero_pitch_frequency);
 						// frequency := cast(float) shape_value.float_value;
 						#if NEW_AUDIO {
 						UpdateWaveFrequency(frequency, *circle.synth.simple_waves[0], audio_data.*);
@@ -1351,7 +1364,7 @@ if frame_hover_entities.count > 0 {
 
 						//TODO Technically we could force this to be equal equal_temperament since it will be the same
 						//over the same span realtive to some compass interval on the circle.
-						frequency : float = MusicPtToFrequency(music_pt_float, tuning_system, tuning_pitches);
+						frequency : float = MusicPtToFrequency(music_pt_float, tuning_system, tuning_pitches, perm.all_data.runtime_settings.default_zero_pitch_frequency);
 						#if NEW_AUDIO {
 						UpdateWaveFrequency(frequency, *circle.synth.simple_waves[0], audio_data.*);
 						} else {
@@ -1404,9 +1417,10 @@ if frame_hover_entities.count > 0 {
 				mouse_play_x_float : float = world_mouse.x - row_x_start;
 				mouse_play_x_float /= perm.all_data.global_rules.memory_unit_width;
 				mouse_memory_unit := cast(int) mouse_play_x_float;
-				if mouse_memory_unit > mspace_for_input.mspace_audio_row_size {
-					mouse_memory_unit = mspace_for_input.mspace_audio_row_size;
-				}
+				mouse_memory_unit = Clamp(0, mouse_memory_unit, mspace_for_input.mspace_audio_row_size);
+				// if mouse_memory_unit > mspace_for_input.mspace_audio_row_size {
+				// 	mouse_memory_unit = mspace_for_input.mspace_audio_row_size;
+				// }
 				//DAWs allow playing start but not end
 				// if mouse_memory_unit < mspace_for_input.mspace_audio_x_start {
 				// 	mouse_memory_unit = mspace_for_input.mspace_audio_x_start;
@@ -5903,7 +5917,7 @@ if perm.all_data.game_audio_play.play_state == AudioPlayState.PLAY {
 	  so maybe we should not even have function. We don't want to call it anywhere else unless 
 	*/
 	IncrementRelAudioTime(*perm.all_data.game_audio_play, perm.all_data.audio_timing);
-	UpdateAudioMemoryUnitPos(*perm.all_data.game_audio_play, perm.all_data.audio_timing);
+	// UpdateAudioMemoryUnitPos(*perm.all_data.game_audio_play, perm.all_data.audio_timing);
 
 	/*DOC : The idea here is that we can loop on any mspace by muting all the other mspaces and then it will
 	skip over all of them. This allows 1 method with lots of flexibility for what we loop over and then
@@ -5912,7 +5926,7 @@ if perm.all_data.game_audio_play.play_state == AudioPlayState.PLAY {
 	then mute every other mspace and just have that 1 mspace loop naturally.
 	*/
 	check_mspace := GetAudioMSpace(perm.all_data);
-	if perm.all_data.game_audio_play.current_x_memory >= check_mspace.mspace_audio_row_size
+	if (cast(int) perm.all_data.game_audio_play.float_x_memory) >= check_mspace.mspace_audio_row_size
 		//REMINDER : We only want to loop around if we haven't already set the audio somewhere else this frame
 		&& !perm.all_data.set_audio_position_data.is_set_audio
 	{
@@ -5986,17 +6000,10 @@ for audio_event : perm.all_data.all_audio_events {
 	case AudioEventType.RESET_AUDIO_TO_MEMORY_UNIT; {
 		x_check_float : float64;
 		if audio_event.audio_event_type == {
-		case AudioEventType.RESET_AUDIO_TO_MEMORY_UNIT; {
-		x_check_float = cast(float64) audio_event.initial_x_memory;
-		perm.all_data.game_audio_play.rel_play_time = 
-			audio_event.initial_x_memory / perm.all_data.game_audio_play.memory_units_per_second;
+		case .RESET_AUDIO_TO_MEMORY_UNIT; x_check_float = cast(float64) audio_event.initial_x_memory;
+		case .SET_AUDIO_TO_X_FLOAT; x_check_float = audio_event.x_float;
 		}
-		case AudioEventType.SET_AUDIO_TO_X_FLOAT; {
-		x_check_float = audio_event.x_float;
-		perm.all_data.game_audio_play.rel_play_time = 
-			audio_event.x_float / perm.all_data.game_audio_play.memory_units_per_second;
-		}
-		}
+		SetAudioFloatX(x_check_float, *perm.all_data.game_audio_play);
 
 		// perm.all_data.game_audio_play.last_memory_unit_played = audio_event.initial_x_memory - 1;
 
@@ -6008,7 +6015,7 @@ for audio_event : perm.all_data.all_audio_events {
 			perm.all_data.game_audio_play.music_pt_play_index += 1;
 		}
 
-		UpdateAudioMemoryUnitPos(*perm.all_data.game_audio_play, perm.all_data.audio_timing);
+		// UpdateAudioMemoryUnitPos(*perm.all_data.game_audio_play, perm.all_data.audio_timing);
 	}
 	case AudioEventType.PLAY_NOTES_AT_CURRENT_MEMORY; {
 		//Going backwards since its sorted by row_index and we want to trigger last row_index first
@@ -6215,7 +6222,8 @@ if perm.all_data.all_start_playing_music_pts.count > 0 {
 				//TODO Need to pull this out once its finished so we can use the tuning system everywhere
 				//TODO Need to grab ref_freq/base_frequency from SectionToRow
 				//TODO I think it is better to have an enum for different general types and not specific
-				frequency : float = MusicPtToFrequency(music_pt.music_pt_float, tuning_system, perm.all_data.all_tuning_pitches);
+				frequency : float = MusicPtToFrequency(music_pt.music_pt_float, tuning_system, perm.all_data.all_tuning_pitches,
+					perm.all_data.runtime_settings.default_zero_pitch_frequency);
 				//TODO If we group per row, then we don't have to get this for each music_pt
 				if music_lane_row_ptr.row_internal_synth_type == {
 				case .SIMPLE_SYNTH; {
@@ -6579,10 +6587,13 @@ for row, row_index : render_mspace.all_music_lane_rows {
 		break;
 	}
 
-	coll := ArrayFindFirstByAndOp(render_mspace.all_base_collision_entities, 
-		EntityType.LANE_ROW_WITH_SECTIONS, "entity_type",
-		row.id, "entity_id");
-	coll_cam_rect := WorldRectToCamRect(coll.rect, default_base_cam);
+	// coll := ArrayFindFirstByAndOp(render_mspace.all_base_collision_entities, 
+	// 	EntityType.LANE_ROW_WITH_SECTIONS, "entity_type",
+	// 	row.id, "entity_id");
+	// row, found_row := ArrayFindFirstByNameId(mspace_for_input.all_music_lane_rows, coll.entity_id, "id");
+	// assert(found_row);
+	coll_rect := ComputeRowCollRect(row, perm.all_data.global_rules.memory_unit_width);
+	coll_cam_rect := WorldRectToCamRect(coll_rect, default_base_cam);
 	pixel_rect := CamRectToPixelRect(coll_cam_rect, renderer_data.base_render_group);
 	if !RectanglesIntersect(renderer_data.base_render_group.render_viewport, pixel_rect) &&
 		!ContainsRectangle(renderer_data.base_render_group.render_viewport, pixel_rect) 
@@ -9286,13 +9297,8 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 
 // game_input.last_frame_mouse_cam = mouse_cam;
 
-ResetTransientMemory(trans);
+// ResetTransientMemory(trans);
 //TODO Should we call this after rendering in win_thegame?
 reset_temporary_storage();
 
-//TODO could have multiple temporary storages for each mode and
-//push new contexts for each one
-//TODO replace this with transient memory in context everywhere
-//TODO or replace jai temp allocator with my own transient memory
-// reset_temporary_storage();
 }

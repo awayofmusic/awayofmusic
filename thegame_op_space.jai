@@ -2077,6 +2077,7 @@ CreateTextOpSpace :: inline (
 	//Could make this bigger but we could also just double the size of the dynamic string if we need more
 	InitDynamicString(*text_op.console_dynamic_string, Kilobytes(15));
 
+	text_op.show_text_status_bar = all_data.runtime_settings.text_op_open_with_status_bar;
 	//DOC : This message is only set internally so it should be fine at 1kb. Just keep the messages small.
 	text_op.text_status_message = alloc_string(TEXT_STATUS_MESSAGE_SIZE);
 
