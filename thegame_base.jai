@@ -778,6 +778,9 @@ if frame_hover_entities.count > 0 {
 					PushRectangle(cam_rect, LBLUE_V, top_op_space.render_groups.scissor_group, it.render_order+3);
 				}
 			}
+
+			ref_freq : float64 = perm.all_data.runtime_settings.default_zero_pitch_frequency;
+			if custom_g.use_set_zero_freq ref_freq = custom_g.pitch_zero_freq;
 			//TODO This way allows us to hover over other shapes later if needed
 			for hover_shape, hover_index : all_hover_shapes {
 				if hover_shape.pitch_set.count > 0 {
@@ -792,7 +795,7 @@ if frame_hover_entities.count > 0 {
 						tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
 						assert(tuning_system.music_pt_count == tuning_pitches.count);					
 						for hover_shape.pitch_set {
-							frequency : float = MusicPtToFrequency(it, tuning_system, tuning_pitches, perm.all_data.runtime_settings.default_zero_pitch_frequency);
+							frequency : float = MusicPtToFrequency(it, tuning_system, tuning_pitches, ref_freq);
 							UpdateWaveFrequency(frequency, *custom_g.synth.simple_waves[it_index], audio_data.*);
 						}
 					}
@@ -921,6 +924,8 @@ if frame_hover_entities.count > 0 {
 
 				//TODO Could put a full mute here if needed.
 				if found_audio_to_play {
+					ref_freq : float64 = perm.all_data.runtime_settings.default_zero_pitch_frequency;
+					if chord_s2.use_set_zero_freq ref_freq = chord_s2.pitch_zero_freq;
 					#if 1 {
 					//TODO Likely will have the synth be separate eventually so then we can just init from the code
 					//This is just to make sure things works for now.
@@ -930,7 +935,7 @@ if frame_hover_entities.count > 0 {
 					}
 					for * wave, w_index : chord_s2.synth.simple_waves {
 						//TODO Set the base frequency in setup music and then pass that in as a setting to adjust base frequencies
-						frequency : float = MusicPtToFrequency(audio_fun_region_pos[w_index], tuning_system, tuning_pitches, C3);
+						frequency : float = MusicPtToFrequency(audio_fun_region_pos[w_index], tuning_system, tuning_pitches, ref_freq);
 						// frequency : float = MusicPtToFrequency(audio_fun_region_pos[w_index], tuning_system, tuning_pitches);
 						UpdateWaveFrequency(frequency, wave, audio_data.*);
 					}
@@ -1135,6 +1140,8 @@ if frame_hover_entities.count > 0 {
 				just do that and if we have sound_point, just take the position of that point in the world OR
 				in that specific case we can cache it
 				*/
+				ref_freq : float64 = perm.all_data.runtime_settings.default_zero_pitch_frequency;
+				if sp.use_set_zero_freq ref_freq = sp.pitch_zero_freq;
 				if sp.sound_float && sp.base_chord.count > 0 && !is_playing_chord &&
 				  (sp.spiral_type == SpiralType.PROPER || sp.spiral_type == SpiralType.CONCENTRIC_CIRCLE) 
 				{
@@ -1205,7 +1212,7 @@ if frame_hover_entities.count > 0 {
 						} else {
 						for pitch, pitch_index : mouse_chord {
 							// frequency : float = PitchToFrequency(0, pitch, sp.tuning_count, 2, ref_freq = C3);
-							frequency : float = PitchWithOctaveToFrequency(pitch, sp.tuning_count, 2, ref_freq = C3);
+							frequency : float = PitchWithOctaveToFrequency(pitch, sp.tuning_count, 2, ref_freq);
 							UpdateWaveFrequency(frequency, *sp.osc_waves[pitch_index], audio_data.*);
 							AddToAudioBuffer(*sp.osc_waves[pitch_index], audio_data);
 						}
@@ -1236,7 +1243,7 @@ if frame_hover_entities.count > 0 {
 					}
 					for pitch, pitch_index : audio_pitches {
 						// frequency : float = PitchWithOctaveToFrequency(pitch, sp.tuning_count, 2, ref_freq = C3);
-						frequency : float = MusicPtToFrequency(pitch, tuning_system, tuning_pitches, cast(float) sp.pitch_zero_freq);
+						frequency : float = MusicPtToFrequency(pitch, tuning_system, tuning_pitches, ref_freq);
 						UpdateWaveFrequency(frequency, *sp.synth.simple_waves[pitch_index], audio_data.*);
 					}
 					GenerateSimpleSynthSamples(*sp.synth, audio_data.float_buffer, audio_data);
@@ -1252,6 +1259,9 @@ if frame_hover_entities.count > 0 {
 
 				circle : *CircleSpace = ArrayFindFirstByNameId(op_spec_data.all_op_circle_spaces, 
 					hover_entity.id, "dspace_id");
+
+				ref_freq : float64 = perm.all_data.runtime_settings.default_zero_pitch_frequency;
+				if circle.use_set_zero_freq ref_freq = circle.pitch_zero_freq;
 
 				//TODO This should be fetched by index more efficienlty and everywhere else as well.
 				tuning_system := ArrayFindFirstByNameId(perm.all_data.all_tuning_systems, circle.tuning_system_id, "id");
@@ -1322,7 +1332,7 @@ if frame_hover_entities.count > 0 {
 					} else {
 					PushRectangle(hover_cam_rect, LBLUE_V, top_op_space.render_groups.scissor_group, order = hover_rect.render_order+2);
 					if hover_rect.pitch_set.count > 0 {
-						frequency : float = MusicPtToFrequency(hover_rect.pitch_set[0], tuning_system, tuning_pitches, perm.all_data.runtime_settings.default_zero_pitch_frequency);
+						frequency : float = MusicPtToFrequency(hover_rect.pitch_set[0], tuning_system, tuning_pitches, ref_freq);
 						// frequency := cast(float) shape_value.float_value;
 						#if NEW_AUDIO {
 						UpdateWaveFrequency(frequency, *circle.synth.simple_waves[0], audio_data.*);
@@ -1364,7 +1374,7 @@ if frame_hover_entities.count > 0 {
 
 						//TODO Technically we could force this to be equal equal_temperament since it will be the same
 						//over the same span realtive to some compass interval on the circle.
-						frequency : float = MusicPtToFrequency(music_pt_float, tuning_system, tuning_pitches, perm.all_data.runtime_settings.default_zero_pitch_frequency);
+						frequency : float = MusicPtToFrequency(music_pt_float, tuning_system, tuning_pitches, ref_freq);
 						#if NEW_AUDIO {
 						UpdateWaveFrequency(frequency, *circle.synth.simple_waves[0], audio_data.*);
 						} else {
@@ -4137,11 +4147,14 @@ if is_resizing_op_space {
 			tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
 			assert(tuning_system.music_pt_count == tuning_pitches.count);
 			op_3D.op_space_3D.synth.wave_type = op_3D.op_space_3D.default_wave_type;
+			ref_freq : float64 = perm.all_data.runtime_settings.default_zero_pitch_frequency;
+			if op_3D.op_space_3D.use_set_zero_freq ref_freq = op_3D.op_space_3D.pitch_zero_freq;
  			if found_custom_3D && custom_3D.custom_audio_type == CustomAudioType.TUNING_SYSTEM {
 				tuning_system = ArrayFindFirstByNameId(perm.all_data.all_tuning_systems, custom_3D.tuning_system_id, "id");
 				tuning_pitches = ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
 				assert(tuning_system.music_pt_count == tuning_pitches.count);
 				op_3D.op_space_3D.synth.wave_type = custom_3D.osc_wave_type;
+				if custom_3D.use_set_zero_freq ref_freq = custom_3D.pitch_zero_freq;
  			}
 
  			//DOC : We set this here so later if people set any amount of osc waves they want in 3d, then this will update automatically
@@ -4166,7 +4179,7 @@ if is_resizing_op_space {
 		 		if found_custom_3D && custom_3D.custom_audio_type == CustomAudioType.PITCH_SET_AS_FREQUENCY {
 		 			frequency = cast(float) chosen_3d.pitch_set[w_index];
 		 		} else {
-					frequency = MusicPtToFrequency(chosen_3d.pitch_set[w_index], tuning_system, tuning_pitches);
+					frequency = MusicPtToFrequency(chosen_3d.pitch_set[w_index], tuning_system, tuning_pitches, ref_freq);
 				}
 				UpdateWaveFrequency(frequency, wave, audio_data);
 			}

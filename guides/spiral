@@ -33,6 +33,7 @@ main :: () {
 	c_spiral.spiral_type = SpiralType.PROPER;
 	c_spiral.world_pos = Vector2.{0,0};
 	c_spiral.tuning_system_id = 0;
+	c_spiral.use_set_zero_freq = true;
 	c_spiral.pitch_zero_freq = 130.8128;
 	//Setting set_spiral_base to false will not draw the spiral base and will ignore all the base chord/point data
 	//It can be used to draw a spiral without the base points

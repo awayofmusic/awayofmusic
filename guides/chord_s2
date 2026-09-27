@@ -37,6 +37,8 @@ main :: () {
    cs2.lp_count = 12;
 	cs2.tuning_system_id = 0;
 	cs2.is_sound_float = false;
+	cs2.use_set_zero_freq = true;
+	cs2.pitch_zero_freq = 130.8128;
 	cs2.vl_order_text = true;
 	cs2.vl_order_color = true;
 	cs2.osc_wave_type = OscWaveType.SAW;

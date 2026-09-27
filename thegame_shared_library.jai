@@ -4308,6 +4308,9 @@ CustomGeometry :: struct {
 	*/
 	synth : SimpleSynth;
 
+	use_set_zero_freq : bool;
+	pitch_zero_freq : float64;
+
 	//TODO We could then also put types in here and just fetch
 	//that specific data if needed and 
 	//custom_internal_type
@@ -4378,6 +4381,10 @@ CircleSpace :: struct {
 	//TODO Can make this an array if needed
 	osc_wave : OscWave;
 	synth : SimpleSynth;
+
+	//TODO We could make this a struct for passing around but its just in a if in like 5 places to check the frequency...
+	use_set_zero_freq : bool;
+	pitch_zero_freq : float64;
 }
 
 
@@ -4473,6 +4480,9 @@ ChordSpace2 :: struct {
 	//I will leave it so we can play around with it but I don't think
 	//I'll update that for now.
 	is_sound_float : bool;
+
+	use_set_zero_freq : bool;
+	pitch_zero_freq : float64;
 
 	//We only need 1 of these since presumably we will only listen to 1 point at a time with the mouse.
 	/*TECHNICALLY This should not be part of the geometry but it is convenient for now.
@@ -5041,6 +5051,7 @@ SpiralSpace :: struct {
 
 	total_radius : float;
 
+	use_set_zero_freq : bool = false;
 	pitch_zero_freq : float64;
 	tuning_system_id : int;
 	//TODO Rename these to point_count and loop_count maybe? Should be generalized just for Spiral
@@ -5097,6 +5108,7 @@ AsmCreateSpiral :: struct {
 	spiral_type : SpiralType;
 	world_pos : Vector2F64;
 	tuning_system_id : int;
+	use_set_zero_freq : AsmBool;
 	pitch_zero_freq : float64;
 	//TODO Should we rename these?
 	tuning_count : int;
@@ -5583,6 +5595,9 @@ CustomGeom3D :: struct {
 	tuning_system_id : int;
 	custom_audio_type : CustomAudioType;
 	osc_wave_type : OscWaveType;
+
+	use_set_zero_freq : bool;
+	pitch_zero_freq : float64;
 }
 
 //TODO MAybe we should rename this just OpSpace3DData
@@ -5658,6 +5673,9 @@ ChordSpace3 :: struct {
 	lerp_vl_colors : bool;
 	render_vl_order_as_int : bool;
 	//TODO can put 6 more bools here since we have an enum u8 in ChordSpaceFilter 
+
+	use_set_zero_freq : bool;
+	pitch_zero_freq : float64;
 
 	//TODO implement invariant ids with arrows and arrow changes
 	// invariant_ids : [3] int;
@@ -5852,6 +5870,9 @@ AsmCircleData :: struct {
 
 	show_text : AsmBool;
 	no_base_points : AsmBool;
+
+	use_set_zero_freq : AsmBool;
+	pitch_zero_freq : float64;
 } @LibraryAsmGen
 
 CreateCircleSpaceData :: struct {
@@ -5888,6 +5909,9 @@ CreateCircleSpaceData :: struct {
 
 	show_text : bool;
 	no_base_points : bool;
+
+	use_set_zero_freq : bool;
+	pitch_zero_freq : float64;
 }
 
 //TODO Where should put this and should we just have 1 120 roots and cycle over that?
@@ -5951,6 +5975,9 @@ CreateCircleSpace :: inline (
 	circle.synth.wave_type = OscWaveType.SINE;
 	circle.synth.envelope = MakeVolumeEnvelope();
 	s_wave : *OscWave = array_add(*circle.synth.simple_waves);
+
+	circle.use_set_zero_freq = c_data.use_set_zero_freq;
+	circle.pitch_zero_freq = c_data.pitch_zero_freq;
 
 	/*OVERALL we don't really need a non-repeating circle but I am going to leave
 	it here since it is convenient for things like gamma scale over 2.0 compass interval
@@ -6229,6 +6256,9 @@ CreateChordS2Data :: struct {
 	cs_filter_aggregate : ChordSpaceFilterAggregate;
 
 	osc_wave_type : OscWaveType;
+
+	use_set_zero_freq : bool;
+	pitch_zero_freq : float64;
 }
 
 CreateChordSpace2 :: inline (
@@ -6258,6 +6288,8 @@ CreateChordSpace2 :: inline (
 	chord_s2.music_pt_count = create_cs2.lp_count;
 	chord_s2.tuning_system_id = create_cs2.tuning_system_id;
 	chord_s2.is_sound_float = create_cs2.is_sound_float;
+	chord_s2.use_set_zero_freq = create_cs2.use_set_zero_freq;
+	chord_s2.pitch_zero_freq = create_cs2.pitch_zero_freq;
 
 	chord_s2.synth.wave_type = create_cs2.osc_wave_type;
 	chord_s2.synth.envelope = MakeVolumeEnvelope();
@@ -6632,6 +6664,8 @@ AsmSpace3Data :: struct {
 	//but that would involve registering midi note off somehow
 	//can do with either a button press or when we change frequency/pitch values
 	osc_wave_type : OscWaveType;
+	use_set_zero_freq : AsmBool;
+	pitch_zero_freq : float64;
 
 	/*DOC : We should make it clear that all values have to be set
 	and what the current defaults are. If 3d rotation feels wonky
@@ -6696,6 +6730,9 @@ CreateChordS3Data :: struct {
 
 	op_space_id : int;
 
+	use_set_zero_freq : bool;
+	pitch_zero_freq : float64;
+
 	osc_wave_type : OscWaveType;
 	lerp_vl_colors : bool;
 
@@ -6751,6 +6788,9 @@ CreateSpace3D :: inline (
 	// for 0..op_3D.op_space_3D.higher_dim-1 {
 	// 	AddSimpleWaveFromFrequency(0, *op_3D.op_space_3D.synth, audio_data);
 	// }
+
+	op_3D.op_space_3D.use_set_zero_freq = create_cs3.use_set_zero_freq;
+	op_3D.op_space_3D.pitch_zero_freq = create_cs3.pitch_zero_freq;
 
 	op_3D.op_space_3D.lp_count = create_cs3.lp_count;
 	op_3D.op_space_3D.tuning_system_id = create_cs3.tuning_system_id;

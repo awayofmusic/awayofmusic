@@ -14510,6 +14510,8 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		c_data.inner_circle_mute = cast(float) asm_data.inner_circle_mute;
 		c_data.no_base_points = AsmBoolToBool(asm_data.no_base_points);
 		c_data.show_text = AsmBoolToBool(asm_data.show_text);
+		c_data.use_set_zero_freq = AsmBoolToBool(asm_data.use_set_zero_freq);
+		c_data.pitch_zero_freq = asm_data.pitch_zero_freq;
 
 		// circle : *CircleSpace = CreateCircleInOpSpace(asm_data.op_space_id, c_data, ad);
 		circle : *CircleSpace = CreateCircleInOpSpace(c_data, op_spec_data, ad.all_tuning_systems, ad.all_tuning_pitches);
@@ -14670,6 +14672,7 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		sp.is_clockwise = AsmBoolToBool(asm_data.is_clockwise);
 		sp.radius_size = cast(float) asm_data.radius_size;
 		sp.sr_factor = cast(float) asm_data.sr_factor;
+		sp.use_set_zero_freq = AsmBoolToBool(asm_data.use_set_zero_freq);
 		sp.pitch_zero_freq = asm_data.pitch_zero_freq;
 		sp.tuning_system_id = asm_data.tuning_system_id;
 		sp.tuning_count = asm_data.tuning_count;
@@ -14836,6 +14839,8 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		create_cs2.cs_filter_aggregate = asm_cs2.cs_filter_aggregate; 
 		create_cs2.is_sound_float = AsmBoolToBool(asm_cs2.is_sound_float);
 		create_cs2.osc_wave_type = asm_cs2.osc_wave_type;
+		create_cs2.use_set_zero_freq = AsmBoolToBool(asm_cs2.use_set_zero_freq);
+		create_cs2.pitch_zero_freq = asm_cs2.pitch_zero_freq;
 		//Check if we have filters, otherwise we set the default in CreateChordS2Data which is all.
 		if asm_cs2.asm_cs_filters.count > 0 {
 			asm_cs_filters, err := GetAsmArray(asm_cs2.asm_cs_filters, ad.ram_memory); 
@@ -14951,6 +14956,8 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		if !found_tuning_system {
 			return CPUErr(sprint("Tuning system id % not found.\n", asm_cs3.tuning_system_id,,context.allocator));
 		}
+		create_cs3.use_set_zero_freq = AsmBoolToBool(asm_cs3.use_set_zero_freq);
+		create_cs3.pitch_zero_freq = asm_cs3.pitch_zero_freq;
 		//TODO I think this should be passed in so we can have different tuning systems for same counts
 		create_cs3.lp_count = tuning_system.music_pt_count;
 		create_cs3.tuning_system_id = tuning_system.id;
@@ -15121,6 +15128,8 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		custom_3D.tuning_system_id = asm_data.tuning_system_id;
 		custom_3D.custom_audio_type = asm_data.custom_audio_type;
 		custom_3D.osc_wave_type = asm_data.osc_wave_type;
+		custom_3D.use_set_zero_freq = AsmBoolToBool(asm_data.use_set_zero_freq);
+		custom_3D.pitch_zero_freq = asm_data.pitch_zero_freq;
 	}
 	case OpCode.create_shape_3D; {
 		mem_address : int = ComputeRAMLocation(ci.operands[0], ad.all_register_memory, ad.ram_memory);
@@ -15214,6 +15223,8 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		custom_g.synth.envelope = MakeVolumeEnvelope();
 		custom_g.collision_rect = RectCenterDim(MakeV2FFrom64(asm_data.collision_pos), MakeV2FFrom64(asm_data.collision_dim));
 		custom_g.show_collision = AsmBoolToBool(asm_data.show_collision);
+		custom_g.use_set_zero_freq = AsmBoolToBool(asm_data.use_set_zero_freq);
+		custom_g.pitch_zero_freq = asm_data.pitch_zero_freq;
 
 		//TODO Could allow other collision shapes later if needed
 		coll : *CollisionEntity = array_add(*op_spec_data.all_op_collision_entities);

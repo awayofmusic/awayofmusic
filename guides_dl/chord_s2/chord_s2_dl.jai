@@ -50,6 +50,8 @@ ExternalRunOnce :: (sld : *SharedLibraryData) {
 	create_cs2.vl_order_color = true;
 	create_cs2.is_sound_float = false;
 	create_cs2.osc_wave_type = OscWaveType.SAW;
+	create_cs2.use_set_zero_freq = true;
+	create_cs2.pitch_zero_freq = C3;
 	//This is set by default in CreateChordS2Data but I am leaving here for clarity
 	// create_cs2.new_cs_filters = .[.{filter_type=.ALL}];
 	chord_s2 : *ChordSpace2 = CreateChordSpace2(create_cs2, op_spec_data);

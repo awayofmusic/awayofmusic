@@ -4586,6 +4586,9 @@ AsmChordS2Data :: struct {
 
 	osc_wave_type : OscWaveType;
 
+	use_set_zero_freq : AsmBool;
+	pitch_zero_freq : float64;
+
    //TODO Maybe we only allow this in dynamic libraries
    //OR MAYBE we can add it later if we add matrices to the language
    //MAYBE 2d is ok but maybe its going overboard and will be too slow
@@ -7380,6 +7383,8 @@ AsmGeom3D :: struct {
 	//TODO We could add MIDI to here instead of for the chord space directly
 	custom_audio_type : CustomAudioType;
 	osc_wave_type : OscWaveType;
+	use_set_zero_freq : AsmBool;
+	pitch_zero_freq : float64;
 } @LibraryAsmGen
 
 AsmShape3D :: struct {
@@ -7413,6 +7418,9 @@ AsmGeom2D :: struct {
 	collision_pos : Vector2F64;
 	collision_dim : Vector2F64;
 	show_collision : AsmBool;
+
+	use_set_zero_freq : AsmBool;
+	pitch_zero_freq : float64;
 
 	//TODO If we put this in here then we could just draw the rects
 	//and if it's a sound float, then we do the special audio

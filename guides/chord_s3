@@ -60,6 +60,8 @@ main :: () {
 	cs3.s3_cam_start_type = S3CamStartType.USER_SET;
 	// cs3.cam_start_pos = Vector3.{0.,0.,0.};
 	cs3.osc_wave_type = OscWaveType.SINE;
+	cs3.use_set_zero_freq = false;
+	cs3.pitch_zero_freq = 130.8128;
 	cs3.set_3d_perspective = false;
 	cs3.depth = 24.0;
 	cs3.n = 1.0; 

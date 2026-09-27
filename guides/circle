@@ -38,6 +38,8 @@ main :: () {
 	cs.is_sound_float = false;
 	cs.inner_circle_mute = 0.;
 	cs.no_base_points = false;
+	cs.use_set_zero_freq = true;
+	cs.pitch_zero_freq = 1.0*261.6256;
 	#asm{ create_circle cs; }
 
 	mc : AsmMapCircle;
