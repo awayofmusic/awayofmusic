@@ -2679,15 +2679,21 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 			// if perm.all_data.all_process_instruction_events.count == 0 {
 			if text_op.text_comp_data == null || text_op.text_comp_data.all_music_instructions.count == 0 {
 				msg = "No instructions to run";
+				SetTextOpConsoleMessage(msg, text_op);
+				SetTextStatus(msg, text_op);
 			} else if OneOpIsExecuting(perm.all_data.all_process_instruction_events) {
 				msg = "Already Executing";
+				SetTextOpConsoleMessage(msg, text_op);
+				SetTextStatus(msg, text_op);
 			} else {
 				text_op.exec_info.debug_info.debug_control = DebugControl.CONTINUE;
 				array_add(*perm.all_data.all_process_instruction_events, .{text_op.op_space_id});
-				msg = tprint("% Executing...", text_file.file_short_name);
+				msg = tprint("% Executing", text_file.file_short_name);
+				if text_op.exec_info.exec_state == .NOT_RUNNING {
+					SetTextOpConsoleMessage(msg, text_op);
+					SetTextStatus(msg, text_op);
+				}
 			}
-			SetTextOpConsoleMessage(msg, text_op);
-			SetTextStatus(msg, text_op);
 		} 
 		else if text_op.exec_info.exec_state == .IS_DEBUG_STOP && text_op.exec_info.exec_mode == .DEBUG &&
 				  IsInputMapPress(.DEBUG_STEP_OVER, .DOWN_THIS_FRAME, game_input)
@@ -5743,6 +5749,10 @@ if perm.all_data.all_music_instructions.count > 0 {
 	the cursor and things like that all from the same place if things move around.
 	*/
 	if found_text_op {
+		for perm.all_data.print_text_to_console {
+			SetTextOpConsoleMessage(it, text_op, add_text=true);
+		}
+		array_reset_keeping_memory(*perm.all_data.print_text_to_console);
 		if exec_info.exec_state == .IS_DEBUG_STOP {
 			/*DOC : Reset the call stack whenever we run some instructions in case we selected another call frame.
 			  We need to set this before evaluating the watch row nodes so we have the right registers.
@@ -5878,7 +5888,7 @@ if perm.all_data.all_music_instructions.count > 0 {
 			}
 
 			if cpu_err.is_error {
-				SetTextOpConsoleMessage(tprint("CPU Error asm_index % : %.", cpu_err.error_index, cpu_err.msg), text_op);
+				SetTextOpConsoleMessage(tprint("CPU Error asm_index % : %.", cpu_err.error_index, cpu_err.msg), text_op, add_text=true);
 				SetTextStatus(tprint("CPU Error asm_index %.", cpu_err.error_index), text_op);
 			}
 		} 
@@ -5897,7 +5907,7 @@ if perm.all_data.all_music_instructions.count > 0 {
 			array_reset_keeping_memory(*perm.all_data.all_music_instructions);
 
 			msg := "Executed Successfully";
-			SetTextOpConsoleMessage(msg, text_op);
+			SetTextOpConsoleMessage(msg, text_op, add_text=true);
 			SetTextStatus(msg, text_op);
 		}
 	}

@@ -766,6 +766,11 @@ CodeTokenType :: enum {
     KEYWORD_NEW_ARRAY;
 	 KEYWORD_NEW_RESIZABLE_ARRAY;
 
+	 KEYWORD_SPRINT;
+	 KEYWORD_PRINT;
+	 KEYWORD_PRINT1;
+	 KEYWORD_PRINT2;
+
 	 KEYWORD_NEUME;
     KEYWORD_TANO;
     TILDE_EQUALS;
@@ -929,7 +934,11 @@ CheckKeyword :: (name: string) -> CodeTokenType {  // Returns Token_Type -1 if i
         //and they are just both 64-bit here.
         if name == "float" return .DATA_TYPE_FLOAT;
         if name == "neume" return .KEYWORD_NEUME;
+        if name == "print" return .KEYWORD_PRINT;
     case 6;
+        if name == "print1" return .KEYWORD_PRINT1;
+        if name == "print2" return .KEYWORD_PRINT2;
+        if name == "sprint" return .KEYWORD_SPRINT;
         if name == "return" return .KEYWORD_RETURN;
         if name == "struct" return .KEYWORD_STRUCT;
         if name == "string" return .DATA_TYPE_STRING;
@@ -2545,9 +2554,10 @@ CreateAllTypeInfo :: inline (cd : *CompilationData) {
 	string_struct : *TypeInfoStruct = *cd.string_type_info;
 	string_struct.type_enum = TypeInfoTag.STRING;
 	string_struct.runtime_size = 16;
-	string_struct.name = "NewString";
-	string_struct.struct_members = NewArray(1, TypeInfoStructMember);
+	string_struct.name = "StringStruct";
+	string_struct.struct_members = NewArray(2, TypeInfoStructMember);
 	string_struct.struct_members[0] = TypeInfoStructMember.{"count", *cd.int_type_info, 0};
+	string_struct.struct_members[1] = TypeInfoStructMember.{"data", *cd.void_pointer_type_info.info, 8};
 	//TODO we could make data just be an integer since we don't have *u8 to access bytes. that way we can still technically access bytes.
 	//BUT then we cant use string.data as an array... Maybe we just leave it out for now and if we add a byte type later then
 	//we can set this to a byte pointer and use it normally.
@@ -4873,7 +4883,80 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 		//array.element_size
 		PushStackMov(Imm(array_type.element_type.runtime_size), cd.int_type_info.runtime_size, cd);
 		}
-	} 
+	}
+	else if AllOrEquals(node.left.value.token_type, .[.KEYWORD_PRINT,.KEYWORD_SPRINT,.KEYWORD_PRINT1,.KEYWORD_PRINT2]) {
+		if node.right == null {
+			CreateCompErr(cd, .EVALUATION, node.right, "Invalid node.");
+			return false;									
+		}
+
+		arg_nodes : [] *BinaryNode = CommaNodeArrayEmptyToken(node.right, #char ")", cd);
+		if arg_nodes.count == 0 {
+			CreateCompErr(cd, .EVALUATION, node, "Invalid print(string, args).");
+			return false;						
+		}
+
+		print_string_node : *BinaryNode = arg_nodes[0];
+		valid_node : bool = CheckValidNode(print_string_node, node, cd);
+		if !valid_node return false;
+		if print_string_node.code_ir.t_info == null || print_string_node.code_ir.t_info.type_enum != .STRING {
+			CreateCompErr(cd, .EVALUATION, print_string_node, "print/sprint requires string as first argument.");
+			return false;									
+		}
+		print_string_op := GetValueOp(print_string_node, cd);
+
+		final_string_op : MusicOperand;
+		print_args : [] *BinaryNode;
+		if arg_nodes.count > 1 {
+			array_args_op : MusicOperand = RamMem(.sbp, cd.byte_offset_from_sbp);
+			print_args = array_view(arg_nodes, 1);
+			//Push on an array of strings to use with s_print afterwards
+			//count of array of strings
+			PushStackMov(Imm(print_args.count), cd.int_type_info.runtime_size, cd);
+			//data of array of strings 
+			array_data_op := PushStack(cd.void_pointer_type_info.runtime_size, cd);
+			SetAddressOp(array_data_op, RamMem(.sbp, cd.byte_offset_from_sbp), cd);
+
+			for arg_node : print_args {
+				valid_node : bool = CheckValidNode(arg_node, node, cd);
+				if !valid_node return false;
+
+				arg_op := GetValueOp(arg_node, cd);
+				new_string_op := PushStack(cd.string_type_info.runtime_size, cd);
+				if arg_node.code_ir.t_info.type_enum == {
+				case .INTEGER; Instr(.int_to_string, new_string_op, arg_op, d=cd);
+				case .FLOAT; Instr(.float_to_string, new_string_op, arg_op, d=cd);
+				case .BOOL; Instr(.bool_to_string, new_string_op, arg_op, d=cd);
+				case .STRING; Instr(.mov, new_string_op, arg_op, Imm(cd.string_type_info.runtime_size), d=cd);
+				case; {
+					CreateCompErr(cd, .EVALUATION, arg_node,
+					"Invalid print var type. Valid types are int, float bool and string.");
+					return false;
+				}
+				}
+			}
+
+			final_string_op = PushStack(cd.string_type_info.runtime_size, cd);
+			Instr(.s_print, print_string_op, array_args_op, final_string_op, d=cd);
+		} 
+		else {
+			final_string_op = print_string_op;
+		}
+
+		if node.left.value.token_type != .KEYWORD_SPRINT {
+			print_type : PrintToConsoleType;
+			if node.left.value.token_type == {
+			case .KEYWORD_PRINT; print_type = .INTERNAL_CONSOLE;
+			case .KEYWORD_PRINT1; print_type = .SYSTEM_CONSOLE;
+			case .KEYWORD_PRINT2; print_type = .INTERNAL_AND_SYSTEM_CONSOLE;
+			}
+			Instr(.print_to_console, final_string_op, ImmEnum(print_type), d=cd);
+		}
+
+		node.code_ir.op = final_string_op;
+		node.code_ir.code_value_type = CodeValueType.R_VALUE;
+		node.code_ir.t_info = cd.string_type_info;
+	}
 	else {
 		//TODO Be careful with main function, although we should never call it anyways and end on a HALT instruction.
 		/*NOTE We push all the function arguments sequentially before arriving here in the "," evaluation 
@@ -7293,14 +7376,18 @@ DONE
 		node.code_ir.op = RamMem(.sbp, cd.byte_offset_from_sbp);
 		PushStackMov(Imm(node.value.token_string.count), cd.int_type_info.runtime_size, cd);
 		//We store the string bytes on the heap and then put the heap data pointer on the stack
-		data_address := RamMem(.sbp, cd.byte_offset_from_sbp);
-		CreateMInstr(.alloc, Imm(node.value.token_string.count), data_address, d=cd);
-		AddByteOffsetFromSbp(cd.int_type_info.runtime_size, cd);
+		data_address := PushStack(cd.void_pointer_type_info.runtime_size, cd);
+		//TODO Should we put something like -1 for the empty string address?
+		if node.value.token_string.count > 0 {
+			CreateMInstr(.alloc, Imm(node.value.token_string.count), data_address, d=cd);
 
-		const_address : int = AddConstantMemory(node.value.token_string.data, node.value.token_string.count, 
-			*cd.constant_memory);
-		CreateMInstr(.mov, RegMem(.ax), data_address, Imm(cd.void_pointer_type_info.runtime_size), d=cd);
-		CreateMInstr(.const_mov, RamMem(.ax), Imm(const_address), Imm(node.value.token_string.count), d=cd);
+			const_address : int = AddConstantMemory(node.value.token_string.data, node.value.token_string.count, 
+				*cd.constant_memory);
+			CreateMInstr(.mov, RegMem(.ax), data_address, Imm(cd.void_pointer_type_info.runtime_size), d=cd);
+			CreateMInstr(.const_mov, RamMem(.ax), Imm(const_address), Imm(node.value.token_string.count), d=cd);
+		} else {
+			CreateMInstr(.mov, data_address, NULL_POINTER_OP, Imm(cd.void_pointer_type_info.runtime_size), d=cd);
+		}
 
 		//TODO Best to store it on the stack actually
 		//TODO FROM HERE we just removed the "mov x, x" same place AND ALSO strings should be stored on the stack
@@ -11622,6 +11709,28 @@ GenerateAsmInstructionManual :: () -> AsmInstructionManual {
 			.[.NONE]]},
 		]};
 	}
+	case OpCode.float_to_string; {
+		aim.valid_instr_info[it] = .{.[
+		.{.[.[.RAM_MEMORY],
+			.[.RAM_MEMORY, .REGISTER, .FLOAT],
+			.[.NONE]]},
+		]};		
+	}
+	case OpCode.int_to_string; #through;
+	case OpCode.bool_to_string; {	
+		aim.valid_instr_info[it] = .{.[
+		.{.[.[.RAM_MEMORY],
+			.[.RAM_MEMORY, .REGISTER, .INTEGER],
+			.[.NONE]]},
+		]};
+	}
+	case OpCode.print_to_console; {
+		aim.valid_instr_info[it] = .{.[
+		.{.[.[.RAM_MEMORY],
+			.[.NONE, .INTEGER, .REGISTER, .RAM_MEMORY],
+			.[.NONE]]},
+		]};		
+	}
 	case OpCode.s_print; {
 		aim.valid_instr_info[it] = .{.[
 		.{.[.[.RAM_MEMORY],
@@ -14134,6 +14243,69 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 			ad.all_register_memory[ci.operands[0].int_value] = mem_v;
 		}
 	}
+	case OpCode.bool_to_string; #through;
+	case OpCode.int_to_string; #through;
+	case OpCode.float_to_string; {
+		string_value : string;
+		mem_value := ComputeMemoryValue(ci.operands[1], ad.all_register_memory, ad.ram_memory);		
+		if ci.op_code == {
+		case .int_to_string; {
+			string_value = sprint("%", mem_value.int_value);
+		}
+		case .float_to_string; {
+			string_value = sprint("%", mem_value.float_value);
+		}
+		case .bool_to_string; {
+			if mem_value.int_value == 0 string_value = "false";
+			else string_value = "true";
+		}
+		}
+
+		alloc_heap_address, out_of_memory := AllocHeapMem(string_value.count, ad);
+		if out_of_memory.is_error return out_of_memory;
+		alloc_heap_string_ptr := GetMemory(alloc_heap_address, string_value.count, ad.ram_memory);
+		// if mem_error.is_error return mem_error;
+		memcpy(alloc_heap_string_ptr, string_value.data, string_value.count);
+
+    	return_address : int = ComputeRAMLocation(ci.operands[0], ad.all_register_memory, ad.ram_memory);
+		in_bounds := MemoryInBounds(ad.ram_memory, return_address, string_value.count);
+		if in_bounds.is_error return err;
+    	SetRAMValue(return_address, string_value.count, *ad.ram_memory);
+    	SetRAMValue(return_address+8, alloc_heap_address, *ad.ram_memory);
+	}
+	case OpCode.print_to_console; {
+		string_address : int = ComputeRAMLocation(ci.operands[0], ad.all_register_memory, ad.ram_memory);
+		string_count := GetMemValue(string_address, int, ad.ram_memory);
+		//NOTE: We only check second address since the first is checked in ValidateMusicOperand
+		string_data, err := GetMemValue(string_address+8, int, ad.ram_memory);
+		if err.is_error return err;
+
+		heap_string_ptr : *u8 = GetMemory(string_data, string_count, ad.ram_memory);
+		print_string : string = alloc_string(string_count,,temp);
+		memcpy(print_string.data, heap_string_ptr, string_count);
+
+
+		internal_console : bool = false;
+		system_console : bool = false;
+		if ci.operands[1].operand_type == .NONE {
+			internal_console = true;
+			system_console = true;
+		} else {
+			print_type_int : int = ComputeOperandInt(ci.operands[1], ad.all_register_memory, ad.ram_memory);
+			print_type := cast(PrintToConsoleType) print_type_int;
+			if print_type == {
+			case .INTERNAL_CONSOLE; internal_console = true;
+			case .SYSTEM_CONSOLE; system_console = true;
+			case .INTERNAL_AND_SYSTEM_CONSOLE;
+				internal_console = true;
+				system_console = true;
+			case;
+				return CPUErr(sprint("Invalid print_to_console type %.\n", print_type_int));
+			}
+		}
+		if internal_console array_add(*ad.print_text_to_console, print_string);
+		if system_console print("%\n", print_string);
+	}
 	case OpCode.s_print; {
 		//TODO Can make a compiler sprint function for convenience if that's good.
 		//But I kind of want to discourage using strings so people think more in terms of math and sound.
@@ -15514,7 +15686,11 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 	//YES we should check that .scp is < heap memory stack for stack overfloaw
 	return .{};
 }
-
+PrintToConsoleType :: enum u8 {
+	INTERNAL_CONSOLE;
+	SYSTEM_CONSOLE;
+	INTERNAL_AND_SYSTEM_CONSOLE;
+}
 tmov_ram_types : [] TMovRamType : #run enum_values_as_enum(TMovRamType);
 TMovRamType :: enum u8 {
 	TANO; //Default is that we go from_tano to to_tano
@@ -15814,6 +15990,9 @@ OpToCorrectedFloat :: inline (
 We don't return errors here because in the CPU execution, we check these before running them with ValidateMusicOperand.
 So if we use this somewhere else, we need to check ram bounds first and should likely use function calls that return errors.
 We could still have this return an error and just not check it...
+
+In the cpu execution, this does not need to check errors since we already check all of them on input. Otherwise we need
+to check the memory bounds ourselves.
 */
 ComputeMemoryValue :: inline (
 	operand : MusicOperand,

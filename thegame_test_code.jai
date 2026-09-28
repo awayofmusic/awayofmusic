@@ -13393,3 +13393,206 @@ DONE);
 	ContinueTest(*perm.test_data);
 
 } @ITest
+
+Test_SPrint :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	pre_print_string :: "c % o % % % sole";
+	perm : *Persist = GetPermanentStorage(game_memory);
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+		perm.all_data = InitAllData();
+		ResetAllRendererData(renderer_data);
+
+		text_file := CreateTestTextFile(*ALL_NEXT_IDS, *perm.all_data.all_text_files);
+		WriteFileString(text_file, 
+//NOTE THAT The % in here is the pre_print_string above
+sprint(
+#string DONE
+main :: () {
+	t : string = "test";
+	x : int = 12;
+	b : bool = true;
+	s : string = sprint("%", b, x, t, 1.1);
+
+	print("%", b, x, t, 1.1);
+}
+DONE, 
+pre_print_string, 
+pre_print_string
+));
+		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
+			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+
+		array_resize(*perm.test_data.all_sub_tests, 8+1);
+	} 
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	text_op : *TextOpSpaceData;
+	if perm.all_data.all_text_op_space_data.count > 0 {
+		text_op = *perm.all_data.all_text_op_space_data[0];
+	}
+
+	test_print_string :: "c true o 12 test 1.1 sole";
+	if perm.test_data.sub_test_index == {
+	case 0; {
+		open_test := MakeTerminalEvent(.open_op, TEST_TEXT_NAME);
+		array_add(*perm.all_data.all_terminal_events, open_test);
+	}
+	case 1; DownUpInputMap(.TEXT_DEBUG_TOGGLE, game_input);
+	case 2; DownUpInputMap(.TEXT_COMPILE, game_input);
+	case 3; {
+		if IsCompilationFail(text_op.text_comp_data) {
+			EndTest(*perm.test_data);
+		} else {
+			AddWatchDataForTest(.["s"], text_op);
+			CodeBPForTest(6, *text_op.exec_info.debug_info, text_op.text_comp_data);
+			DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+		}
+	}
+	case 4; {
+		s_var : WatchData = GetWatch("s", text_op.watch_data_rows);
+		AssertEquals(test_print_string, s_var.value_str);
+		AssertEquals("string", s_var.type_str);
+	}
+	case 5; DownUpInputMap(.TEXT_WATCH_PANE, game_input);
+	case 6; DownUpThisFrame(.ENTER, game_input);
+	case 7; {
+		s_count : WatchData = GetWatch("s.count", text_op.watch_data_rows);
+		AssertEquals(sprint("%", test_print_string.count), s_count.value_str);
+		AssertEquals("int", s_count.type_str);
+
+		s_data : WatchData = GetWatch("s.data", text_op.watch_data_rows);
+		//string sizes = test(4), true(4), 12(2), 1.1(3)
+		string_on_heap_count : int = 4+4+2+3+pre_print_string.count;
+		AssertEquals(sprint("%", perm.all_data.ram_memory.stack_size + string_on_heap_count), s_data.value_str);
+		AssertEquals("*void", s_data.type_str);
+
+
+		AssertEquals(17, text_op.console_dynamic_string.text_string.count);
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 8; {
+		//+1 for "\n" since we add the text as new line to the dynamic string
+		AssertEquals(17+test_print_string.count+1, text_op.console_dynamic_string.text_string.count);
+	}
+	}
+
+	ContinueTest(*perm.test_data);
+
+} @ITest
+
+Test_CompileString :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	test_string :: "test";
+	perm : *Persist = GetPermanentStorage(game_memory);
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+		perm.all_data = InitAllData();
+		ResetAllRendererData(renderer_data);
+
+		text_file := CreateTestTextFile(*ALL_NEXT_IDS, *perm.all_data.all_text_files);
+		WriteFileString(text_file, 
+//NOTE THAT The % in here is the pre_print_string above
+sprint(
+#string DONE
+main :: () {
+	es : string = "";
+	s : string = "%";
+	t : test;
+	t.s = "%";
+}
+test :: struct {
+	s : string;
+}
+DONE, 
+test_string, test_string,
+));
+		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
+			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+
+		array_resize(*perm.test_data.all_sub_tests, 15+1);
+	} 
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	text_op : *TextOpSpaceData;
+	if perm.all_data.all_text_op_space_data.count > 0 {
+		text_op = *perm.all_data.all_text_op_space_data[0];
+	}
+
+	if perm.test_data.sub_test_index == {
+	case 0; {
+		open_test := MakeTerminalEvent(.open_op, TEST_TEXT_NAME);
+		array_add(*perm.all_data.all_terminal_events, open_test);
+	}
+	case 1; DownUpInputMap(.TEXT_DEBUG_TOGGLE, game_input);
+	case 2; DownUpInputMap(.TEXT_COMPILE, game_input);
+	case 3; {
+		if IsCompilationFail(text_op.text_comp_data) {
+			EndTest(*perm.test_data);
+		} else {
+			AddWatchDataForTest(.["es", "s", "t"], text_op);
+			CodeBPForTest(5, *text_op.exec_info.debug_info, text_op.text_comp_data);
+			DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+		}
+	}
+	case 4; DownUpInputMap(.TEXT_WATCH_PANE, game_input);
+	case 5; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 6; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 7; DownUpThisFrame(.ENTER, game_input);
+	case 8; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 9; DownUpThisFrame(.ENTER, game_input);
+	case 10; DownUpThisFrame(.ARROW_UP, game_input);
+	case 11; DownUpThisFrame(.ARROW_UP, game_input);
+	case 12; DownUpThisFrame(.ENTER, game_input);
+	case 13; DownUpThisFrame(.ARROW_UP, game_input);
+	case 14; DownUpThisFrame(.ENTER, game_input);
+	case 15; {
+		es_var : WatchData = GetWatch("es", text_op.watch_data_rows);
+		AssertEquals("", es_var.value_str);
+		AssertEquals("string", es_var.type_str);
+		es_count : WatchData = GetWatch("es.count", text_op.watch_data_rows);
+		AssertEquals("0", es_count.value_str);
+		AssertEquals("int", es_count.type_str);
+		es_data : WatchData = GetWatch("es.data", text_op.watch_data_rows);
+		AssertEquals(sprint("%", NULL_POINTER_ADDRESS), es_data.value_str);
+		AssertEquals("*void", es_data.type_str);
+
+		s_var : WatchData = GetWatch("s", text_op.watch_data_rows);
+		AssertEquals(test_string, s_var.value_str);
+		AssertEquals("string", s_var.type_str);
+		s_count : WatchData = GetWatch("s.count", text_op.watch_data_rows);
+		AssertEquals(sprint("%", test_string.count), s_count.value_str);
+		AssertEquals("int", s_count.type_str);
+		s_data : WatchData = GetWatch("s.data", text_op.watch_data_rows);
+		AssertEquals(sprint("%", perm.all_data.ram_memory.stack_size), s_data.value_str);
+		AssertEquals("*void", s_data.type_str);
+
+		ts_var : WatchData = GetWatch("t.s", text_op.watch_data_rows);
+		AssertEquals(test_string, ts_var.value_str);
+		AssertEquals("string", ts_var.type_str);
+		ts_count : WatchData = GetWatch("t.s.count", text_op.watch_data_rows);
+		AssertEquals(sprint("%", test_string.count), ts_count.value_str);
+		AssertEquals("int", ts_count.type_str);
+		ts_data : WatchData = GetWatch("t.s.data", text_op.watch_data_rows);
+		AssertEquals(sprint("%", perm.all_data.ram_memory.stack_size+test_string.count), ts_data.value_str);
+		AssertEquals("*void", ts_data.type_str);
+	}
+	}
+
+	ContinueTest(*perm.test_data);
+
+} @ITest

@@ -2991,6 +2991,9 @@ AllData :: struct #type_info_no_size_complaint {
 	//Maybe should rename this exec_music_instructions for clarity?
 	all_music_instructions : [..] MusicInstruction;
 	exec_info : ExecutionInfo;
+	//TODO Where should we put this? Maybe in a struct with execution data
+	//once we remove all data from the code so we can separate it out entirely.
+	print_text_to_console : [..] string;
 
 	//TODO Will need multiple of these eventually for each compiled file.
 	//Can have an allocator for each OR just reuse the same allocator
@@ -7196,6 +7199,10 @@ OpCode :: enum u8 {
 	ftoi; //float to int
 	itof; //int to float
 
+	int_to_string;
+	float_to_string;
+	bool_to_string;
+	print_to_console;
 	s_print; //asm for sprint
 
 	//Move memory from constant section to main memory

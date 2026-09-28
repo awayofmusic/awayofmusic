@@ -1514,6 +1514,7 @@ Test_CompileString :: () {
 sprint(
 #string DONE
 main :: () {
+	es : string = "";
 	s : string = "%";
 	sc : int = s.count;
 	s_copy := s;
@@ -1532,28 +1533,36 @@ DONE, s1, s2,, unit_test_alloc)
 	if !found_t_info return;
 
 	vars_equal : bool = TestManyVarDeclSameStack(cd.all_variables, .[
+		VarDecl("es", *cd.string_type_info),
 		VarDecl("s", *cd.string_type_info),
 		VarDecl("sc", *cd.int_type_info),
 		VarDecl("s_copy", *cd.string_type_info),
 		VarDecl("t", t_info),
 	]);
 	if !vars_equal return;
-	s_var := cd.all_variables[0];
-	sc_var := cd.all_variables[1];
-	s_copy_var := cd.all_variables[2];
-	t_var := cd.all_variables[3];
+	es_var := cd.all_variables[0];
+	s_var := cd.all_variables[1];
+	sc_var := cd.all_variables[2];
+	s_copy_var := cd.all_variables[3];
+	t_var := cd.all_variables[4];
 
 	instr_index : int = 0;
 	TestNextManyInstr(*instr_index, cd, .[
+		//es : string = "";
+		MakeMI(.mov, es_var.op, Imm(0), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mov, AddOperandOffset(8,es_var.op), NULL_POINTER_OP, Imm(cd.void_pointer_type_info.runtime_size)),
+	]);
+
+	TestNextManyInstr(*instr_index, cd, .[
 		//s.count = 4
-		MakeMI(.mov, RamMem(.sbp,0), Imm(s1.count), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mov, s_var.op, Imm(s1.count), Imm(cd.int_type_info.runtime_size)),
 		//alloc s.data
 		//TODO We should not be storing constant strings on the heap since we will lose them
 		//unless we store at the beginning of the heap and copy there at the beginning
 		//and then access it with .const or .hp
-		MakeMI(.alloc, Imm(s1.count), RamMem(.sbp,8)),
+		MakeMI(.alloc, Imm(s1.count), AddOperandOffset(8,s_var.op)),
 
-		MakeMI(.mov, RegMem(.ax), RamMem(.sbp,8), Imm(cd.void_pointer_type_info.runtime_size)),
+		MakeMI(.mov, RegMem(.ax), AddOperandOffset(8,s_var.op), Imm(cd.void_pointer_type_info.runtime_size)),
 		MakeMI(.const_mov, RamMem(.ax), Imm(0), Imm(s1.count)),
 	]);
 
@@ -18561,6 +18570,166 @@ Test_Alloc :: () {
 } @UnitTest
 
 Test_SPrint :: () {
+	cs : CompileSettings;
+	cd : *CompilationData;
+
+	test_string :: "test";
+	print_string :: "c % o % % sole %";
+	cd = CompileCode(cs,
+sprint(
+#string DONE
+main :: () {
+	test : string = "%";
+	x : float = 2.1;
+	b : bool = false;
+	s : string = sprint("%", 101, test, x, b);
+}
+DONE,
+test_string, 
+print_string
+)
+,, unit_test_alloc);
+	comp_success := AssertEquals(false, IsCompilationFail(cd));
+	if !comp_success return;
+	// print(cd.disassembly);
+
+	vars_equal : bool = TestManyVarDeclSameStack(cd.all_variables, .[
+		VarDecl("test", *cd.string_type_info),
+		VarDecl("x", *cd.float_type_info),
+		VarDecl("b", *cd.bool_type_info),
+		VarDecl("s", *cd.string_type_info),
+	]);
+	if !vars_equal return;
+	test_var := cd.all_variables[0];
+	x_var := cd.all_variables[1];
+	b_var := cd.all_variables[2];
+	s_var := cd.all_variables[3];
+
+	instr_index : int = 0;
+	TestNextManyInstr(*instr_index, cd, .[
+		//test : string = "test";
+		//string_count
+		MakeMI(.mov, test_var.op, Imm(test_string.count), Imm(cd.int_type_info.runtime_size)),
+		//string_data
+		MakeMI(.alloc, Imm(test_string.count), AddOperandOffset(8, test_var.op)),
+		MakeMI(.mov, RegMem(.ax), AddOperandOffset(8, test_var.op), Imm(cd.void_pointer_type_info.runtime_size)),
+		MakeMI(.const_mov, RamMem(.ax), Imm(0), Imm(test_string.count)),
+
+		//x : float = 2.1;
+		MakeMI(.mov, x_var.op, FImm(2.1), Imm(cd.float_type_info.runtime_size)),
+		//b : bool = false;
+		MakeMI(.mov, b_var.op, Imm(0), Imm(cd.bool_type_info.runtime_size)),
+	]);
+
+	print_op : MusicOperand = AddOperandOffset(8, b_var.op);
+	array_op : MusicOperand = AddOperandOffset(16, print_op);
+	array_data_op := AddOperandOffset(16, array_op);
+	ad_0, ad_1 := GetMemoryAddressAsOperands(array_data_op);
+	TestNextManyInstr(*instr_index, cd, .[
+		//sprint("%", 101, test, x, b);
+		//Push on print_string
+		MakeMI(.mov, print_op, Imm(print_string.count), Imm(cd.bool_type_info.runtime_size)),
+		MakeMI(.alloc, Imm(print_string.count), AddOperandOffset(8, print_op)),
+		MakeMI(.mov, RegMem(.ax), AddOperandOffset(8, print_op), Imm(cd.void_pointer_type_info.runtime_size)),
+		MakeMI(.const_mov, RamMem(.ax), Imm(4), Imm(print_string.count)),
+
+		//array of strings for s_print asm instruction
+		//count of 4 strings in print function
+		MakeMI(.mov, array_op, Imm(4), Imm(cd.int_type_info.runtime_size)),
+		//string array data address
+		MakeMI(.add, AddOperandOffset(8,array_op), ad_0, ad_1),
+		//add int 101 to array
+		MakeMI(.int_to_string, array_data_op, Imm(101)),
+		//"test" string to array
+		MakeMI(.mov, AddOperandOffset(cd.string_type_info.runtime_size, array_data_op), test_var.op, Imm(cd.string_type_info.runtime_size)),
+		//float x to array
+		MakeMI(.float_to_string, AddOperandOffset(2*cd.string_type_info.runtime_size, array_data_op), x_var.op),
+		//bool b to array
+		MakeMI(.bool_to_string, AddOperandOffset(3*cd.string_type_info.runtime_size, array_data_op), b_var.op),
+		//do the sprint and store on stack after array
+		MakeMI(.s_print, print_op, array_op, RamMem(.sbp,128)),
+		// s : string
+		MakeMI(.mov, s_var.op, RamMem(.sbp,128), Imm(cd.string_type_info.runtime_size)),
+
+		MakeMI(.exit),
+	]);
+
+	AssertEquals(instr_index, cd.all_music_instructions.count);
+
+	//TEST valid only string input
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () { 
+	sprint("");
+}
+DONE,, unit_test_alloc);
+	AssertEquals(false, IsCompilationFail(cd));
+
+	//TEST valid only 1 input
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () { 
+	sprint("%", 1);
+}
+DONE,, unit_test_alloc);
+	AssertEquals(false, IsCompilationFail(cd));
+
+	//TEST empty function is an error
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () { 
+	sprint();
+}
+DONE,, unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST Other types are not valid
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () { 
+	t : tano;
+	sprint("%", t);
+}
+DONE,, unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST Unknown identifier should be error
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () { 
+	sprint("%", t);
+}
+DONE,, unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST Invalid input
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () { 
+	sprint("%", );
+}
+DONE,, unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST Invalid input
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () { 
+	sprint(,);
+}
+DONE,, unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+} @UnitTest
+
+Test_AsmSPrint :: () {
 	ci : MusicInstruction;
 	ad : *AllData = InitAllData(,,unit_test_alloc);
 

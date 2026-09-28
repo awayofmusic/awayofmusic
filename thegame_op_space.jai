@@ -187,7 +187,7 @@ MakeWatchData :: inline () -> WatchData {
 }
 IsWatchDroppable :: inline (wd : WatchData) -> bool {
 	is_droppable : bool = wd.node != null && wd.node.code_ir.t_info != null &&
-		(AllOrEquals(wd.node.code_ir.t_info.type_enum, .[.ARRAY,.STRUCT,.NEUME,.TANO])
+		(AllOrEquals(wd.node.code_ir.t_info.type_enum, .[.ARRAY,.STRUCT,.NEUME,.TANO,.STRING])
 		 ||
 		 IsWatchCommaArray(wd.node));
 	return is_droppable;
@@ -823,6 +823,17 @@ ComputeWatchValueAndType :: inline (watch_data : *WatchData, text_op : *TextOpSp
 				value_string = tprint("%", ram_address);
 			}
 		}
+		else if watch_data.node.code_ir.t_info.type_enum == .STRING {
+			string_address : int = ComputeRAMLocation(watch_op, debug_info.debug_all_registers, all_data.ram_memory);
+			string_count, c_err := GetMemValue(string_address, int, all_data.ram_memory);
+			string_data, err := GetMemValue(string_address+8, int, all_data.ram_memory);
+			if c_err.is_error || err.is_error {
+				value_string = "memory out of bounds";
+			} else {
+				heap_string_ptr : *u8 = GetMemory(string_data, string_count, all_data.ram_memory);
+				value_string = copy_string(string.{string_count, heap_string_ptr});
+			}
+		}
 		else if AllOrEquals(watch_data.node.code_ir.t_info.type_enum, STRUCT_TYPE_INTERNAL) {
 			//TODO Should we set this to the first value or make an "{x,y}" preview string
 			//OR we could put the address as struct(address) with ComputeRAMLocation
@@ -936,7 +947,10 @@ TypeToString :: (input_t_info : *TypeInfo) -> string {
 		t_info = (cast(*TypeInfoPointer) t_info).pointer_to;
 	}
 
-	if AllOrEquals(t_info.type_enum, STRUCT_TYPE_INTERNAL) {
+	if t_info.type_enum == .STRING {
+		append(*sb, "string");
+	}
+	else if AllOrEquals(t_info.type_enum, STRUCT_TYPE_INTERNAL) {
 		append(*sb, (cast(*TypeInfoStruct) t_info).name);
 	}
 	else if t_info.type_enum == .ENUM {
@@ -944,7 +958,6 @@ TypeToString :: (input_t_info : *TypeInfo) -> string {
 	}
 	else if t_info.type_enum == {
 	case .MUSIC_UNIT; append(*sb, "mrow");
-	case .STRING; append(*sb, "string");
 	case .INTEGER; append(*sb, "int");
 	case .FLOAT; append(*sb, "float");
 	case .BOOL; append(*sb, "bool");
@@ -2968,9 +2981,9 @@ SetTextOpConsoleMessage :: inline (
 	$reset_console_highlights : bool = true) 
 {
 	#if add_text {
-	//Add a new line if the last character is not a new line
-	if text_op.console_dynamic_string.text_string.count > 0 &&
-		#char "\n" != text_op.console_dynamic_string.text_string[text_op.console_dynamic_string.text_string.count-1]
+	//Add a new line if its not the first added text. Other new lines will still get processed below.
+	if text_op.console_dynamic_string.text_string.count > 0 
+		//&& #char "\n" != text_op.console_dynamic_string.text_string[text_op.console_dynamic_string.text_string.count-1]
 	{
 		AddDynamicString("\n", *text_op.console_dynamic_string);
 	}
