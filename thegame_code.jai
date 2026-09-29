@@ -1602,6 +1602,15 @@ ParseLeaf :: (cd : *CompilationData, pl : ParserLevel = .STATEMENT) -> *BinaryNo
 	//over the token anyways.
 	//TODO I think the case is different because we cant inline it with other keywords
 	//TODO Likely this will be the same as break, continue and defer (if we do defer)
+	case .KEYWORD_BREAK; #through;
+	case .KEYWORD_CONTINUE; {
+		next_check := PeekNextToken(cd.lexer);
+		if next_check.token_type != #char ";" {
+			CreateCompErr(cd, .PARSER, next_check, "Not a unary op.");
+			return null, false;
+		}
+		node = MakeBinaryNode(null,next,null,*cd.binary_tree);
+	}
 	case .KEYWORD_RETURN; 
 		next_check := PeekNextToken(cd.lexer);
 		if next_check.token_type == #char ";" {
@@ -2124,7 +2133,11 @@ IsCompilationFail :: inline (cd : CompilationData) -> bool {
 	comp_fail : bool = cd.comp_errors.all_compiler_errors.count > 0;
 	return comp_fail;
 }
-
+BreakData :: struct {
+	instr_index : int;
+	scope_id : int;
+	// node : *BinaryNode;
+}
 ForLoopData :: struct {
 	is_reverse : bool;
 	is_pointer : bool;
@@ -2426,6 +2439,7 @@ CompilationData :: struct {
 
 	//TODO We can just pop these off when generating instructions in case we have inline multiple for loops
 	all_for_loop_data : [..] ForLoopData;
+	all_break_data : [..] BreakData;
 
 	found_loop_first_instr : bool;
 	loop_first_instr_index : int;
@@ -5689,10 +5703,69 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 			node.code_ir.t_info = *array_info.info;
 		}
 	}
+	case .KEYWORD_CONTINUE; {
+		found_loop : bool = false;
+		for < scope_id : cd.open_scope_stack {
+			scope := GetScopeData(scope_id, cd);
+			if scope.scope_token.token_type == {
+			case .KEYWORD_WHILE; {
+				//while loop just goes back to first instruction since that is where the logic is
+				CreateMInstr(.jmp, Imm(scope.start_instr_index), d=cd);
+				found_loop = true;
+				break;
+			}
+			case .KEYWORD_FOR; {
+				//post loop stores the correct instruction to jmp to for the for loop since we need to add
+				//the initial variables and index for the for loop
+				fld : *ForLoopData = peek_pointer(cd.all_for_loop_data);
+				array_add(*cd.all_music_instructions, fld.post_loop_instrs[0]);
+				found_loop = true;
+				break;
+			}
+			}
+		}
+		if !found_loop {
+			CreateCompErr(cd, .EVALUATION, node, "No loop found for continue.");
+			return false;
+		}
+	}
+	case .KEYWORD_BREAK; {
+		found_loop : bool = false;
+		break_scope_id : int;
+		for < scope_id : cd.open_scope_stack {
+			scope := GetScopeData(scope_id, cd);
+			if scope.scope_token.token_type == {
+			case .KEYWORD_WHILE; {
+				break_scope_id = scope.id;
+				found_loop = true;
+				break;
+			}
+			case .KEYWORD_FOR; {
+				break_scope_id = scope.id;
+				found_loop = true;
+				break;
+			}
+			}
+		}
+		if !found_loop {
+			CreateCompErr(cd, .EVALUATION, node, "No loop found for break.");
+			return false;
+		}
+
+		CreateMInstr(.jmp, Imm(-1), d=cd);
+
+		break_data : BreakData;
+		break_data.instr_index = cd.all_music_instructions.count-1;
+		break_data.scope_id = break_scope_id;
+		array_add(*cd.all_break_data, break_data);
+	}
 	case .KEYWORD_FOR; {
-		//TODO Check this at ParserLevel
-		assert(node.right != null);
-		assert(cd.all_for_loop_data.count > 0);
+		assert(cd.all_for_loop_data.count > 0); //sanity check
+		if node.right == null {
+			CreateCompErr(cd, .EVALUATION, node, "Null right node.");
+			return false;			
+		}
+
 		fld : *ForLoopData = peek_pointer(cd.all_for_loop_data);
 		
 		if node.right.value.token_type == .DOUBLE_DOT {
@@ -10203,6 +10276,20 @@ CloseControlScope :: inline (last_scope : ScopeData, cd : *CompilationData, s_no
 		CreateCompErr(cd, .EVALUATION, s_node, "Found close } without open {.");
 		return;
 	}
+	}
+
+	//We could just leave the breaks in the array for convenience
+	b_index : int = 0;
+	while b_index < cd.all_break_data.count {
+		b_data : BreakData = cd.all_break_data[b_index];
+		if b_data.scope_id == last_scope.id {
+			break_instr : *MusicInstruction = *cd.all_music_instructions[b_data.instr_index];
+			break_instr.operands[0].int_value = cd.all_music_instructions.count;
+			array_unordered_remove_by_index(*cd.all_break_data, b_index);
+			//don't increment the index here since we need to check the value that we swapped
+		} else {
+			b_index += 1;
+		}
 	}
 }
 

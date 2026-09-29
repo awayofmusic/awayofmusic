@@ -2707,6 +2707,336 @@ DONE,, unit_test_alloc);
 } @UnitTest
 }
 
+//TODO FROM HERE finish these tests and add var names as well
+//and add a similar test for continue
+//then add some integration tests for break and continue
+Test_CompileBreak :: () {
+	cs : CompileSettings;
+	cd : *CompilationData;
+
+	cd = CompileCode(cs,
+#string DONE
+main :: () {
+	for 0..10 {
+		break;
+	}
+
+	a : [2] int;
+	for a {
+		for 0..2 {
+			break;
+		}
+		break;
+	}
+
+	x : int = 0;
+	while x < 1 {
+		x += 1;
+		if x == 1 {
+			break;
+		}
+	}
+}
+DONE,, unit_test_alloc);
+	comp_success := AssertEquals(false, IsCompilationFail(cd));
+	if !comp_success return;
+	// print(cd.disassembly);
+
+	scope_count := AssertEquals(7, cd.all_scope_data.count);
+	while_scope : ScopeData;
+	if scope_count {
+		while_scope = cd.all_scope_data[5];
+		AssertEquals(ScopeDataType.CONTROL_SCOPE, while_scope.scope_type);
+		AssertEquals(CodeTokenType.KEYWORD_WHILE, while_scope.scope_token.token_type);
+	}
+
+	fa_info, found_fa_info := GetArrayType(cd, *cd.int_type_info, .FIXED, 2);
+	AssertEquals(true, found_fa_info);
+	if !found_fa_info return;
+
+	var_index : int;
+	vars_equal : bool = TestNextManyVarDecl(*var_index, cd.all_variables, .[
+		VarDecl("it", *cd.int_type_info, RamMem(.sbp,0), scope_index=2),
+		VarDecl("a", fa_info, RamMem(.sbp,0), scope_index=1),
+		VarDecl("it", *cd.int_type_info, RamMem(.sbp,16), scope_index=2),
+		VarDecl("it_index", *cd.int_type_info, RamMem(.sbp,24), scope_index=2),
+		VarDecl("it", *cd.int_type_info, RamMem(.sbp,32), scope_index=3),
+		VarDecl("x", *cd.int_type_info, RamMem(.sbp,16), scope_index=1),
+	]);
+	if !vars_equal return;
+	it_0 := cd.all_variables[0];
+	a_var := cd.all_variables[1];
+	it_a := cd.all_variables[2];
+	it_index_a := cd.all_variables[3];
+	it_2 := cd.all_variables[4];
+	x_var := cd.all_variables[5];
+
+	instr_index : int = 0;
+	//for 0..10 {
+	TestNextManyInstr(*instr_index, cd, .[
+		MakeMI(.sub, it_0.op, Imm(0), Imm(1)),
+		MakeMI(.add, it_0.op, Imm(1)),
+		MakeMI(.clte, RegMem(.ax), it_0.op, Imm(10)),
+		MakeMI(.fjmp, Imm(instr_index+6), RegMem(.ax)),
+		MakeMI(.jmp, Imm(instr_index+6)),
+		MakeMI(.jmp, Imm(instr_index+1)),
+	]);
+
+	a_op_0, a_op_1 := GetMemoryAddressAsOperands(a_var.op);
+	TestNextManyInstr(*instr_index, cd, .[
+		//a : [2] int;
+		MakeMI(.mset, a_var.op, Imm(0), Imm(fa_info.runtime_size)),
+		//for a {
+		MakeMI(.mov, it_index_a.op, Imm(-1), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.add, it_index_a.op, Imm(1)),
+		MakeMI(.clt, RegMem(.ax), it_index_a.op, Imm(2)),
+		MakeMI(.fjmp, Imm(instr_index+18), RegMem(.ax)),
+		MakeMI(.add, RegMem(.bx), a_op_0, a_op_1),
+		MakeMI(.mul, RegMem(.ax), it_index_a.op, Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.add, RegMem(.bx), RegMem(.bx), RegMem(.ax)),
+		MakeMI(.mov, RegMem(.ax), RegMem(.bx), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mov, it_a.op, RamMem(.ax), Imm(cd.int_type_info.runtime_size)),
+		//for 0..2 {
+		MakeMI(.sub, it_2.op, Imm(0), Imm(1)),
+		MakeMI(.add, it_2.op, Imm(1)),
+		MakeMI(.clte, RegMem(.ax), it_2.op, Imm(2)),
+		MakeMI(.fjmp, Imm(instr_index+16), RegMem(.ax)),
+		//break; out of for a
+		MakeMI(.jmp, Imm(instr_index+16)),
+		//} back to for a add
+		MakeMI(.jmp, Imm(instr_index+11)),
+		//break; out of for 0..1
+		MakeMI(.jmp, Imm(instr_index+18)),
+		//} back to for 0..1 add
+		MakeMI(.jmp, Imm(instr_index+2)),
+	]);
+
+	//x : int = 0;
+	TestNextManyInstr(*instr_index, cd, .[
+		MakeMI(.mov, x_var.op, Imm(0), Imm(x_var.t_info.runtime_size)),
+	]);
+
+	//while x < 1
+	loop_start_index := instr_index;
+	TestNextManyInstr(*instr_index, cd, .[
+		MakeMI(.clt, RamMem(.sbp,24), x_var.op, Imm(1)),
+		MakeMI(.fjmp, Imm(instr_index+7), RamMem(.sbp,24)),
+		//x += 1;
+		MakeMI(.add, x_var.op, Imm(1)),
+		//if x == 3
+		MakeMI(.ceq, RamMem(.sbp,32), x_var.op, Imm(1)),
+		MakeMI(.fjmp, Imm(instr_index+6), RamMem(.sbp,32)),
+		//break;
+		MakeMI(.jmp, Imm(instr_index+7)),
+		//End while scope
+		MakeMI(.jmp, Imm(loop_start_index)),
+
+		MakeMI(.exit),
+	]);
+
+	AssertEquals(instr_index, cd.all_music_instructions.count);
+
+	//TEST fail break not in loop
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {	
+	break;
+}
+DONE,, unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST fail break not in loop
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	if 1 {
+		break;
+	}
+}
+DONE,, unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//break var should fail
+	//this breaks to loop name in jai but we will use goto instead
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	while 1 {
+		break x;
+	}
+}
+DONE,, unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+	
+} @UnitTest
+
+Test_CompileContinue :: () {
+	cs : CompileSettings;
+	cd : *CompilationData;
+
+	cd = CompileCode(cs,
+#string DONE
+main :: () {
+	for 0..1 {
+		continue;
+	}
+
+	a : [2] int;
+	for a {
+		for 0..2 {
+			continue;
+		}
+		continue;
+	}
+
+	x : int = 0;
+	while x < 1 {
+		if x == 1 {
+			continue;
+		}
+		x += 1;
+	}
+}
+DONE,, unit_test_alloc);
+	comp_success := AssertEquals(false, IsCompilationFail(cd));
+	if !comp_success return;
+	// print(cd.disassembly);
+
+	scope_count := AssertEquals(7, cd.all_scope_data.count);
+	while_scope : ScopeData;
+	if scope_count {
+		while_scope = cd.all_scope_data[5];
+		AssertEquals(ScopeDataType.CONTROL_SCOPE, while_scope.scope_type);
+		AssertEquals(CodeTokenType.KEYWORD_WHILE, while_scope.scope_token.token_type);
+	}
+
+	fa_info, found_fa_info := GetArrayType(cd, *cd.int_type_info, .FIXED, 2);
+	AssertEquals(true, found_fa_info);
+	if !found_fa_info return;
+
+	var_index : int;
+	vars_equal : bool = TestNextManyVarDecl(*var_index, cd.all_variables, .[
+		VarDecl("it", *cd.int_type_info, RamMem(.sbp,0), scope_index=2),
+		VarDecl("a", fa_info, RamMem(.sbp,0), scope_index=1),
+		VarDecl("it", *cd.int_type_info, RamMem(.sbp,16), scope_index=2),
+		VarDecl("it_index", *cd.int_type_info, RamMem(.sbp,24), scope_index=2),
+		VarDecl("it", *cd.int_type_info, RamMem(.sbp,32), scope_index=3),
+		VarDecl("x", *cd.int_type_info, RamMem(.sbp,16), scope_index=1),
+	]);
+	if !vars_equal return;
+	it_0 := cd.all_variables[0];
+	a_var := cd.all_variables[1];
+	it_a := cd.all_variables[2];
+	it_index_a := cd.all_variables[3];
+	it_2 := cd.all_variables[4];
+	x_var := cd.all_variables[5];
+
+	instr_index : int = 0;
+	//for 0..10 {
+	TestNextManyInstr(*instr_index, cd, .[
+		MakeMI(.sub, it_0.op, Imm(0), Imm(1)),
+		MakeMI(.add, it_0.op, Imm(1)),
+		MakeMI(.clte, RegMem(.ax), it_0.op, Imm(1)),
+		MakeMI(.fjmp, Imm(instr_index+6), RegMem(.ax)),
+		//continue;
+		MakeMI(.jmp, Imm(instr_index+1)),
+		MakeMI(.jmp, Imm(instr_index+1)),
+	]);
+
+	a_op_0, a_op_1 := GetMemoryAddressAsOperands(a_var.op);
+	TestNextManyInstr(*instr_index, cd, .[
+		//a : [2] int;
+		MakeMI(.mset, a_var.op, Imm(0), Imm(fa_info.runtime_size)),
+		//for a {
+		MakeMI(.mov, it_index_a.op, Imm(-1), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.add, it_index_a.op, Imm(1)),
+		MakeMI(.clt, RegMem(.ax), it_index_a.op, Imm(2)),
+		MakeMI(.fjmp, Imm(instr_index+18), RegMem(.ax)),
+		MakeMI(.add, RegMem(.bx), a_op_0, a_op_1),
+		MakeMI(.mul, RegMem(.ax), it_index_a.op, Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.add, RegMem(.bx), RegMem(.bx), RegMem(.ax)),
+		MakeMI(.mov, RegMem(.ax), RegMem(.bx), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mov, it_a.op, RamMem(.ax), Imm(cd.int_type_info.runtime_size)),
+		//for 0..2 {
+		MakeMI(.sub, it_2.op, Imm(0), Imm(1)),
+		MakeMI(.add, it_2.op, Imm(1)),
+		MakeMI(.clte, RegMem(.ax), it_2.op, Imm(2)),
+		MakeMI(.fjmp, Imm(instr_index+16), RegMem(.ax)),
+		//continue; to for a
+		MakeMI(.jmp, Imm(instr_index+11)),
+		//} back to for a add
+		MakeMI(.jmp, Imm(instr_index+11)),
+		//continue; to for 0..2
+		MakeMI(.jmp, Imm(instr_index+2)),
+		//} back to for 0..1 add
+		MakeMI(.jmp, Imm(instr_index+2)),
+	]);
+
+	//x : int = 0;
+	TestNextManyInstr(*instr_index, cd, .[
+		MakeMI(.mov, x_var.op, Imm(0), Imm(x_var.t_info.runtime_size)),
+	]);
+
+	//while x < 1
+	loop_start_index := instr_index;
+	TestNextManyInstr(*instr_index, cd, .[
+		MakeMI(.clt, RamMem(.sbp,24), x_var.op, Imm(1)),
+		MakeMI(.fjmp, Imm(instr_index+7), RamMem(.sbp,24)),
+		//if x == 3
+		MakeMI(.ceq, RamMem(.sbp,32), x_var.op, Imm(1)),
+		MakeMI(.fjmp, Imm(instr_index+5), RamMem(.sbp,32)),
+		//continue;
+		MakeMI(.jmp, Imm(loop_start_index)),
+		//x += 1;
+		MakeMI(.add, x_var.op, Imm(1)),
+		//End while scope
+		MakeMI(.jmp, Imm(loop_start_index)),
+
+		MakeMI(.exit),
+	]);
+
+	AssertEquals(instr_index, cd.all_music_instructions.count);
+
+	//TEST fail continue not in loop
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {	
+	continue;
+}
+DONE,, unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST fail continue not in loop
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	if 1 {
+		continue;
+	}
+}
+DONE,, unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//continue var should fail
+	//this breaks to loop name in jai but we will use goto instead
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	while 1 {
+		continue x;
+	}
+}
+DONE,, unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+	
+} @UnitTest
+
 Test_CompilePointer :: () {
 	cs : CompileSettings;
 	cd : *CompilationData;
@@ -11190,6 +11520,91 @@ Test_ParseReturn :: () {
 	TestNodes(ptd.expected_nodes, ptd.ordered_nodes);
 	node = ParseExpression(ptd.cd, S64_MIN);
 	AssertEquals(node.value.token_type, #char ";");
+
+
+} @UnitTest
+
+Test_ParseBreak :: () {
+	ptd := MakeParseTestData();
+
+	/*TEST empty break statement
+		break
+	*/	
+	ResetCodeLexer(*ptd.cd.lexer);
+	LexCodeTokens(*ptd.cd.lexer, "break;");
+	node := ParseExpression(ptd.cd, S64_MIN);
+
+	array_reset_keeping_memory(*ptd.ordered_nodes);
+	DFSPreWithNull(node, *ptd.ordered_nodes, GetOrderedNodesWithNull);
+	ptd.expected_nodes = BinaryNode.[
+		BNode(LCToken(.KEYWORD_BREAK, "break")), NULL_NODE, NULL_NODE,
+	];
+	TestNodes(ptd.expected_nodes, ptd.ordered_nodes);
+	node = ParseExpression(ptd.cd, S64_MIN);
+	AssertEquals(node.value.token_type, #char ";");
+
+
+	/*
+		return
+		    \
+		     x
+	*/	
+	// array_reset_keeping_memory(*ptd.cd.lexer.lexer_tokens);
+	// LexCodeTokens(*ptd.cd.lexer, "break x;");
+	// node = ParseExpression(ptd.cd, S64_MIN);
+	// AssertEquals(ptd)
+
+	// array_reset_keeping_memory(*ptd.ordered_nodes);
+	// DFSPreWithNull(node, *ptd.ordered_nodes, GetOrderedNodesWithNull);
+	// ptd.expected_nodes = BinaryNode.[
+	// 	BNode(LCToken(.KEYWORD_BREAK, "break"), .UNARY_OP), NULL_NODE,
+	// 	BNode(LCToken(.IDENT, "x")), NULL_NODE, NULL_NODE,
+	// ];
+	// TestNodes(ptd.expected_nodes, ptd.ordered_nodes);
+	// node = ParseExpression(ptd.cd, S64_MIN);
+	// AssertEquals(node.value.token_type, #char ";");
+
+
+} @UnitTest
+
+Test_ParseContinue :: () {
+	ptd := MakeParseTestData();
+
+	/*TEST empty continue statement
+		continue
+	*/	
+	ResetCodeLexer(*ptd.cd.lexer);
+	LexCodeTokens(*ptd.cd.lexer, "continue;");
+	node := ParseExpression(ptd.cd, S64_MIN);
+
+	array_reset_keeping_memory(*ptd.ordered_nodes);
+	DFSPreWithNull(node, *ptd.ordered_nodes, GetOrderedNodesWithNull);
+	ptd.expected_nodes = BinaryNode.[
+		BNode(LCToken(.KEYWORD_CONTINUE, "continue")), NULL_NODE, NULL_NODE,
+	];
+	TestNodes(ptd.expected_nodes, ptd.ordered_nodes);
+	node = ParseExpression(ptd.cd, S64_MIN);
+	AssertEquals(node.value.token_type, #char ";");
+
+
+	/*
+		continue
+		    \
+		     var
+	*/	
+	// array_reset_keeping_memory(*ptd.cd.lexer.lexer_tokens);
+	// LexCodeTokens(*ptd.cd.lexer, "continue var;");
+	// node = ParseExpression(ptd.cd, S64_MIN);
+
+	// array_reset_keeping_memory(*ptd.ordered_nodes);
+	// DFSPreWithNull(node, *ptd.ordered_nodes, GetOrderedNodesWithNull);
+	// ptd.expected_nodes = BinaryNode.[
+	// 	BNode(LCToken(.KEYWORD_CONTINUE, "continue"), .UNARY_OP), NULL_NODE,
+	// 	BNode(LCToken(.IDENT, "var")), NULL_NODE, NULL_NODE,
+	// ];
+	// TestNodes(ptd.expected_nodes, ptd.ordered_nodes);
+	// node = ParseExpression(ptd.cd, S64_MIN);
+	// AssertEquals(node.value.token_type, #char ";");
 
 
 } @UnitTest

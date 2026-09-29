@@ -13596,3 +13596,333 @@ test_string, test_string,
 	ContinueTest(*perm.test_data);
 
 } @ITest
+
+Test_CompileBreak :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	test_string :: "test";
+	perm : *Persist = GetPermanentStorage(game_memory);
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+		perm.all_data = InitAllData();
+		ResetAllRendererData(renderer_data);
+
+		text_file := CreateTestTextFile(*ALL_NEXT_IDS, *perm.all_data.all_text_files);
+		WriteFileString(text_file, 
+#string DONE
+main :: () {
+	for 0..10 {
+		break;
+	}
+
+	a : [2] int;
+	for a {
+		for 0..2 {
+			break;
+		}
+		break;
+	}
+
+	x : int = 0;
+	while x < 1 {
+		x += 1;
+		 if x == 1 {
+			break;
+		}
+	}
+}
+DONE);
+		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
+			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+
+		array_resize(*perm.test_data.all_sub_tests, 11+1);
+	} 
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	text_op : *TextOpSpaceData;
+	if perm.all_data.all_text_op_space_data.count > 0 {
+		text_op = *perm.all_data.all_text_op_space_data[0];
+	}
+
+	if perm.test_data.sub_test_index == {
+	case 0; {
+		open_test := MakeTerminalEvent(.open_op, TEST_TEXT_NAME);
+		array_add(*perm.all_data.all_terminal_events, open_test);
+	}
+	case 1; DownUpInputMap(.TEXT_DEBUG_TOGGLE, game_input);
+	case 2; DownUpInputMap(.TEXT_COMPILE, game_input);
+	case 3; {
+		if IsCompilationFail(text_op.text_comp_data) {
+			EndTest(*perm.test_data);
+		} else {
+			AddWatchDataForTest(.["x"], text_op);
+			CodeBPForTest(1, *text_op.exec_info.debug_info, text_op.text_comp_data);
+			DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+		}
+	}
+	case 4; {
+		d_line := GetDebugLineForTest(1, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		//TEST step onto break
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 5; {
+		d_line := GetDebugLineForTest(2, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		//TEST step over rest of the loop
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 6; {
+		d_line := GetDebugLineForTest(5, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		//TEST run till next break
+		CodeBPForTest(8, *text_op.exec_info.debug_info, text_op.text_comp_data);
+		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+	}
+	case 7; {
+		d_line := GetDebugLineForTest(8, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		//second break;
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 8; {
+		d_line := GetDebugLineForTest(10, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		//third break; should be on to x : int after this
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 9; {
+		d_line := GetDebugLineForTest(13, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		//TEST run till next break
+		CodeBPForTest(17, *text_op.exec_info.debug_info, text_op.text_comp_data);
+		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+	}
+	case 10; {
+		d_line := GetDebugLineForTest(17, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		//third break; should be on to x : int after this
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 11; {
+		d_line := GetDebugLineForTest(20, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		x_var : WatchData = GetWatch("x", text_op.watch_data_rows);
+		AssertEquals("1", x_var.value_str);
+		AssertEquals("int", x_var.type_str);
+
+		//third break; should be on to x : int after this
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	}
+
+	ContinueTest(*perm.test_data);
+
+} @ITest
+
+Test_CompileContinue :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	test_string :: "test";
+	perm : *Persist = GetPermanentStorage(game_memory);
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+		perm.all_data = InitAllData();
+		ResetAllRendererData(renderer_data);
+
+		text_file := CreateTestTextFile(*ALL_NEXT_IDS, *perm.all_data.all_text_files);
+		WriteFileString(text_file, 
+#string DONE
+main :: () {
+	for 0..1 {
+		continue;
+	}
+
+	a : [1] int;
+	for a {
+		for 0..0 {
+			continue;
+		}
+		continue;
+	}
+
+	x : int = 0;
+	while x < 1 {
+		x += 1;
+		if x == 1 {
+			continue;
+		}
+	}
+}
+DONE);
+		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
+			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+
+		array_resize(*perm.test_data.all_sub_tests, 19+1);
+	} 
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	text_op : *TextOpSpaceData;
+	if perm.all_data.all_text_op_space_data.count > 0 {
+		text_op = *perm.all_data.all_text_op_space_data[0];
+	}
+
+	if perm.test_data.sub_test_index == {
+	case 0; {
+		open_test := MakeTerminalEvent(.open_op, TEST_TEXT_NAME);
+		array_add(*perm.all_data.all_terminal_events, open_test);
+	}
+	case 1; DownUpInputMap(.TEXT_DEBUG_TOGGLE, game_input);
+	case 2; DownUpInputMap(.TEXT_COMPILE, game_input);
+	case 3; {
+		if IsCompilationFail(text_op.text_comp_data) {
+			EndTest(*perm.test_data);
+		} else {
+			AddWatchDataForTest(.["x"], text_op);
+			CodeBPForTest(2, *text_op.exec_info.debug_info, text_op.text_comp_data);
+			DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+		}
+	}
+	case 4; {
+		d_line := GetDebugLineForTest(2, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		//TEST continue
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 5; {
+		d_line := GetDebugLineForTest(1, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index+1, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		//TEST back through loop
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 6; {
+		d_line := GetDebugLineForTest(2, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		//TEST continue again
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 7; {
+		d_line := GetDebugLineForTest(1, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index+1, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		//second break;
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 8; {
+		d_line := GetDebugLineForTest(5, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		//third break; should be on to x : int after this
+		CodeBPForTest(8, *text_op.exec_info.debug_info, text_op.text_comp_data);
+		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+	}
+	case 9; {
+		d_line := GetDebugLineForTest(8, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		//TEST continue back to inner loop for 0..0
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 10; {
+		d_line := GetDebugLineForTest(7, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index+1, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		//skip to next continue
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 11; {
+		d_line := GetDebugLineForTest(10, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		//continue back to for a
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);		
+	}
+	case 12; {
+		d_line := GetDebugLineForTest(6, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index+1, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		//third break; should be on to x : int after this
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 13; {
+		//at x : int
+		d_line := GetDebugLineForTest(13, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 14; {
+		//at while statmeent
+		d_line := GetDebugLineForTest(14, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 15; {
+		//at x += 1
+		d_line := GetDebugLineForTest(15, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 16; {
+		//at if statement
+		d_line := GetDebugLineForTest(16, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 17; {
+		//at continue
+		d_line := GetDebugLineForTest(17, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		//continue back to while x < 1
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 18; {
+		d_line := GetDebugLineForTest(13, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index+1, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		//step out of while
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 19; {
+		d_line := GetDebugLineForTest(20, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		x_var : WatchData = GetWatch("x", text_op.watch_data_rows);
+		AssertEquals("1", x_var.value_str);
+		AssertEquals("int", x_var.type_str);
+
+		//go out of while
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	}
+
+	ContinueTest(*perm.test_data);
+
+} @ITest

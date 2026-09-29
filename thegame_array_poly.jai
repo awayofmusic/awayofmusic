@@ -925,6 +925,8 @@ ArrayFindAllPointersByAndOp :: (array: [] $T,
     return result;
 }
 
+
+//DONT USE THESE RIGHT NOW THEY DONT WORK
 ArrayRemoveAllByAndOp :: (array: *[] $T, 
 	id_1: $S, $name_1 : string, 
 	id_2: $D, $name_2 : string) 
@@ -1008,17 +1010,32 @@ ArrayRemoveFirstByNameIdAndReturn :: (
     return false, .{};
 }
 
+//DO NOT USE THESE REMOVE FUNCTION SHOULD IMPLEMENT YOUR OWN TO THINK ABOUT HOW THE DATA IS ACTUALLY REMOVED
+//This one works but will swap all the values so it does not keep order
 ArrayRemoveAllByNameId :: (
 	array: *[] $T, 
 	id: $S, 
 	$name_id : string) 
 {
-    for <<array {
+	index : int = 0;
+	while index < array.count {
     	equal_ids := #insert -> string {
-    		return builder_string("it.% == id;", name_id);
+    		return builder_string("array.*[index].% == id;", name_id);
     	}
-    	if equal_ids remove it;
-    }
+    	//If we delete then we decrement the count but not increment the index
+    	//so that we check the value that was swapped
+		if equal_ids {
+			array_unordered_remove_by_index(array, index);
+		} else {
+			index += 1;
+		}	
+	}
+    // for <<array {
+    // 	equal_ids := #insert -> string {
+    // 		return builder_string("it.% == id;", name_id);
+    // 	}
+    // 	if equal_ids remove it;
+    // }
 }
 
 ArrayRemoveAllByNameIdAndReturn :: (
@@ -1069,14 +1086,28 @@ ArrayRemoveAllByNameId :: (
 	id: $S, $name_id : string, 
 	EqualsProc : (S, S) -> bool) 
 {
-    for <<array {
+	index : int = 0;
+	while index < array.count {
     	equal_ids := #insert -> string {
-    		return builder_string("EqualsProc(it.%, id);\n", name_id);
+    		return builder_string("EqualsProc(array.*[index].%, id);\n", name_id);
     	}
-    	if equal_ids remove it;
-    }
+    	//If we delete then we decrement the count but not the index
+    	//so that we check the value that was swapped
+		if equal_ids {
+			array_unordered_remove_by_index(array, index);
+		} else {
+			index += 1;
+		}	
+	}
+	// for <<array {
+   //  	equal_ids := #insert -> string {
+   //  		return builder_string("EqualsProc(it.%, id);\n", name_id);
+   //  	}
+	//  	if equal_ids remove it;
+	// }
 }
 
+//DONT USE THESE OTHER ARRAY REMOVE THEY DONT WORK RIGHT NOW
 ArrayRemoveAllByArrayNameId :: (
 	array : *[] $T,
 	all_ids : [] $S, $name_id : string,
