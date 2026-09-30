@@ -742,6 +742,8 @@ MUSIC_ROW_UNITS_PER_SECOND_DEFAULT :: 1.0;
 MUSIC_ROW_UNIT_WIDTH_DEFAULT :: 1.75;
 OP_SPACE_DEFAULT_SIZE :: Vector2F.{40,30};
 DEFAULT_TEXT_OP_SIZE : Vector2F : #run 1.115*OP_SPACE_DEFAULT_SIZE;
+DEFAULT_MAX_ASM_INSTRUCTIONS :: 200000;
+DEFAULT_ASM_INSTRUCTIONS_PER_FRAME :: 200;
 RuntimeSettingsData :: struct {
 	//TODO Add these to ParsedRuntimeSettings
 	default_zero_pitch_frequency : float64 = C4;
@@ -750,7 +752,8 @@ RuntimeSettingsData :: struct {
 
 	//TODO What is a good default here? Should we test it somehow?
 	//Will likely be different on different cpus
-	asm_instructions_per_frame : int = 200;
+	asm_instructions_per_frame : int = DEFAULT_ASM_INSTRUCTIONS_PER_FRAME;
+	max_asm_instructions : int = DEFAULT_MAX_ASM_INSTRUCTIONS;
 
 	//I am removing this and setting it through the terminal instead for testing
 	//eventually we have some file names here for dynamic libraries once we do that

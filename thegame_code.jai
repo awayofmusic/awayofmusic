@@ -2497,8 +2497,12 @@ EXECUTION INTO RAM BEFORE EVERYTHING ELSE.
 */
 AllTypeInfo :: struct {
 	//NOTE : CreateAllTypeInfo creates this in memory so these are stored there in memory and not on the stack somewhere.
-	//I don't think this exists, only as a pointer, so we make the size 0.
-	void_type_info := TypeInfo.{TypeInfoTag.VOID,0};
+	/*NOTE : Void is 8 bytes so that we can do pointer arithmetic.
+	Void cannot be assigned anything but allows us to use *void as an address 
+	that can use pointer arithmetic normally. An example of this can be found in QSort.
+	*/
+	//I don't think this exists, only as a pointer, so we make the size 0. (NOT ANYMORE it is now 8)
+	void_type_info := TypeInfo.{TypeInfoTag.VOID,8};
 	//TODO Should we store these in an array or like this? Like these feels more like a base type.
 	//TODO We could store all *TypeInfo in an array for easy access for struct members for example if needed.
 	int_type_info := TypeInfo.{TypeInfoTag.INTEGER,8};
@@ -4965,11 +4969,13 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 			case .KEYWORD_PRINT2; print_type = .INTERNAL_AND_SYSTEM_CONSOLE;
 			}
 			Instr(.print_to_console, final_string_op, ImmEnum(print_type), d=cd);
+			//TODO for print we could free the string and not return anything up the tree
+			//I think that makes more sense
+		} else {
+			node.code_ir.op = final_string_op;
+			node.code_ir.code_value_type = CodeValueType.R_VALUE;
+			node.code_ir.t_info = cd.string_type_info;
 		}
-
-		node.code_ir.op = final_string_op;
-		node.code_ir.code_value_type = CodeValueType.R_VALUE;
-		node.code_ir.t_info = cd.string_type_info;
 	}
 	else {
 		//TODO Be careful with main function, although we should never call it anyways and end on a HALT instruction.
@@ -11500,7 +11506,7 @@ GenerateAsmInstructionManual :: () -> AsmInstructionManual {
 		//3 op single memory
 		.{.[ALL_SINGLE_MEMORY_OPERANDS, 
 			ALL_SINGLE_OPERANDS, 
-			.[.INTEGER, .REGISTER]]},
+			ALL_SINGLE_INT_OPERANDS]},
 		//2 op music memory
 		.{.[.[.MUSIC_MEMORY], 
 			ALL_OPERANDS_AND_ARRAY, 
@@ -11515,6 +11521,14 @@ GenerateAsmInstructionManual :: () -> AsmInstructionManual {
 		aim.valid_instr_info[it] = .{.[
 		.{.[.[.RAM_MEMORY], 
 			ALL_SINGLE_INT_OPERANDS, 
+			ALL_SINGLE_INT_OPERANDS]}
+		]};
+	}
+	case OpCode.movp; #through;
+	case OpCode.swap; {
+		aim.valid_instr_info[it] = .{.[
+		.{.[.[.RAM_MEMORY], 
+			.[.RAM_MEMORY], 
 			ALL_SINGLE_INT_OPERANDS]}
 		]};
 	}
@@ -11876,8 +11890,13 @@ GenerateAsmInstructionManual :: () -> AsmInstructionManual {
 			.[.NONE]]},
 		]};
 	}
-	//TODO Add free validation when we implement it
-	// case OpCode.free;
+	case OpCode.free; {
+		aim.valid_instr_info[it] = .{.[
+		.{.[.[.REGISTER, .RAM_MEMORY],
+		   ALL_SINGLE_INT_OPERANDS, 
+			.[.NONE]]},
+		]};
+	}
 	case OpCode.alloc; {
 		aim.valid_instr_info[it] = .{.[
 		.{.[ALL_SINGLE_INT_OPERANDS, 
@@ -12206,6 +12225,8 @@ DebugInfo :: struct {
 	break_points : [..] DebugBreakpoint;
 	debug_control : DebugControl;
 
+	d_step : DebugStep;
+
 	//TODO This should be part of an allocator that we clear on execution.
 	//TODO WE COULD REUSE call_frames since that will happen often
 	//but then clear an entire allocator when we stop debugging.
@@ -12273,6 +12294,7 @@ ExecutionInfo :: struct {
 	// all_instructions : [..] MusicInstruction;
 	//TODO Can also store what ram memory we are using here
 	
+	total_instructions_run : int;
 	instructions_run_this_frame : int;
 	continue_execution_next_frame : bool;
 }
@@ -12334,6 +12356,7 @@ ExecuteManyInstructions :: inline (exec : *ExecutionInfo, ad : *AllData) -> CPUE
 			exec.debug_info.c_frame_pool_count = 0;
 			array_reset_keeping_memory(*exec.debug_info.debug_call_stack);
 			exec.debug_info.debug_all_registers = ad.all_register_memory;
+			exec.debug_info.d_step = DebugStep.{};
 
 			//TODO Could write a unit test to check this error.
 			func_decl, found_main_func := ArrayFindFirstByAndOp(ad.comp_data.all_function_declarations, 
@@ -12352,6 +12375,7 @@ ExecuteManyInstructions :: inline (exec : *ExecutionInfo, ad : *AllData) -> CPUE
 		//Now we only have 1 so we reset it but once we can execute multiple code, then we would have multiple memorys
 		//and we can reuse those whenever we run something new.
 		ResetCodeMemory(ad);
+		exec.total_instructions_run = 0; //TODO Should we put this in ResetCodeMemory? It's not memory though
 		exec.exec_state = .IS_EXEC_RUNNING;
 		//TODO Rename main_instr_index to exec_start_instr_index
 		ad.all_register_memory[RegDef.pc].int_value = exec.main_instr_index;
@@ -12378,10 +12402,11 @@ ExecuteManyInstructions :: inline (exec : *ExecutionInfo, ad : *AllData) -> CPUE
 	//and probably start a new stack. So each call stack which have it's own stack for control scopes
 	//and then we would have a DebugCall object which would have a stack for control scopes and what function were in.
 	//TODO Should we write some new tests to check if the new CPU running is working or is that enough?
+	//NOTE : This is for debugging step_over
+	//TODO We can remove this since it was moved into debug_info and its working
+	// d_step : DebugStep;
 	err : CPUError;
 	stop_execution : bool = false;
-	//NOTE : This is for debugging step_over
-	d_step : DebugStep;
 	exec.continue_execution_next_frame = false;
 	exec.instructions_run_this_frame = 0;
 	while exec_loop := true {
@@ -12402,8 +12427,9 @@ ExecuteManyInstructions :: inline (exec : *ExecutionInfo, ad : *AllData) -> CPUE
 		if exec.exec_mode == ExecutionMode.DEBUG {
 			if exec.exec_state == .IS_DEBUG_STOP {
 				exec.exec_state = .IS_EXEC_RUNNING;
-				d_step.step_control = exec.debug_info.debug_control;
-				d_step.call_stack_count = exec.debug_info.debug_call_stack.count;
+				exec.debug_info.d_step = DebugStep.{};
+				exec.debug_info.d_step.step_control = exec.debug_info.debug_control;
+				exec.debug_info.d_step.call_stack_count = exec.debug_info.debug_call_stack.count;
 				if exec.debug_info.debug_control == {
 				case .CONTINUE; {
 					/*NOTE : If we just stopped then we want to check within a range of code here
@@ -12430,9 +12456,9 @@ ExecuteManyInstructions :: inline (exec : *ExecutionInfo, ad : *AllData) -> CPUE
 						{
 							// last_closest_bp = it;
 							if it.bp_type == .BP_CODE {
-								d_step.in_breakpoint_bounds_and_continue = true;
-								d_step.start_asm_index = it.asm_index;
-								d_step.end_asm_index = it.end_asm_index;
+								exec.debug_info.d_step.in_breakpoint_bounds_and_continue = true;
+								exec.debug_info.d_step.start_asm_index = it.asm_index;
+								exec.debug_info.d_step.end_asm_index = it.end_asm_index;
 								break;
 							}
 						}
@@ -12442,25 +12468,25 @@ ExecuteManyInstructions :: inline (exec : *ExecutionInfo, ad : *AllData) -> CPUE
 				}
 				case .ASM_STEP_INTO; #through;
 				case .ASM_STEP_OVER; {
-					// d_step.step_control = exec.debug_info.debug_control;
-					d_step.start_asm_index = ad.all_register_memory[RegDef.pc].int_value;
-					d_step.end_asm_index = ad.all_register_memory[RegDef.pc].int_value;
+					// exec.debug_info.d_step.step_control = exec.debug_info.debug_control;
+					exec.debug_info.d_step.start_asm_index = ad.all_register_memory[RegDef.pc].int_value;
+					exec.debug_info.d_step.end_asm_index = ad.all_register_memory[RegDef.pc].int_value;
 				}
 				case .STEP_INTO; #through;
 				case .STEP_OVER; {
-					// d_step.step_control = exec.debug_info.debug_control;
+					// exec.debug_info.d_step.step_control = exec.debug_info.debug_control;
 					d_line, found_d_line := GetDebugLineAsm(ad.all_register_memory[RegDef.pc].int_value, ad.comp_data);
 					//We used to have an assertion in GetDebugLineAsm here and it would not get hit so if it does then we should look into it
 					//This should always be valid since pc register should be valid
 					assert(found_d_line);
-					d_step.start_asm_index = d_line.start_asm_index;
-					d_step.end_asm_index = d_line.end_asm_index;
+					exec.debug_info.d_step.start_asm_index = d_line.start_asm_index;
+					exec.debug_info.d_step.end_asm_index = d_line.end_asm_index;
 				}
 				case .STEP_OUT; {
-					// d_step.step_control = exec.debug_info.debug_control;
+					// exec.debug_info.d_step.step_control = exec.debug_info.debug_control;
 					function_scope := peek(exec.debug_info.debug_call_stack).function_scope;
-					d_step.start_asm_index = function_scope.start_instr_index;
-					d_step.end_asm_index = function_scope.end_instr_index;
+					exec.debug_info.d_step.start_asm_index = function_scope.start_instr_index;
+					exec.debug_info.d_step.end_asm_index = function_scope.end_instr_index;
 				}
 				}
 
@@ -12476,12 +12502,12 @@ ExecuteManyInstructions :: inline (exec : *ExecutionInfo, ad : *AllData) -> CPUE
 				//and so we just want to be outside the debug line.
 				if AllOrEquals(exec.debug_info.debug_control, .[.STEP_OVER, .ASM_STEP_OVER]) {
 					//TODO Could just always set this for convenience
-					for d_step.start_asm_index..d_step.end_asm_index {
+					for exec.debug_info.d_step.start_asm_index..exec.debug_info.d_step.end_asm_index {
 						if ad.all_music_instructions[it].op_code == OpCode.call {
 							//NOTE : If we find a call with step over, then we want to be outside of debug line 
 							//BUT inside the function scope.
-							d_step.has_call_instr = true;
-							d_step.call_index = exec.debug_info.debug_call_stack.count-1;
+							exec.debug_info.d_step.has_call_instr = true;
+							exec.debug_info.d_step.call_index = exec.debug_info.debug_call_stack.count-1;
 							break;
 						} 
 					}
@@ -12511,7 +12537,7 @@ ExecuteManyInstructions :: inline (exec : *ExecutionInfo, ad : *AllData) -> CPUE
 					here for the stack frame so we can use in the watch window and avoid having to copy over updated
 					sbp register and maybe anything else we add later.
 					*/
-    				for d_step.start_asm_index..d_step.end_asm_index {
+    				for exec.debug_info.d_step.start_asm_index..exec.debug_info.d_step.end_asm_index {
     					if ad.all_music_instructions[it].op_code == OpCode.call {
 							assert(exec.debug_info.debug_call_stack.count > 0);
 							last_frame := peek_pointer(exec.debug_info.debug_call_stack);
@@ -12581,15 +12607,15 @@ ExecuteManyInstructions :: inline (exec : *ExecutionInfo, ad : *AllData) -> CPUE
 				//TODO MAYBE STEP_INTO is run until we hit a call for the current line instruction range
 				//and if we don't then it's just a STEP_OVER
 				already_checked_breakpoints : bool = false;
-				if d_step.step_control != .CONTINUE {
+				if exec.debug_info.d_step.step_control != .CONTINUE {
 					//NOTE : STEP_INTO gets dealth with automatically by this range.
 					out_of_step_bounds : bool = 
-						ad.all_register_memory[RegDef.pc].int_value < d_step.start_asm_index || 
- 		   			ad.all_register_memory[RegDef.pc].int_value > d_step.end_asm_index;
+						ad.all_register_memory[RegDef.pc].int_value < exec.debug_info.d_step.start_asm_index || 
+ 		   			ad.all_register_memory[RegDef.pc].int_value > exec.debug_info.d_step.end_asm_index;
 
 	   			hit_step_break : bool = out_of_step_bounds;
 
-					if d_step.step_control == {
+					if exec.debug_info.d_step.step_control == {
 					case .ASM_STEP_OVER; #through;
 					case .STEP_OVER; {
 						#if 1 {
@@ -12598,25 +12624,25 @@ ExecuteManyInstructions :: inline (exec : *ExecutionInfo, ad : *AllData) -> CPUE
 						unless we step over a ret in which case it could be less. And it could be < call_stack_count - 1
 						if we have a recursive function in which case we would want to skip over all the recursions.
 						THEREFORE 
-						if debug_call_stack.count == d_step.call_stack_count
+						if debug_call_stack.count == exec.debug_info.d_step.call_stack_count
 							then we are back in the same function scope
-						if debug_call_stack.count < d_step.call_stack_count;
+						if debug_call_stack.count < exec.debug_info.d_step.call_stack_count;
 							then we are back in a previously called function
 						IN EITHER CASE we want to stop if we are out of the bounds of the d_step
 						IF WE RECURSE this waits until we are out of the recursion completely and out of d_step bounds
 						IF we have >= 1 function call on a line, it waits until we are back to the current call and out of d_step bounds
 						*/
-						valid_step_stack : bool = exec.debug_info.debug_call_stack.count <= d_step.call_stack_count;
+						valid_step_stack : bool = exec.debug_info.debug_call_stack.count <= exec.debug_info.d_step.call_stack_count;
 						hit_step_break = out_of_step_bounds && valid_step_stack;
 						//TODO Can remove this into deadcode if the above keeps working in all cases.
 						// if last_instr.op_code == .ret {
 						// 	//Since we returned, there should be 1 less stack frame from when we started.
 						// 	//NOTE : If we hit another return we would have had to make a function call so then
-						// 	//this would be > the d_step.call_stack_count
+						// 	//this would be > the exec.debug_info.d_step.call_stack_count
 						// 	// step_stack_count -= 1;
-						// 	valid_step_stack = exec.debug_info.debug_call_stack.count < d_step.call_stack_count;
+						// 	valid_step_stack = exec.debug_info.debug_call_stack.count < exec.debug_info.d_step.call_stack_count;
 						// } else {
-						// 	valid_step_stack = exec.debug_info.debug_call_stack.count == d_step.call_stack_count;
+						// 	valid_step_stack = exec.debug_info.debug_call_stack.count == exec.debug_info.d_step.call_stack_count;
 						// } 
 						} 
 						else {
@@ -12624,8 +12650,8 @@ ExecuteManyInstructions :: inline (exec : *ExecutionInfo, ad : *AllData) -> CPUE
 						//TODO I think for step over we just check if the last_instr == the last instr in the d_step
 						//and if yes and we are out of the d_step bounds, then we hit step break. 
 						//Just double check this with recursion since that should jump out of the entire recursion
-						if d_step.has_call_instr {
-							if last_instr.op_code == .ret && d_step.end_asm_index == ad.all_register_memory[RegDef.ir].int_value {
+						if exec.debug_info.d_step.has_call_instr {
+							if last_instr.op_code == .ret && exec.debug_info.d_step.end_asm_index == ad.all_register_memory[RegDef.ir].int_value {
 								/*DOC : Explicit case dealing with eg 'return foo(x);' where we have a call and ret
 								on the same line so the call_stack gets popped above and then the call_index is > call_stack.count below.
 								This case prevents that by only checking if we are out of step bounds in this specific case.
@@ -12636,14 +12662,14 @@ ExecuteManyInstructions :: inline (exec : *ExecutionInfo, ad : *AllData) -> CPUE
 								TECHNICALLY remedy skips over the call even if it's recursive but I am not sure which behavior I want
 								so this goes through the recursion and if want to jump out we can just do step out or put a breakpoint outside.
 								*/
-								d_step.call_index -= 1;
+								exec.debug_info.d_step.call_index -= 1;
 								//REMINDER This did not work because of conditionals which don't necessarily end on the last condition
-								// hit_last_step_instr : bool = d_step.end_asm_index == ad.all_register_memory[RegDef.ir].int_value;
+								// hit_last_step_instr : bool = exec.debug_info.d_step.end_asm_index == ad.all_register_memory[RegDef.ir].int_value;
 								// hit_step_break = out_of_step_bounds && hit_last_step_instr;
 							} 
 							else {
 								//DOC : OTHERWISE we deal with step over with out of step bounds AND in function scope.
-								function_scope := exec.debug_info.debug_call_stack[d_step.call_index].function_scope;
+								function_scope := exec.debug_info.debug_call_stack[exec.debug_info.d_step.call_index].function_scope;
 								in_function_scope : bool = 
 									ad.all_register_memory[RegDef.pc].int_value >= function_scope.start_instr_index &&
 									ad.all_register_memory[RegDef.pc].int_value <= function_scope.end_instr_index;
@@ -12658,18 +12684,18 @@ ExecuteManyInstructions :: inline (exec : *ExecutionInfo, ad : *AllData) -> CPUE
 						exec.exec_state = .IS_DEBUG_STOP;
 						break exec_loop;					  	
 					}
-				} else if d_step.step_control == .CONTINUE {
-					if d_step.in_breakpoint_bounds_and_continue {
+				} else if exec.debug_info.d_step.step_control == .CONTINUE {
+					if exec.debug_info.d_step.in_breakpoint_bounds_and_continue {
 						out_of_breakpoint_bounds : bool = 
-							ad.all_register_memory[RegDef.pc].int_value < d_step.start_asm_index || 
-	 		   			ad.all_register_memory[RegDef.pc].int_value > d_step.end_asm_index;
+							ad.all_register_memory[RegDef.pc].int_value < exec.debug_info.d_step.start_asm_index || 
+	 		   			ad.all_register_memory[RegDef.pc].int_value > exec.debug_info.d_step.end_asm_index;
 		   			if out_of_breakpoint_bounds {
-		   				d_step.in_breakpoint_bounds_and_continue = false;
+		   				exec.debug_info.d_step.in_breakpoint_bounds_and_continue = false;
 		   			}
 					} 
 
 					//NOTE : Need to check again here in case we switched it off just now
-					if !d_step.in_breakpoint_bounds_and_continue {
+					if !exec.debug_info.d_step.in_breakpoint_bounds_and_continue {
 						//We always check break_points so we stop on those if we find one for this instruction.
 						for exec.debug_info.break_points {
 							if it.asm_index <= ad.all_register_memory[RegDef.pc].int_value &&
@@ -12701,7 +12727,7 @@ ExecuteManyInstructions :: inline (exec : *ExecutionInfo, ad : *AllData) -> CPUE
 							it.asm_index == ad.all_register_memory[RegDef.pc].int_value 
 						{
 							//TODO Could make this a ResetDStep function if needed
-							d_step.in_breakpoint_bounds_and_continue = false;
+							exec.debug_info.d_step.in_breakpoint_bounds_and_continue = false;
 							exec.exec_state = .IS_DEBUG_STOP;
 							break exec_loop;
 						}
@@ -12730,7 +12756,13 @@ ExecuteManyInstructions :: inline (exec : *ExecutionInfo, ad : *AllData) -> CPUE
 			break exec_loop;
 		}
 
+		exec.total_instructions_run += 1;
 		exec.instructions_run_this_frame += 1;
+		if exec.total_instructions_run >= ad.runtime_settings.max_asm_instructions {
+			stop_execution = true;
+			err = CPUErr(tprint("Max instructions % reached. Execution Stopped.", ad.runtime_settings.max_asm_instructions));
+			break exec_loop;
+		}
 		if exec.instructions_run_this_frame >= ad.runtime_settings.asm_instructions_per_frame {
 			exec.continue_execution_next_frame = true;
 			break exec_loop;
@@ -12777,6 +12809,8 @@ ExecuteManyInstructions :: inline (exec : *ExecutionInfo, ad : *AllData) -> CPUE
 	that are update at the current playing location. So you need to make sure to only update before or after
 	the current memory unit. One way to ensure this is to only update mspaces that are not currently playing.
 	That can be adjusted based on playing/creating of the music live as well.
+
+	We sort even if it's an error because we could have still run some instructions and added some music pts.
 	*/
 	//I'll leave this setting here as a reminder but I am removing it since this should always happen to ensure correct
 	//music placement and tests should be written around it as well.
@@ -12915,6 +12949,31 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		if ram_err.is_error return ram_err;
 
 		memcpy(ram_ptr, const_mem_data, mov_size);
+	}
+	//TODO TEST swap and movp instructions with some unit tests
+	case OpCode.movp; #through;
+	case OpCode.swap; {
+		mov_size : int = ComputeMovSize(ci.operands[2], ad.all_register_memory, ad.ram_memory);
+
+		pointer1 : int = ComputeRAMLocation(ci.operands[0], ad.all_register_memory, ad.ram_memory);
+		address1 := ComputeOperandInt(RamMem(pointer1), ad.all_register_memory, ad.ram_memory);
+		v1, v1_err := GetMemory(address1, mov_size, ad.ram_memory);
+		if v1_err.is_error return v1_err;
+
+		pointer2 : int = ComputeRAMLocation(ci.operands[1], ad.all_register_memory, ad.ram_memory);
+		address2 := ComputeOperandInt(RamMem(pointer2), ad.all_register_memory, ad.ram_memory);
+		v2, v2_err := GetMemory(address2, mov_size, ad.ram_memory);
+		if v2_err.is_error return v2_err;
+
+		if ci.op_code == {
+		case OpCode.swap;
+			temp_v : *void = talloc(mov_size);
+			memcpy(temp_v, v1, mov_size);
+			memcpy(v1, v2, mov_size);
+			memcpy(v2, temp_v, mov_size);
+		case OpCode.movp;
+			memcpy(v1, v2, mov_size);
+		}
 	}
 	case OpCode.clear; {
 		//TODO Can add a mov_size here so we can clear in a range as well.
@@ -13089,8 +13148,11 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 				case .sub; mv.int_value = v1.int_value - v2.int_value;
 				//TODO Should this be PosMod or %? Could have pmod and mod instruction separately.
 				case .mod; mv.int_value = PosMod(v1.int_value, v2.int_value);
-				case .div; mv.int_value = v1.int_value / v2.int_value;
 				case .mul; mv.int_value = v1.int_value * v2.int_value;
+				case .div; {
+					if v2.int_value == 0 return CPUErr("Integer division by zero error.");
+					mv.int_value = v1.int_value / v2.int_value;
+				}
 		    	}
 		   } else if ci.instr_type == .FLOAT {
 				if ci.op_code == {
@@ -13098,8 +13160,11 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 				case .sub; mv.float_value = v1.float_value - v2.float_value;
 				//TODO Should this be PosMod or %? Could have pmod and mod instruction separately.
 				case .mod; mv.float_value = PosMod(v1.float_value, v2.float_value);
-				case .div; mv.float_value = v1.float_value / v2.float_value;
 				case .mul; mv.float_value = v1.float_value * v2.float_value;
+				case .div; {
+					if FloatBothEqual(v2.float_value, 0) return CPUErr("Float division by zero error.");
+					mv.float_value = v1.float_value / v2.float_value;
+				}
 		    	}		   	
 		   }
 
@@ -13126,7 +13191,10 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 				from_music_pts : [] MusicPoint = GetAllMusicPtPosByPosition(from_row, from_x, df_mspace.all_music_pts, MusicPoint,,temp);
 				UpdateMusicPtsToStart(from_music_pts, from_x, from_row, to_start_x, to_row, df_row.row_size); 
 				// UpdateMusicPtsFromMinStart(from_music_pts, to_start_x, to_row, df_mspace.all_music_lane_rows[to_row].row_size);
-				for * from_music_pts DirectionArithmeticOp(ci.op_code, it.music_pt_float, fv, it);
+				for * from_music_pts {
+					err := DirectionArithmeticOp(ci.op_code, it.music_pt_float, fv, it);
+					if err.is_error return err;
+				}
 				CreateManyMusicPtsInMemory(from_music_pts, *df_mspace.all_music_pts);
 			}
 			else if ci.operands[2].operand_type == .MUSIC_MEMORY {
@@ -13135,7 +13203,10 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 				from_row, from_x := MusicMemRowAndXIndex(ci.operands[2], ad.all_register_memory);
 				from_music_pts : [] MusicPoint = GetAllMusicPtPosByPosition(from_row, from_x, df_mspace.all_music_pts, MusicPoint,,temp);
 				UpdateMusicPtsToStart(from_music_pts, from_x, from_row, to_start_x, to_row, df_row.row_size); 
-				for * from_music_pts DirectionArithmeticOp(ci.op_code, fv, it.music_pt_float, it);
+				for * from_music_pts {
+					err := DirectionArithmeticOp(ci.op_code, fv, it.music_pt_float, it);
+					if err.is_error return err;
+				}
 				CreateManyMusicPtsInMemory(from_music_pts, *df_mspace.all_music_pts);
 			} 
 			else {
@@ -13159,7 +13230,10 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 				//TODO Do float properly here once we have float in asm.
 				// op_float : float = cast(float) op_int;
 				// for from_music_pts ArithmeticMusicOp(ci.op_code, iv, fv, it);
-				for from_music_pts DirectionArithmeticOp(ci.op_code, it.music_pt_float, fv, it);
+				for from_music_pts {
+					err := DirectionArithmeticOp(ci.op_code, it.music_pt_float, fv, it);
+					if err.is_error return err;
+				}
 			}
 		}
 	}
@@ -13934,11 +14008,13 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 			fv, iv := MVToFVAndIV(mv, ci.instr_type);
 			if ci.operands[0].operand_type == .RAM_MEMORY {
 				for * mp : TanoLoop.{to_tano,to_neumes.*} {
-					DirectionArithmeticOp(ci.op_code, mp.music_pt_float, fv, mp);
+					err := DirectionArithmeticOp(ci.op_code, mp.music_pt_float, fv, mp);
+					if err.is_error return err;
 				}				
 			} else if ci.operands[1].operand_type == .RAM_MEMORY {
 				for * mp : TanoLoop.{to_tano,to_neumes.*} {
-					DirectionArithmeticOp(ci.op_code, fv, mp.music_pt_float, mp);
+					err := DirectionArithmeticOp(ci.op_code, fv, mp.music_pt_float, mp);
+					if err.is_error return err;
 				}
 			}
 		} 
@@ -13987,9 +14063,11 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 			for * mp : TanoLoop.{from_tano,from_neumes.*} {
 				new_mp : MusicPoint = TMovMusicPt(mp, from_tano, to_tano);
 				if ci.operands[1].operand_type == .RAM_MEMORY {
-					DirectionArithmeticOp(ci.op_code, new_mp.music_pt_float, fv, *new_mp);
+					err := DirectionArithmeticOp(ci.op_code, new_mp.music_pt_float, fv, *new_mp);
+					if err.is_error return err;
 				} else if ci.operands[2].operand_type == .RAM_MEMORY {
-					DirectionArithmeticOp(ci.op_code, fv, new_mp.music_pt_float, *new_mp);
+					err := DirectionArithmeticOp(ci.op_code, fv, new_mp.music_pt_float, *new_mp);
+					if err.is_error return err;
 				}
 				CreateMusicPtInMemory(new_mp, to_neumes);
 			}				
@@ -14311,7 +14389,11 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		}
 	}
 	case OpCode.free; {
-		//TODO We could add this to a free list so we can reuse later if possible.
+		input_start : int = ComputeOperandInt(ci.operands[0], ad.all_register_memory, ad.ram_memory);
+		input_size : int = ComputeOperandInt(ci.operands[1], ad.all_register_memory, ad.ram_memory);
+
+		err := FreeHeapMem(input_start, input_size, ad);
+		if err.is_error return err;
 	}
 	case OpCode.itof; #through;
 	case OpCode.ftoi; {
@@ -16009,6 +16091,19 @@ ExecMov :: inline (ci : MusicInstruction, df_mspace : *MusicSpaceData, ad : *All
 We use this function so we can allocate memory on the heap anywhere in asm.
 */
 AllocHeapMem :: inline (size_in_bytes : int, ad : *AllData) -> alloc_heap_address : int, out_of_memory : CPUError {
+	for * free_data : ad.ram_free_list if free_data.size_in_bytes >= size_in_bytes {
+		alloc_heap_address : int = free_data.heap_address;
+		if free_data.size_in_bytes == size_in_bytes {
+			//This avoids having to sort after and keeping it in size
+			//TODO We could just memcpy it back
+			array_ordered_remove_by_index(*ad.ram_free_list, it_index);
+		} else {
+			//Adding to the heap_address decreases the size of this free data by size_in_bytes
+			free_data.heap_address += size_in_bytes;
+		}
+		return alloc_heap_address, NO_CPU_ERROR;
+	}
+
 	alloc_heap_address : int = ad.all_register_memory[RegDef.hcp].int_value;
 	//TODO This is technically an OutOfMemoryException, but we might allow the size of the heap to increase later.
 	bounds_err := MemoryInBounds(ad.ram_memory, alloc_heap_address, size_in_bytes);
@@ -16021,6 +16116,105 @@ AllocHeapMem :: inline (size_in_bytes : int, ad : *AllData) -> alloc_heap_addres
 	//OR that might be different when we use the free list for heap allocation.
 	ad.all_register_memory[RegDef.hcp].int_value += size_in_bytes;
 	return alloc_heap_address, NO_CPU_ERROR;
+}
+
+//heap_start_address. called it input_start for clarity on all the free cases below
+FreeHeapMem :: (input_start : int, input_size : int, ad : *AllData) -> CPUError {
+	if input_size <= 0 return CPUErr(tprint("Free size % must be > 0.", input_size));
+
+	s_err := MemoryInBounds(ad.ram_memory, input_start);
+	if s_err.is_error return s_err;
+
+	input_end : int = input_start + input_size;
+	e_err := MemoryInBounds(ad.ram_memory, input_end);
+	if e_err.is_error return e_err;
+
+	//We only allow freeing on the heap memory that has already been allocated
+	//otherwise we can override stack compiler values which could get messy.
+	//We could allow this later if needed but this prevents unecessary issues.
+	//heap_end_address. called it input_end for clarity on all the free cases below
+	heap_base : int = ad.all_register_memory[RegDef.hsp].int_value;
+	heap_current : int = ad.all_register_memory[RegDef.hcp].int_value;
+	if input_start < heap_base || input_start >= heap_current || 
+		input_end < heap_base || input_end > heap_current 
+	{
+		return CPUErr("Can only free memory on the heap.");
+	}
+
+	data_is_freed : bool = false;
+	for * fd : ad.ram_free_list {
+		fl_start : int = fd.heap_address;
+		fl_end : int = fd.heap_address + fd.size_in_bytes;
+		if input_start >= fl_start && input_end <= fl_end {
+			/*
+			fl   : |       |
+			input:   |   |
+			final: |       |
+			*/
+			//If input_start == fl_start and input_end == fl end 
+			//then this case would keep it the same
+			data_is_freed = true;
+		}
+		else if input_start <= fl_start && 
+			input_end >= fl_start && input_end <= fl_end 
+		{
+			/*
+			fl   :   |   |
+			input: |   |
+			final: |     |
+			*/
+			//If input_start == fl_start and input_end == fl end 
+			//then this case would keep it the same
+			fd.heap_address = input_start;
+			data_is_freed = true;
+		}
+		else if input_start >= fl_start && input_start <= fl_end && 
+			input_end > fl_end 
+		{
+			/*
+			fl   : |   |
+			input:   |   |
+			final: |     |
+			*/
+			fd.size_in_bytes = input_end - fl_start;
+			data_is_freed = true;
+		}
+		else if input_start < fl_start && input_end > fl_end {
+			/*
+			fl   :   |   |
+			input: |       |
+			final: |       |
+			*/
+			fd.heap_address = input_start;
+			fd.size_in_bytes = input_size;
+			data_is_freed = true;
+		}
+
+		if data_is_freed break;
+	}
+
+	if !data_is_freed {
+		free_data : RAMFreeData;
+		free_data.heap_address = input_start;
+		free_data.size_in_bytes = input_size;
+		array_add(*ad.ram_free_list, free_data);
+	}
+
+	/*Set the current heap address back if we have adjacent free data right before.
+	This only needs to happen once because all other free data will have been merged above when added.
+	*/
+	for * fd : ad.ram_free_list {
+		if fd.heap_address + fd.size_in_bytes == heap_current {
+			ad.all_register_memory[RegDef.hcp].int_value = fd.heap_address;
+			remove fd;
+			break;
+		}
+	}
+
+	//Sort smallest to biggest free size. This way we take the smallest free value with alloc.
+	quick_sort(ad.ram_free_list, (f1, f2) => f1.size_in_bytes - f2.size_in_bytes);
+
+	return NO_CPU_ERROR;
 }
 
 ComputeMovSize :: inline (operand : MusicOperand, all_registers : [] MemoryValue, ram : RAMMemory) -> int {

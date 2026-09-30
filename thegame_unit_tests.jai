@@ -10558,22 +10558,26 @@ Test_Void :: () {
 	cd : *CompilationData;
 	count_equal : bool;
 
+/*NOTE : Void is 8 bytes so that we can do pointer arithmetic.
+So void cannot be assigned anything but allows us to use *void as
+an address without a type and then can use that address with pointer arithmetic
+normally. An example of this can be found in QSort.
+*/
 	cd = CompileCode(cs,
 #string DONE
 main :: () {
-	/*NOTE : Creating a void variable is undefined behavior.
-	So creating a pointer to a void variable is undefined.
-	This is just here for testing purposes to show myself it's behavior.
-	*/
 	v : void;
 	vp : *void = *v;
 }
 DONE,,unit_test_alloc);
+	comp_success : bool = AssertEquals(false, IsCompilationFail(cd));
+	if !comp_success return;
+	// print(cd.disassembly);
 
 	v_index : int = 0;
 	vars_equal : bool = TestNextManyVarDecl(*v_index, cd.all_variables, .[
 		VarDecl("v", *cd.void_type_info, RamMem(.sbp,0)),
-		VarDecl("vp", cd.void_pointer_type_info, RamMem(.sbp,0))
+		VarDecl("vp", cd.void_pointer_type_info, RamMem(.sbp,8))
 	]);
 	if !vars_equal return;
 	v_var := cd.all_variables[0];
@@ -10582,17 +10586,29 @@ DONE,,unit_test_alloc);
 	instr_index : int = 0;
 	TestNextManyInstr(*instr_index, cd, .[
 		//v : void
-		MakeMI(.mset, v_var.op, Imm(0), Imm(v_var.t_info.runtime_size)),
+		MakeMI(.mset, v_var.op, Imm(0), Imm(cd.void_type_info.runtime_size)),
 	]);
 
+	v_op_0, v_op_1 := GetMemoryAddressAsOperands(v_var.op);
 	//NOTE : Because void is size 0, we store *v at [sbp,0] and vp at [sbp,8]
 	TestNextManyInstr(*instr_index, cd, .[
 		//*v
-		MakeMI(.add, RamMem(.sbp,0), RegMem(.sbp), Imm(0)),
+		MakeMI(.add, vp_var.op, v_op_0, v_op_1),
 		//Optimized out since vp_var == [sbp+0]
 		//vp : *void = *v
 		// MakeMI(.mov, vp_var.op, RamMem(.sbp,0), Imm(vp_var.t_info.runtime_size))
 	]);
+
+
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	v : void = 1;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
 
 } @UnitTest
 

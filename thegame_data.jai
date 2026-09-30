@@ -266,6 +266,7 @@ FileTypeEnum :: enum {
 }
 
 //TODO I think we should pass in runtime_settings into here for default values and setting anything else at startup
+//OR A struct that has runtime settings in it
 InitAllData :: () -> *AllData {
 	//TODO I think we don't have to pass in context.allocator since that is done by default...
 	all_data : *AllData = New(AllData,, context.allocator);
@@ -3125,6 +3126,7 @@ AllData :: struct #type_info_no_size_complaint {
 	//changing the memory_base. A [..] resize would move the memory_base.
 	//Flat_Pool is also a fresh chunk of memory and does not use the default memory allocator.
 	ram_memory : RAMMemory;
+	ram_free_list : [..] RAMFreeData;
 
 	//Linear Space Data
 	//TODO should this just be a tile grid on the whole world map?
@@ -7028,6 +7030,9 @@ OpCode :: enum u8 {
 	mset; //This performs a memset so we can initialize things easily and efficiently in ram memory
 	clear;
 
+	swap;
+	movp;
+
 
 	//TODO If we need more operands (eg for chunk moves) then we could make this array compile-time constant.
 	//ACTUALLY for chunks we could have operand[2] be the 2 chunk values and operand[0] and operand[1] be
@@ -7535,6 +7540,8 @@ ResetCodeMemory :: inline (all_data : *AllData) {
 	all_data.all_register_memory[RegDef.hsp].int_value = all_data.ram_memory.stack_size;
 	all_data.all_register_memory[RegDef.hcp].int_value = all_data.all_register_memory[RegDef.hsp].int_value;
 
+	array_reset_keeping_memory(*all_data.ram_free_list);
+
 	//TODO For now we don't reset anything because eventually we will
 	//just grab new data only when we are running.
 
@@ -7544,6 +7551,10 @@ ResetCodeMemory :: inline (all_data : *AllData) {
 	// all_data.ram_memory.bytes.data = cast(*u8) 
 	// 	get(*all_data.ram_memory.ram_alloc_pool, 
 	// 		all_data.ram_memory.bytes.count);
+}
+RAMFreeData :: struct {
+	heap_address : int;
+	size_in_bytes : int;
 }
 
 /*This memory model allows for array bounds check in jai.
@@ -7759,7 +7770,8 @@ GetMemValue :: inline (location : int, $type : Type, ram : RAMMemory) -> type, C
 	//checked beforehand that it is in bounds for GetMemory.
 	//TODO I am pretty sure this can return a null so we should be checking the error whenever we call this
 	//which makes sense anyways since memory out of bounds will be dealt with in different ways for different contexts.
-	assert(rm != null);
+	// assert(rm != null);
+	if err.is_error return New(type,,temp).*, err;
 	return rm.*, err;
 }
 
@@ -7841,6 +7853,7 @@ DirectionArithmeticOp :: inline (
 	left_float : float64,
 	right_float : float64,
 	mp : *MusicPoint) 
+-> CPUError
 {
 	if op_code == {
 	case OpCode.add; #through;
@@ -7860,6 +7873,7 @@ DirectionArithmeticOp :: inline (
 		mp.music_pt_float = PosMod(left_float, right_float);
 	case OpCode.div; #through;
 	case OpCode.tdiv;
+		if FloatBothEqual(right_float, 0) return CPUErr("Division by 0 error.");
 		mp.music_pt_float = left_float / right_float;
 	case OpCode.mul; #through;
 	case OpCode.tmul;
@@ -7867,6 +7881,7 @@ DirectionArithmeticOp :: inline (
 	}
 	//TODO Remove this once we remove music_pt_pos and can just round whenever we need and int for midi for example
 	mp.music_pt_pos = round_to_int(mp.music_pt_float);
+	return NO_CPU_ERROR;
 }
 
 //TODO Could we just use a generic linear function in the math module?

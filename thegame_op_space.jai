@@ -501,6 +501,7 @@ EvaluateWatchData :: inline (
 	}
 
 	prev_type : *TypeInfo = watch_data.node.code_ir.t_info;
+	
 	//TODO Should we just pass this in as a pointer to keep the *T for DFSPost
 	// vwd := VisitWatchData.{watch_data,*all_data}; 
 	//TODO Should we make this a function or is this enough here.

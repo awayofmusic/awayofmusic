@@ -2688,7 +2688,7 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 			} else {
 				text_op.exec_info.debug_info.debug_control = DebugControl.CONTINUE;
 				array_add(*perm.all_data.all_process_instruction_events, .{text_op.op_space_id});
-				msg = tprint("% Executing", text_file.file_short_name);
+				msg = tprint("% Executing...", text_file.file_short_name);
 				if text_op.exec_info.exec_state == .NOT_RUNNING {
 					SetTextOpConsoleMessage(msg, text_op);
 					SetTextStatus(msg, text_op);
@@ -2738,7 +2738,7 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 			StopExecutionNow(text_op, perm.all_data);
 			array_add(*perm.all_data.all_process_instruction_events, .{text_op.op_space_id});
 
-			msg := tprint("Restarted %", text_file.file_short_name);
+			msg := tprint("% Restarted. Executing...", text_file.file_short_name);
 			SetTextOpConsoleMessage(msg, text_op);
 			SetTextStatus(msg, text_op);
 	   }
@@ -5730,7 +5730,8 @@ if perm.all_data.all_music_instructions.count > 0 {
 	//If we are already running or debug_stop then we don't want to.
 	//TODO We could have a START_DEBUGGING but right now that is the same as NOT_RUNNING and
 	//then executing the first instructions until we either hit a breakpoint or finish executing.
-	reset_watch_data : bool = exec_info.exec_state == ExecutionState.NOT_RUNNING;
+	reset_watch_data : bool = exec_info.exec_state == ExecutionState.NOT_RUNNING || 
+		exec_info.continue_execution_next_frame;
 	previous_state : ExecutionState = exec_info.exec_state;
 	//TODO Check for errors here
 	//TODO exec_info should specify here that we are compilation if text_op or default if not.

@@ -13475,12 +13475,12 @@ pre_print_string
 		AssertEquals("*void", s_data.type_str);
 
 
-		AssertEquals(17, text_op.console_dynamic_string.text_string.count);
+		AssertEquals(20, text_op.console_dynamic_string.text_string.count);
 		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
 	}
 	case 8; {
 		//+1 for "\n" since we add the text as new line to the dynamic string
-		AssertEquals(17+test_print_string.count+1, text_op.console_dynamic_string.text_string.count);
+		AssertEquals(20+test_print_string.count+1, text_op.console_dynamic_string.text_string.count);
 	}
 	}
 
@@ -13919,6 +13919,213 @@ DONE);
 		AssertEquals("int", x_var.type_str);
 
 		//go out of while
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	}
+
+	ContinueTest(*perm.test_data);
+
+} @ITest
+
+Test_QSort :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	test_string :: "test";
+	perm : *Persist = GetPermanentStorage(game_memory);
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+		perm.all_data = InitAllData();
+		ResetAllRendererData(renderer_data);
+
+		text_file := CreateTestTextFile(*ALL_NEXT_IDS, *perm.all_data.all_text_files);
+		WriteFileString(text_file, 
+#string DONE
+main :: () {
+	a := int.[5,4,1,2,3];
+	QSort(cast(*void) a.data, a.count, size_of(int), compar_ints);
+}
+QSort :: (base : *void, nmemb : int, size : int, compar : (*void, *void) -> int) {
+	p : *void;
+	#asm { alloc size, p; }
+	QSortHelper(base, nmemb, size, compar, p);
+	#asm { free p, size; }
+}
+QSortHelper :: (base : *void, nmemb : int, size : int, compar : (*void, *void) -> int, p : *void) {
+	if nmemb < 2 { return; }
+
+	bm : *void = base + nmemb/2;
+	#asm { movp p, bm, size; }
+
+	s : int = size / size_of(void);
+	i : int = 0;
+	j : int = s * (nmemb-1);
+	while true {
+		while compar(base + i, p) < 0 { i += s; }
+		while compar(p, base + j) < 0 { j -= s; }
+		if i >= j { break; }
+
+		base_i : *void = base + i;
+		base_j : *void = base + j;
+		#asm { swap base_i, base_j, size; }
+
+		i += s;
+		j -= s;
+	}
+
+	QSort(base, i/s, size, compar);
+	QSort(base + i, nmemb - (i/s), size, compar);
+}
+compar_ints :: (a : *void, b : *void) -> int {
+	ai := cast(*int) a;
+	bi := cast(*int) b;
+	d : int = ai.* - bi.*;
+	return d;
+}
+DONE);
+		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
+			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+
+		array_resize(*perm.test_data.all_sub_tests, 4+1);
+	} 
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	text_op : *TextOpSpaceData;
+	if perm.all_data.all_text_op_space_data.count > 0 {
+		text_op = *perm.all_data.all_text_op_space_data[0];
+	}
+
+	if perm.test_data.sub_test_index == {
+	case 0; {
+		open_test := MakeTerminalEvent(.open_op, TEST_TEXT_NAME);
+		array_add(*perm.all_data.all_terminal_events, open_test);
+	}
+	case 1; DownUpInputMap(.TEXT_DEBUG_TOGGLE, game_input);
+	case 2; DownUpInputMap(.TEXT_COMPILE, game_input);
+	case 3; {
+		if IsCompilationFail(text_op.text_comp_data) {
+			EndTest(*perm.test_data);
+		} else {
+			// print(text_op.text_comp_data.disassembly);
+			// AddWatchDataForTest(.["a","s","p","i","j","base_i","base_i.*","base_j","base_j.*","ai","ai.*","bi","bi.*","d"], text_op);
+			AddWatchDataForTest(.["a"], text_op);
+			CodeBPForTest(2, *text_op.exec_info.debug_info, text_op.text_comp_data);
+			DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+		}
+	}
+	case 4; {
+		d_line := GetDebugLineForTest(2, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		//TEST step onto break
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	}
+
+	ContinueTest(*perm.test_data);
+
+} @ITest
+
+//TODO FROM HERE test this and move into Functions or call it Basic
+//and then add free instruction for QSort and test that
+//ALSO test a while loop and run for a few frame with reduce instructions per frame
+//to make sure that works with d_step for example and debug vars
+Test_BubbleSort :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	test_string :: "test";
+	perm : *Persist = GetPermanentStorage(game_memory);
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+		perm.all_data = InitAllData();
+		ResetAllRendererData(renderer_data);
+
+		text_file := CreateTestTextFile(*ALL_NEXT_IDS, *perm.all_data.all_text_files);
+		WriteFileString(text_file, 
+#string DONE
+main :: () {
+	a := int.[5,4,1,2,3];
+	BubbleSort(cast(*void) a.data, a.count, size_of(int), compar_ints);
+}
+BubbleSort :: (base : *void, nmemb : int, size : int, compar : (*void, *void) -> int) {
+	last_j : int = nmemb-2;
+	first_j : int = 0;
+	while true {
+		latest_swap : int = -1;
+		first_swap : int = -1;
+		for j : first_j..last_j {
+			base_j : *void = base + j;
+			base_1 : *void = base + j + 1;
+			if compar(base_j, base_1) > 0 {
+				#asm { swap base_j, base_1, size; }
+				latest_swap = j;
+				if first_swap == -1 {
+					first_swap = j;
+				}
+			}
+		}
+
+		if latest_swap == -1 { return; }
+
+		last_j = latest_swap - 1;
+		if first_swap - 1 > 0 {
+			first_j = first_swap - 1;
+		}
+	}
+}
+compar_ints :: (a : *void, b : *void) -> int {
+	ai := cast(*int) a;
+	bi := cast(*int) b;
+	d : int = ai.* - bi.*;
+	return d;
+}
+DONE);
+		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
+			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+
+		array_resize(*perm.test_data.all_sub_tests, 4+1);
+	} 
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	text_op : *TextOpSpaceData;
+	if perm.all_data.all_text_op_space_data.count > 0 {
+		text_op = *perm.all_data.all_text_op_space_data[0];
+	}
+
+	if perm.test_data.sub_test_index == {
+	case 0; {
+		open_test := MakeTerminalEvent(.open_op, TEST_TEXT_NAME);
+		array_add(*perm.all_data.all_terminal_events, open_test);
+	}
+	case 1; DownUpInputMap(.TEXT_DEBUG_TOGGLE, game_input);
+	case 2; DownUpInputMap(.TEXT_COMPILE, game_input);
+	case 3; {
+		if IsCompilationFail(text_op.text_comp_data) {
+			EndTest(*perm.test_data);
+		} else {
+			// print(text_op.text_comp_data.disassembly);
+			// AddWatchDataForTest(.["a","s","p","i","j","base_i","base_i.*","base_j","base_j.*","ai","ai.*","bi","bi.*","d"], text_op);
+			AddWatchDataForTest(.["a"], text_op);
+			CodeBPForTest(2, *text_op.exec_info.debug_info, text_op.text_comp_data);
+			DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+		}
+	}
+	case 4; {
+		d_line := GetDebugLineForTest(2, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		//TEST step onto break
 		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
 	}
 	}

@@ -147,9 +147,11 @@ if(Window) {
 	my_window = Window;
 	//TODO Should replace these either with a Pool or Flat_Pool and actually use them for data storage now.
 	//This would also make them immediately usable on mac.
+	//I think this is very small so we can likely reduce it as well
 	game_memory : GameMemory;
 	game_memory.PermanentStorageSize = Megabyte(10);
 	//TODO I think we can just remove transient storage in favor of jai temp allocator and other allocators used throughout.
+	//TODO This is not used anywhere so at least reduce OR just remove it entirely
 	game_memory.TransientStorageSize = Megabyte(5);
 	GameMemoryBlockSize := game_memory.PermanentStorageSize + game_memory.TransientStorageSize;
 	game_memory.PermanentStorage = alloc(cast(s64) GameMemoryBlockSize);
