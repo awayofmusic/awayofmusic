@@ -19000,6 +19000,218 @@ Test_Alloc :: () {
 	AssertEquals(start_heap+size, ad.all_register_memory[RegDef.hcp].int_value);
 } @UnitTest
 
+AssertFreeData :: inline (address : int, size : int, free_list : [] RAMFreeData) {
+	fd, found_fd := FindFreeData(address, size, free_list);
+	count_equals := AssertEquals(true, found_fd);
+	if count_equals {
+		AssertEquals(address, fd.heap_address);
+		AssertEquals(size, fd.size_in_bytes);
+	}
+}
+Test_Free :: () {
+	ci : MusicInstruction;
+	ad : *AllData = InitAllData(,,unit_test_alloc);
+
+	heap_base : int = ad.all_register_memory[RegDef.hsp].int_value;
+	AssertEquals(heap_base, ad.all_register_memory[RegDef.hcp].int_value);
+
+	alloc_size : int = 8;
+	//TEST that we reset the hcp if we free something at the end
+	AllocHeapMem(alloc_size, ad);
+	AssertEquals(heap_base+alloc_size, ad.all_register_memory[RegDef.hcp].int_value);
+	FreeHeapMem(heap_base, alloc_size, ad);
+	AssertEquals(heap_base, ad.all_register_memory[RegDef.hcp].int_value);
+
+	alloc_size = 264;
+	AllocHeapMem(alloc_size, ad);
+	heap_current := ad.all_register_memory[RegDef.hcp].int_value;
+	AssertEquals(heap_base+alloc_size, ad.all_register_memory[RegDef.hcp].int_value);
+	free_address : int = heap_base+16;
+	free_size : int = 16;
+	FreeHeapMem(free_address, free_size, ad);
+	AssertEquals(1, ad.ram_free_list.count);
+	AssertFreeData(free_address, free_size, ad.ram_free_list);
+
+	free_address = heap_base+48;
+	free_size = 8;
+	FreeHeapMem(free_address, free_size, ad);
+	AssertEquals(2, ad.ram_free_list.count);
+	AssertFreeData(heap_base+16, 16, ad.ram_free_list);
+	AssertFreeData(free_address, free_size, ad.ram_free_list);
+
+	//TEST freeing a value overlapping left
+	free_address = heap_base+8;
+	free_size = 16;
+	FreeHeapMem(free_address, free_size, ad);
+	AssertEquals(2, ad.ram_free_list.count);
+	AssertFreeData(free_address, 16+8, ad.ram_free_list);
+	AssertFreeData(heap_base+48, 8, ad.ram_free_list);
+
+	//TEST freeing a value overlapping right on edge
+	free_address = heap_base+48+8;
+	free_size = 8;
+	FreeHeapMem(free_address, free_size, ad);
+	AssertEquals(2, ad.ram_free_list.count);
+	AssertFreeData(heap_base+8, 16+8, ad.ram_free_list);
+	AssertFreeData(heap_base+48, 8+8, ad.ram_free_list);
+
+	//TEST freeing a value overlapping on right
+	free_address = heap_base+24;
+	free_size = 16;
+	FreeHeapMem(free_address, free_size, ad);
+	AssertEquals(2, ad.ram_free_list.count);
+	AssertFreeData(heap_base+8, 16+16, ad.ram_free_list);
+	AssertFreeData(heap_base+48, 8+8, ad.ram_free_list);
+
+	//TEST freeing a value overlapping in between on both edges
+	free_address = heap_base+40;
+	free_size = 8;
+	FreeHeapMem(free_address, free_size, ad);
+	AssertEquals(1, ad.ram_free_list.count);
+	AssertFreeData(heap_base+8, 56, ad.ram_free_list);
+
+	//TEST freeing a value on left edge
+	free_address = heap_base;
+	free_size = 8;
+	FreeHeapMem(free_address, free_size, ad);
+	AssertEquals(1, ad.ram_free_list.count);
+	AssertFreeData(heap_base, 64, ad.ram_free_list);
+
+	//TEST freeing a value in between should do nothing
+	free_address = heap_base+8;
+	free_size = 32;
+	FreeHeapMem(free_address, free_size, ad);
+	AssertEquals(1, ad.ram_free_list.count);
+	AssertFreeData(heap_base, 64, ad.ram_free_list);
+
+	//TEST input is larger than free data
+	free_address = heap_base+96;
+	free_size = 16;
+	FreeHeapMem(free_address, free_size, ad);
+	AssertEquals(2, ad.ram_free_list.count);
+	AssertFreeData(heap_base, 64, ad.ram_free_list);
+	AssertFreeData(free_address, free_size, ad.ram_free_list);
+	//because its larger on both ends it should just replace it
+	free_address = heap_base+88;
+	free_size = 32;
+	FreeHeapMem(free_address, free_size, ad);
+	AssertEquals(2, ad.ram_free_list.count);
+	AssertFreeData(heap_base, 64, ad.ram_free_list);
+	AssertFreeData(free_address, free_size, ad.ram_free_list);
+
+
+	//TEST value in between no overlap should create new one
+	free_address = heap_base+72;
+	free_size = 8;
+	FreeHeapMem(free_address, free_size, ad);
+	AssertEquals(3, ad.ram_free_list.count);
+	AssertFreeData(heap_base, 64, ad.ram_free_list);
+	AssertFreeData(heap_base+88, 32, ad.ram_free_list);
+	AssertFreeData(free_address, free_size, ad.ram_free_list);
+
+
+	//TEST overlapping middle and also overlapping left and right should create just 1 free list
+	free_address = heap_base+56;
+	free_size = 40;
+	FreeHeapMem(free_address, free_size, ad);
+	AssertEquals(1, ad.ram_free_list.count);
+	AssertFreeData(heap_base, 120, ad.ram_free_list);
+
+
+	//alloc some memory should break up free data
+	alloc_size = 24;
+	AllocHeapMem(alloc_size, ad);
+	AssertEquals(heap_current, ad.all_register_memory[RegDef.hcp].int_value);
+	AssertEquals(1, ad.ram_free_list.count);
+	AssertFreeData(heap_base+alloc_size, 120-alloc_size, ad.ram_free_list);
+
+	//free a small memory and then alloc it to make sure we get the smaller
+	free_address = heap_base+208;
+	free_size = 16;
+	FreeHeapMem(free_address, free_size, ad);
+	AssertEquals(heap_current, ad.all_register_memory[RegDef.hcp].int_value);
+	AssertEquals(2, ad.ram_free_list.count);
+	AssertFreeData(heap_base+24, 96, ad.ram_free_list);
+	AssertFreeData(free_address, free_size, ad.ram_free_list);
+
+	alloc_size = 8;
+	AllocHeapMem(alloc_size, ad);
+	AssertEquals(heap_current, ad.all_register_memory[RegDef.hcp].int_value);
+	AssertEquals(2, ad.ram_free_list.count);
+	AssertFreeData(heap_base+24, 96, ad.ram_free_list);
+	AssertFreeData(free_address+8, 8, ad.ram_free_list);
+
+	//TEST alloc a free size that is the same should remove from free list entirely
+	alloc_size = 8;
+	AllocHeapMem(alloc_size, ad);
+	AssertEquals(heap_current, ad.all_register_memory[RegDef.hcp].int_value);
+	AssertEquals(1, ad.ram_free_list.count);
+	AssertFreeData(heap_base+24, 96, ad.ram_free_list);
+
+	//Freeing memory overlapping end should be an error since we did not allocate it yet
+	free_address = heap_current-8;
+	free_size = 16;
+	err := FreeHeapMem(free_address, free_size, ad);
+	AssertEquals(true, err.is_error);
+
+	//Free address on end should keep it and also keep the first free
+	free_address = heap_current-16;
+	free_size = 16;
+	FreeHeapMem(free_address, free_size, ad);
+	AssertEquals(free_address, ad.all_register_memory[RegDef.hcp].int_value);
+	AssertEquals(1, ad.ram_free_list.count);
+	AssertFreeData(heap_base+24, 96, ad.ram_free_list);
+
+	heap_current = ad.all_register_memory[RegDef.hcp].int_value;
+
+	//free memory overlapping free memory and hcp should bring hcp back to free start
+	free_address = heap_base+32;
+	free_size = heap_current-free_address;
+	FreeHeapMem(free_address, free_size, ad);
+	AssertEquals(heap_base+24, ad.all_register_memory[RegDef.hcp].int_value);
+	AssertEquals(0, ad.ram_free_list.count);
+
+	heap_current = ad.all_register_memory[RegDef.hcp].int_value;
+
+	//free two chunks and then third chunk should collapse back to start
+	free_address = heap_base;
+	free_size = 8;
+	FreeHeapMem(free_address, free_size, ad);
+	AssertEquals(heap_current, ad.all_register_memory[RegDef.hcp].int_value);
+	AssertEquals(1, ad.ram_free_list.count);
+	AssertFreeData(heap_base, 8, ad.ram_free_list);
+
+	free_address = heap_base+16;
+	free_size = 2;
+	FreeHeapMem(free_address, free_size, ad);
+	AssertEquals(heap_current, ad.all_register_memory[RegDef.hcp].int_value);
+	AssertEquals(2, ad.ram_free_list.count);
+	AssertFreeData(heap_base, 8, ad.ram_free_list);
+	AssertFreeData(free_address, free_size, ad.ram_free_list);
+
+
+	free_address = heap_base+20;
+	free_size = 2;
+	FreeHeapMem(free_address, free_size, ad);
+	AssertEquals(heap_current, ad.all_register_memory[RegDef.hcp].int_value);
+	AssertEquals(3, ad.ram_free_list.count);
+	AssertFreeData(heap_base, 8, ad.ram_free_list);
+	AssertFreeData(heap_base+16, 2, ad.ram_free_list);
+	AssertFreeData(heap_base+20, 2, ad.ram_free_list);
+
+	free_address = heap_base+8;
+	free_size = heap_current-free_address;
+	FreeHeapMem(free_address, free_size, ad);
+	AssertEquals(heap_base, ad.all_register_memory[RegDef.hcp].int_value);
+	AssertEquals(0, ad.ram_free_list.count);
+
+	//TEST freeing on stack is not allowed
+	sbp_value : int = ad.all_register_memory[RegDef.sbp].int_value;
+	stack_err := FreeHeapMem(sbp_value, 8, ad);
+	AssertEquals(true, stack_err.is_error);
+
+} @UnitTest
+
 Test_SPrint :: () {
 	cs : CompileSettings;
 	cd : *CompilationData;

@@ -5730,8 +5730,8 @@ if perm.all_data.all_music_instructions.count > 0 {
 	//If we are already running or debug_stop then we don't want to.
 	//TODO We could have a START_DEBUGGING but right now that is the same as NOT_RUNNING and
 	//then executing the first instructions until we either hit a breakpoint or finish executing.
-	reset_watch_data : bool = exec_info.exec_state == ExecutionState.NOT_RUNNING || 
-		exec_info.continue_execution_next_frame;
+	reset_watch_data : bool = exec_info.exec_state == ExecutionState.NOT_RUNNING;
+		// exec_info.continue_execution_next_frame;
 	previous_state : ExecutionState = exec_info.exec_state;
 	//TODO Check for errors here
 	//TODO exec_info should specify here that we are compilation if text_op or default if not.
@@ -5788,6 +5788,11 @@ if perm.all_data.all_music_instructions.count > 0 {
 					//So only 1 compilation per text file. If we allow more than one, then you'd
 					//have to allow a different creation path (like in the terminal) to compile a text_file
 					//with a separate compilation that can be run separately
+
+					//TODO We could remove watch sub rows here and redrop each row in case 
+					//something like the size of an of an array changed. 
+					//Right now you have to undrop and redrop the row.
+
 					EvaluateWatchData(e_index, text_op, perm.all_data, reset_watch_data);
 					e_index += 1;
 				}

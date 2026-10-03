@@ -73,8 +73,9 @@ ParsedToRuntimeSettings :: inline (prs : ParsedRuntimeSettings) -> RuntimeSettin
 	// rsd.default_input_mappings_file = copy_string(prs.default_input_mappings_file);
 	rsd.save_file_on_focus_lost = prs.save_file_on_focus_lost;
 
-	rsd.max_asm_instructions = prs.max_asm_instructions;
 	rsd.asm_instructions_per_frame = prs.asm_instructions_per_frame;	
+	rsd.use_max_asm_instructions = prs.use_max_asm_instructions;
+	rsd.max_asm_instructions = prs.max_asm_instructions;
 
 	rsd.terminal_size = Dim2DSettingToVector2F(prs.terminal_size);
 	rsd.default_op_space_size = Dim2DSettingToVector2F(prs.default_op_space_size);
@@ -97,8 +98,9 @@ RuntimeToParsedSettings :: inline (rsd : RuntimeSettingsData) -> ParsedRuntimeSe
 	// prs.default_input_mappings_file = copy_string(rsd.default_input_mappings_file);
 	prs.save_file_on_focus_lost = rsd.save_file_on_focus_lost;
 
-	prs.max_asm_instructions = rsd.max_asm_instructions;
 	prs.asm_instructions_per_frame = rsd.asm_instructions_per_frame;	
+	prs.use_max_asm_instructions = rsd.use_max_asm_instructions;
+	prs.max_asm_instructions = rsd.max_asm_instructions;
 
 	prs.terminal_size = Vector2FToDim2DSetting(rsd.terminal_size);
 	prs.default_op_space_size = Vector2FToDim2DSetting(rsd.default_op_space_size);
@@ -120,8 +122,9 @@ ParsedRuntimeSettings :: struct {
 	// default_input_mappings_file : string = INPUT_MAPPINGS_REL_PATH;
 	save_file_on_focus_lost : bool = false;
 
-	max_asm_instructions : int = DEFAULT_MAX_ASM_INSTRUCTIONS;
 	asm_instructions_per_frame : int = DEFAULT_ASM_INSTRUCTIONS_PER_FRAME;
+	use_max_asm_instructions : bool = true;
+	max_asm_instructions : int = DEFAULT_MAX_ASM_INSTRUCTIONS;
 
 	//TODO Should this be in it's own file eventually so we can have custom shareable themes with just 1 file?
 	//Maybe we wait till there are too many setting options or if we want to add colors/settings as variables as well.
@@ -324,7 +327,9 @@ UpdateRuntimeSettings :: inline (
 
 	//We don't let this go below 1 to avoid stalling at 0 or having negative instructions
 	perm.all_data.runtime_settings.asm_instructions_per_frame = Clamp(1, new_rs.asm_instructions_per_frame, 100000);
-	perm.all_data.runtime_settings.max_asm_instructions = Clamp(1, new_rs.max_asm_instructions, S32_MAX);
+	perm.all_data.runtime_settings.use_max_asm_instructions = new_rs.use_max_asm_instructions;
+	perm.all_data.runtime_settings.max_asm_instructions = Clamp(1, new_rs.max_asm_instructions, S64_MAX);
+
 	perm.all_data.runtime_settings.show_row_hover = new_rs.show_row_hover;
 	perm.all_data.runtime_settings.use_row_hover_string_func = new_rs.use_row_hover_string_func;
 	perm.all_data.runtime_settings.row_hover_string_func = new_rs.row_hover_string_func;

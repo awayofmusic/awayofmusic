@@ -13927,6 +13927,379 @@ DONE);
 
 } @ITest
 
+//TESTS for continue execution next frame and max_asm_instructions
+//ALSO test that updating watch rows resets and removes drop rows while running or debug_stop
+//ALSO test a while loop and run for a few frame with reduce instructions per frame
+//to make sure that works with d_step for example and debug vars
+Test_ContinueExecNextFrame :: (
+// Test_cenf :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	test_string :: "test";
+	perm : *Persist = GetPermanentStorage(game_memory);
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+		perm.all_data = InitAllData();
+		ResetAllRendererData(renderer_data);
+
+		text_file := CreateTestTextFile(*ALL_NEXT_IDS, *perm.all_data.all_text_files);
+		WriteFileString(text_file, 
+#string DONE
+main :: () {
+	x : int = 2;
+	a := int.[5,4,1,2];
+	b := float.[1.0,2.3,0.78];
+	while true {
+		x -= 1;
+		a[0] += 1;
+		a[0] -= 1;
+		b[2] -= 3.;
+		b[2] += 3.;
+		x += 1;
+	}
+}
+DONE);
+		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
+			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+
+		array_resize(*perm.test_data.all_sub_tests, 53+1);
+	} 
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	text_op : *TextOpSpaceData;
+	if perm.all_data.all_text_op_space_data.count > 0 {
+		text_op = *perm.all_data.all_text_op_space_data[0];
+	}
+
+	if perm.test_data.sub_test_index == {
+	case 0; {
+		open_test := MakeTerminalEvent(.open_op, TEST_TEXT_NAME);
+		array_add(*perm.all_data.all_terminal_events, open_test);
+	}
+	case 1; DownUpInputMap(.TEXT_DEBUG_TOGGLE, game_input);
+	case 2; DownUpInputMap(.TEXT_COMPILE, game_input);
+	case 3; {
+		if IsCompilationFail(text_op.text_comp_data) {
+			EndTest(*perm.test_data);
+		} else {
+			// print(text_op.text_comp_data.disassembly);
+			perm.all_data.runtime_settings.use_max_asm_instructions = false;
+			//Reduce this a bit to shorten this test but still a valid size
+			perm.all_data.runtime_settings.asm_instructions_per_frame = 100;
+			AddWatchDataForTest(.["x","a","b"], text_op);
+			DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+		}
+	}
+	case 4; {
+		//TEST let a few frames run so we can make sure "a" data gets set properly even after we only pause after a few frames
+		RunSubTestNTimes(3, *perm.test_data);
+	}
+	case 5; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_EXEC_RUNNING);
+		CodeBPForTest(6, *text_op.exec_info.debug_info, text_op.text_comp_data);
+	}
+	case 6; {
+		//TEST should be debug stopping properly even after a few frames of execution
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		a_count : int = 4;
+
+		a_var := GetWatch("a", text_op.watch_data_rows);
+		AssertEquals(tprint(ARRAY_WATCH_VALUE, a_count, 8), a_var.value_str);
+		AssertEquals(tprint("[%] int",a_count), a_var.type_str);
+
+		b_var := GetWatch("b", text_op.watch_data_rows);
+		AssertEquals(tprint(ARRAY_WATCH_VALUE, 3, 8*a_count+8), b_var.value_str);
+		AssertEquals("[3] float", b_var.type_str);
+
+		x_var := GetWatch("x", text_op.watch_data_rows);
+		AssertEquals("1", x_var.value_str);
+		AssertEquals("int", x_var.type_str);
+
+		//TEST dropped array stays with update values after running a few frames and then stopping
+		array_reset_keeping_memory(*text_op.exec_info.debug_info.break_points);
+		DownUpInputMap(.TEXT_WATCH_PANE, game_input);
+	}
+	case 7; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 8; DownUpThisFrame(.ENTER, game_input);
+	case 9; {
+		AssertEquals(4+4, text_op.watch_data_rows.count);
+
+		a_0 := GetWatch("a[0]", text_op.watch_data_rows);
+		AssertEquals("5", a_0.value_str);
+		AssertEquals("int", a_0.type_str);
+		a_1 := GetWatch("a[1]", text_op.watch_data_rows);
+		AssertEquals("4", a_1.value_str);
+		AssertEquals("int", a_1.type_str);
+		a_2 := GetWatch("a[2]", text_op.watch_data_rows);
+		AssertEquals("1", a_2.value_str);
+		AssertEquals("int", a_2.type_str);
+		a_3 := GetWatch("a[3]", text_op.watch_data_rows);
+		AssertEquals("2", a_3.value_str);
+		AssertEquals("int", a_3.type_str);
+
+		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+	}
+	case 10; {
+		RunSubTestNTimes(4, *perm.test_data);
+	}
+	case 11; {
+		AssertEquals(4+4, text_op.watch_data_rows.count);
+		CodeBPForTest(7, *text_op.exec_info.debug_info, text_op.text_comp_data);
+	}
+	case 12; {
+		AssertEquals(4+4, text_op.watch_data_rows.count);
+
+		//TEST this should be 6 now since we update it
+		a_0 := GetWatch("a[0]", text_op.watch_data_rows);
+		AssertEquals("6", a_0.value_str);
+		AssertEquals("int", a_0.type_str);
+
+		array_reset_keeping_memory(*text_op.exec_info.debug_info.break_points);
+		//TEST run a few more frames to check a and b were both updated
+	}
+	case 13; {
+		RunSubTestNTimes(5, *perm.test_data);
+		DownUpThisFrame(.ARROW_DOWN, game_input);
+	}
+	case 14; DownUpThisFrame(.ENTER, game_input);
+	case 15; {
+		AssertEquals(4+4+3, text_op.watch_data_rows.count);
+
+		b_0 := GetWatch("b[0]", text_op.watch_data_rows);
+		AssertEquals("1", b_0.value_str);
+		AssertEquals("float", b_0.type_str);
+		b_1 := GetWatch("b[1]", text_op.watch_data_rows);
+		AssertEquals("2.3", b_1.value_str);
+		AssertEquals("float", b_1.type_str);
+		b_2 := GetWatch("b[2]", text_op.watch_data_rows);
+		AssertEquals("0.78", b_2.value_str);
+		AssertEquals("float", b_2.type_str);
+
+		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+	}
+	case 16; {
+		RunSubTestNTimes(2, *perm.test_data);
+	}
+	case 17; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_EXEC_RUNNING);
+		CodeBPForTest(9, *text_op.exec_info.debug_info, text_op.text_comp_data);
+	}
+	case 18; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+		AssertEquals(4+4+3, text_op.watch_data_rows.count);
+
+		b_1 := GetWatch("b[1]", text_op.watch_data_rows);
+		AssertEquals("2.3", b_1.value_str);
+		AssertEquals("float", b_1.type_str);
+		b_2 := GetWatch("b[2]", text_op.watch_data_rows);
+		AssertEquals(tprint("%",0.78-3), b_2.value_str);
+		AssertEquals("float", b_2.type_str);
+
+		//TEST update watch data rows while running resets the row and removes sub rows
+		array_reset_keeping_memory(*text_op.exec_info.debug_info.break_points);
+		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+	}
+	case 19; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_EXEC_RUNNING);
+		AssertEquals(4+4+3, text_op.watch_data_rows.count);
+		DownUpThisFrame(.ARROW_UP, game_input);
+		RunSubTestNTimes(5, *perm.test_data);
+	}
+	case 20; AddTextInput("b", game_input);
+	case 21; DownUpThisFrame(.ENTER, game_input);
+	case 22; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_EXEC_RUNNING);
+		AssertEquals(4+3, text_op.watch_data_rows.count);
+
+		a_var, found_a := GetWatch("a", text_op.watch_data_rows);
+		AssertEquals(false, found_a);
+
+		//TEST dropping row should do nothing here since we are running
+		DownUpThisFrame(.ENTER, game_input);
+	}
+	case 23; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_EXEC_RUNNING);
+		AssertEquals(4+3, text_op.watch_data_rows.count);
+		DownUpThisFrame(.ARROW_DOWN, game_input);
+	}
+	//TEST dropping already dropped row should do nothing here since we are running
+	case 24; DownUpThisFrame(.ENTER, game_input);
+	case 25; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_EXEC_RUNNING);
+		AssertEquals(4+3, text_op.watch_data_rows.count);
+
+		//TEST deleting a row while running should remove sub rows
+		DownUpThisFrame(.DELETE, game_input);
+	}
+	case 26; {
+		AssertEquals(3, text_op.watch_data_rows.count);
+		DownUpThisFrame(.ARROW_DOWN, game_input);
+	}
+	//TEST adding another watch row should be allowed
+	case 27; AddTextInput("a", game_input);
+	case 28; DownUpThisFrame(.ENTER, game_input);
+	case 29; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_EXEC_RUNNING);
+		AssertEquals(4, text_op.watch_data_rows.count);
+
+		a_var, found_a := GetWatch("a", text_op.watch_data_rows);
+		AssertEquals(true, found_a);
+
+		//TEST trying to drop added row should do nothing while running
+		DownUpThisFrame(.ENTER, game_input);
+	}
+	case 30; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_EXEC_RUNNING);
+		AssertEquals(4, text_op.watch_data_rows.count);
+
+		CodeBPForTest(6, *text_op.exec_info.debug_info, text_op.text_comp_data);
+	}
+	case 31; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		//TEST dropping a row should keep it open and the same after execution
+		DownUpThisFrame(.ARROW_UP, game_input);
+	}
+	case 32; DownUpThisFrame(.ENTER, game_input);
+	case 33; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+		AssertEquals(4+4, text_op.watch_data_rows.count);
+
+		a_0 := GetWatch("a[0]", text_op.watch_data_rows);
+		AssertEquals("5", a_0.value_str);
+		AssertEquals("int", a_0.type_str);
+
+		array_reset_keeping_memory(*text_op.exec_info.debug_info.break_points);
+		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+	}
+	case 34; {
+		RunSubTestNTimes(2, *perm.test_data);
+	}
+	case 35; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_EXEC_RUNNING);
+		CodeBPForTest(10, *text_op.exec_info.debug_info, text_op.text_comp_data);
+	}
+	case 36; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+		AssertEquals(4+4, text_op.watch_data_rows.count);
+
+		a_0 := GetWatch("a[0]", text_op.watch_data_rows);
+		AssertEquals("5", a_0.value_str);
+		AssertEquals("int", a_0.type_str);
+
+		//NOTE : This is not necessarily a multiple of 100 because of the breakpoints
+		AssertEquals(3150, text_op.exec_info.total_instructions_run);
+		array_reset_keeping_memory(*text_op.exec_info.debug_info.break_points);
+		//TEST that hitting max_asm_instructions stops execution
+		perm.all_data.runtime_settings.use_max_asm_instructions = true;
+		perm.all_data.runtime_settings.max_asm_instructions = 3150 + perm.all_data.runtime_settings.asm_instructions_per_frame/2;
+		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+	}
+	case 37; {
+		AssertEquals(3200, text_op.exec_info.total_instructions_run);
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+		AssertEquals(4+4, text_op.watch_data_rows.count);
+
+		//TEST restart should remove the sub rows while debug stop
+		DownUpInputMap(.TEXT_RESTART, game_input);
+	}
+	case 38; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_EXEC_RUNNING);
+		AssertEquals(4, text_op.watch_data_rows.count);
+
+		//TEST start running and stop and restart should also remove sub rows.
+		CodeBPForTest(6, *text_op.exec_info.debug_info, text_op.text_comp_data);
+		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+	}
+	case 39; DownUpThisFrame(.ENTER, game_input);
+	case 40; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		a_0 := GetWatch("a[0]", text_op.watch_data_rows);
+		AssertEquals("5", a_0.value_str);
+		AssertEquals("int", a_0.type_str);
+
+		//TEST STOP should remove rows while debug stop
+		array_reset_keeping_memory(*text_op.exec_info.debug_info.break_points);
+		DownUpInputMap(.TEXT_STOP, game_input);
+	}
+	case 41; {
+		AssertEquals(text_op.exec_info.exec_state, .NOT_RUNNING);
+		AssertEquals(4, text_op.watch_data_rows.count);
+
+		//TEST start running and stop and restart should also remove sub rows.
+		CodeBPForTest(6, *text_op.exec_info.debug_info, text_op.text_comp_data);
+		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+	}
+	case 42; DownUpThisFrame(.ENTER, game_input);
+	case 43; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+
+		a_0 := GetWatch("a[0]", text_op.watch_data_rows);
+		AssertEquals("5", a_0.value_str);
+		AssertEquals("int", a_0.type_str);
+
+		array_reset_keeping_memory(*text_op.exec_info.debug_info.break_points);
+		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+	}
+	case 44; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_EXEC_RUNNING);
+		RunSubTestNTimes(3, *perm.test_data);
+	}
+	case 45; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_EXEC_RUNNING);
+		AssertEquals(4+4, text_op.watch_data_rows.count);		
+
+		DownUpInputMap(.TEXT_RESTART, game_input);
+	}
+	case 46; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_EXEC_RUNNING);
+		AssertEquals(4, text_op.watch_data_rows.count);
+		CodeBPForTest(6, *text_op.exec_info.debug_info, text_op.text_comp_data);
+		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+	}
+	case 47; DownUpThisFrame(.ENTER, game_input);
+	case 48; DownUpThisFrame(.ARROW_UP, game_input);
+	case 49; DownUpThisFrame(.ENTER, game_input);
+	case 50; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
+		AssertEquals(4+4+3, text_op.watch_data_rows.count);		
+
+		array_reset_keeping_memory(*text_op.exec_info.debug_info.break_points);
+		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+	}
+	case 51; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_EXEC_RUNNING);
+		RunSubTestNTimes(2, *perm.test_data);
+	}
+	case 52; {
+		AssertEquals(text_op.exec_info.exec_state, .IS_EXEC_RUNNING);
+		AssertEquals(4+4+3, text_op.watch_data_rows.count);		
+
+		//TEST STOP should remove dropped rows
+		DownUpInputMap(.TEXT_STOP, game_input);
+	}
+	case 53; {
+		AssertEquals(text_op.exec_info.exec_state, .NOT_RUNNING);
+		AssertEquals(4, text_op.watch_data_rows.count);
+	}
+	}
+
+	ContinueTest(*perm.test_data);
+
+} @ITest
+
+//TODO FROM HERE Do a similar test for QSort and check array to make sure step over is good
+//ALSO write a general test for bubble sort with a struct function pointer from the Functions library
+//and rename Functions to Basic and then #import Library into Basic once #import is working
+//can do global scope first maybe to double check that
 Test_QSort :: (
 	test_name : string,
 	game_memory : *GameMemory, 
@@ -13989,7 +14362,7 @@ DONE);
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
 			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
 
-		array_resize(*perm.test_data.all_sub_tests, 4+1);
+		array_resize(*perm.test_data.all_sub_tests, 6+1);
 	} 
 
 	wait_test := WaitTest(*perm.test_data);
@@ -14022,8 +14395,22 @@ DONE);
 		d_line := GetDebugLineForTest(2, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
-		//TEST step onto break
 		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 5; {
+		//Run a few frames so we complete quick sort
+		//TODO could also increase max instructions per frame
+		RunSubTestNTimes(10, *perm.test_data);
+	}
+	case 6; {
+		d_line := GetDebugLineForTest(3, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		AssertEquals(1, GetMemValue(0,int,perm.all_data.ram_memory));
+		AssertEquals(2, GetMemValue(8,int,perm.all_data.ram_memory));
+		AssertEquals(3, GetMemValue(16,int,perm.all_data.ram_memory));
+		AssertEquals(4, GetMemValue(24,int,perm.all_data.ram_memory));
+		AssertEquals(5, GetMemValue(32,int,perm.all_data.ram_memory));
 	}
 	}
 
@@ -14031,10 +14418,12 @@ DONE);
 
 } @ITest
 
-//TODO FROM HERE test this and move into Functions or call it Basic
-//and then add free instruction for QSort and test that
-//ALSO test a while loop and run for a few frame with reduce instructions per frame
-//to make sure that works with d_step for example and debug vars
+//TODO FROM HERE Write a simple test for BubbleSort and QSort without import
+//and then push that and check out the bugs for watch data top row with tabs
+//and also debugging with other files. Maybe pull in 2 files here so we don't
+//have some weird 
+//Should make a separate test that runs through files in other tabs now
+//can use Basic to do that
 Test_BubbleSort :: (
 	test_name : string,
 	game_memory : *GameMemory, 
@@ -14051,48 +14440,64 @@ Test_BubbleSort :: (
 
 		text_file := CreateTestTextFile(*ALL_NEXT_IDS, *perm.all_data.all_text_files);
 		WriteFileString(text_file, 
+//TODO FROM HERE Update this to import once we add that and test it
+//could also add testing stepping through another file here for Basic
+// a := int.[5,4,1,2,3,-12,-4,100,-6,-6000,239];
 #string DONE
 main :: () {
 	a := int.[5,4,1,2,3];
-	BubbleSort(cast(*void) a.data, a.count, size_of(int), compar_ints);
+	BubbleSort(cast(*void) a.data, a.count, size_of(int), CompareInts);
+
+	af := float.[0.1,-0.2,1.6,-100.24,1.1];
+	BubbleSort(cast(*void) af.data, af.count, size_of(int), CompareFloats);
+
+	an := NewArray(5, neume);
+	BubbleSort(cast(*void) an.data, an.count, size_of(int), CompareNeumes);
 }
-BubbleSort :: (base : *void, nmemb : int, size : int, compar : (*void, *void) -> int) {
+BubbleSort :: (base : *void, nmemb : int, size : int, Compare : (*void, *void) -> int) {
 	last_j : int = nmemb-2;
-	first_j : int = 0;
 	while true {
 		latest_swap : int = -1;
-		first_swap : int = -1;
-		for j : first_j..last_j {
+		for j : 0..last_j {
 			base_j : *void = base + j;
 			base_1 : *void = base + j + 1;
-			if compar(base_j, base_1) > 0 {
+			if Compare(base_j, base_1) > 0 {
 				#asm { swap base_j, base_1, size; }
 				latest_swap = j;
-				if first_swap == -1 {
-					first_swap = j;
-				}
 			}
 		}
 
 		if latest_swap == -1 { return; }
-
 		last_j = latest_swap - 1;
-		if first_swap - 1 > 0 {
-			first_j = first_swap - 1;
-		}
 	}
 }
-compar_ints :: (a : *void, b : *void) -> int {
+CompareInts :: (a : *void, b : *void) -> int {
 	ai := cast(*int) a;
 	bi := cast(*int) b;
 	d : int = ai.* - bi.*;
 	return d;
 }
+CompareFloats :: (a : *void, b : *void) -> int {
+	af := cast(*float) a;
+	bf := cast(*float) b;
+	d : float = af.* - bf.*;
+	if d < 0. { return -1; }
+	if d > 0. { return 1; }
+	return 0;
+}
+CompareNeumes :: (a : *void, b : *void) -> int {
+	an := cast(*neume) a;
+	bn := cast(*neume) b;
+	d : float = an.*.x_start - bn.*.x_start;
+	if d < 0. { return -1; }
+	if d > 0. { return 1; }
+	return 0;
+}
 DONE);
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
 			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
 
-		array_resize(*perm.test_data.all_sub_tests, 4+1);
+		array_resize(*perm.test_data.all_sub_tests, 7+1);
 	} 
 
 	wait_test := WaitTest(*perm.test_data);
@@ -14117,13 +14522,31 @@ DONE);
 			// print(text_op.text_comp_data.disassembly);
 			// AddWatchDataForTest(.["a","s","p","i","j","base_i","base_i.*","base_j","base_j.*","ai","ai.*","bi","bi.*","d"], text_op);
 			AddWatchDataForTest(.["a"], text_op);
-			CodeBPForTest(2, *text_op.exec_info.debug_info, text_op.text_comp_data);
+			CodeBPForTest(4, *text_op.exec_info.debug_info, text_op.text_comp_data);
 			DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
 		}
 	}
 	case 4; {
-		d_line := GetDebugLineForTest(2, text_op.text_comp_data);
+		//Run a few frames so we complete bubble sort
+		//TODO could also increase max instructions per frame
+		RunSubTestNTimes(5, *perm.test_data);
+	}
+	case 5; DownUpInputMap(.TEXT_WATCH_PANE, game_input);
+	case 6; DownUpThisFrame(.ENTER, game_input);
+	case 7; {
+		d_line := GetDebugLineForTest(4, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		a_0 := GetWatch("a[0]", text_op.watch_data_rows);
+		AssertEquals("1", a_0.value_str);
+		a_1 := GetWatch("a[1]", text_op.watch_data_rows);
+		AssertEquals("2", a_1.value_str);
+		a_2 := GetWatch("a[2]", text_op.watch_data_rows);
+		AssertEquals("3", a_2.value_str);
+		a_3 := GetWatch("a[3]", text_op.watch_data_rows);
+		AssertEquals("4", a_3.value_str);
+		a_4 := GetWatch("a[4]", text_op.watch_data_rows);
+		AssertEquals("5", a_4.value_str);
 
 		//TEST step onto break
 		DownUpInputMap(.DEBUG_STEP_OVER, game_input);

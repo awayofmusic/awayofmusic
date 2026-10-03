@@ -347,7 +347,8 @@ RemoveAllWatchSubRows :: inline (text_op : *TextOpSpaceData) {
 	}
 }
 StopExecutionNow :: inline (text_op : *TextOpSpaceData, all_data : *AllData) {
-	if text_op.exec_info.exec_state == .IS_DEBUG_STOP {
+	// if text_op.exec_info.exec_state == .IS_DEBUG_STOP {
+	if text_op.exec_info.exec_state != .NOT_RUNNING {
 		RemoveAllWatchSubRows(text_op);
 	}
 	text_op.exec_info.exec_state = ExecutionState.NOT_RUNNING;
@@ -448,7 +449,8 @@ EvaluateWatchData :: inline (
 	//the last row should be empty and we should always be skipping over that row or filtering it out.
 	//TODO We could make this an if and log the error as well and return to avoid crashing here.
 	assert(watch_data.name.count > 0);
-	if reset_data {
+	//TODO We could do the null check internally but I think this is overall more resilient
+	if reset_data || watch_data.node == null {
 		//We have to reset here so we can recompute the expression nodes in watch_pool
 		//We don't reset the name because we need to parse based on the name
 		ResetWatchData(watch_data, reset_name=false);
@@ -556,7 +558,9 @@ SetHighlightedWatchToWatchEditAndEvaluate :: inline (
 
 		//NOTE : We check the count in the outer if, otherwise we don't update.
 		//If we want to clear on empty then we would have to check differently.
-		if text_op.exec_info.exec_state == .IS_DEBUG_STOP {
+		// if text_op.exec_info.exec_state == .IS_DEBUG_STOP {
+		// if text_op.exec_info.exec_state == .IS_DEBUG_STOP || text_op.exec_info.continue_execution_next_frame {
+		if text_op.exec_info.exec_state != .NOT_RUNNING {
 			assert(text_op.exec_info.exec_mode == .DEBUG);//sanity check
 			//We reset_data here because we updated the name so we need to parse the name expression again
 			EvaluateWatchData(text_op.highlighted_name_index, text_op, all_data, reset_data=true);
@@ -891,7 +895,7 @@ ComputeWatchValueAndType :: inline (watch_data : *WatchData, text_op : *TextOpSp
 			}
 
 			if valid_array {
-				value_string = tprint("c=%,d=%", array_count, array_data_address);
+				value_string = tprint(ARRAY_WATCH_VALUE, array_count, array_data_address);
 			} else {
 				value_string = INVALID_WATCH_EXPR;
 			}
@@ -1591,11 +1595,11 @@ ComputeWatchValue :: inline (
 	return mv, err;
 }
 
-GetWatch :: inline (name : string, watch_rows : [] WatchData) -> WatchData {
+GetWatch :: inline (name : string, watch_rows : [] WatchData) -> WatchData, found : bool {
 	for watch_rows if it.name == name {
-		return it;
+		return it, true;
 	}
-	return .{};
+	return .{}, false;
 }
 
 TextPaneType :: enum u8 {

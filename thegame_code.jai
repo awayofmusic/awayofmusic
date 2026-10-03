@@ -11425,8 +11425,8 @@ ValidateOperandTypes :: inline (
 		if !is_valid {
 			err.is_error = true;
 			err.error_index = op_index;
-			err.msg = sprint("Error : invalid operand % : % - should be one of %.\n",
-				op_index, op.operand_type, valid_types[op_index],, context.allocator);
+			err.msg = tprint("Error : invalid operand % : % - should be one of %.\n",
+				op_index, op.operand_type, valid_types[op_index]);
 			break;
 		}		
 	}
@@ -11442,9 +11442,9 @@ ValidateOperandValueTypes :: inline (operand : MusicOperand, op_index : int, val
 		is_valid : bool = AllOrEquals(value.type, valid_types[v_index]);
 		if !is_valid {
 			err.is_error = true;
-			err.msg = sprint("Error : operand %, invalid values %,% - should be %,%.\n",
+			err.msg = tprint("Error : operand %, invalid values %,% - should be %,%.\n",
 				op_index, operand.values[0].type, operand.values[1].type,
-				valid_types[0], valid_types[1],, context.allocator);
+				valid_types[0], valid_types[1]);
 			break;
 		}		
 	}
@@ -11958,8 +11958,8 @@ ValidateMusicInstruction :: inline (instr : MusicInstruction) -> CPUError {
 	//TODO Could generate that file string internally the AsmInstructionManual.
 	//Could also generate a system file in a formatted way to use externally for all instructions.
 	return CPUErr(
-	sprint("Invalid % instruction. In thegame_code.jai go to ASM_INSTRUCTION_MANUAL to view valid asm instructions.", 
-		instr.op_code,,context.allocator));
+	tprint("Invalid % instruction. In thegame_code.jai go to ASM_INSTRUCTION_MANUAL to view valid asm instructions.", 
+		instr.op_code));
 }
 
 /*END OF ASSEMBLY
@@ -12758,7 +12758,9 @@ ExecuteManyInstructions :: inline (exec : *ExecutionInfo, ad : *AllData) -> CPUE
 
 		exec.total_instructions_run += 1;
 		exec.instructions_run_this_frame += 1;
-		if exec.total_instructions_run >= ad.runtime_settings.max_asm_instructions {
+		if ad.runtime_settings.use_max_asm_instructions &&
+			exec.total_instructions_run >= ad.runtime_settings.max_asm_instructions 
+		{
 			stop_execution = true;
 			err = CPUErr(tprint("Max instructions % reached. Execution Stopped.", ad.runtime_settings.max_asm_instructions));
 			break exec_loop;
@@ -16091,6 +16093,7 @@ ExecMov :: inline (ci : MusicInstruction, df_mspace : *MusicSpaceData, ad : *All
 We use this function so we can allocate memory on the heap anywhere in asm.
 */
 AllocHeapMem :: inline (size_in_bytes : int, ad : *AllData) -> alloc_heap_address : int, out_of_memory : CPUError {
+	//Free list is sorted by size_in_bytes every time we free
 	for * free_data : ad.ram_free_list if free_data.size_in_bytes >= size_in_bytes {
 		alloc_heap_address : int = free_data.heap_address;
 		if free_data.size_in_bytes == size_in_bytes {
@@ -16098,8 +16101,8 @@ AllocHeapMem :: inline (size_in_bytes : int, ad : *AllData) -> alloc_heap_addres
 			//TODO We could just memcpy it back
 			array_ordered_remove_by_index(*ad.ram_free_list, it_index);
 		} else {
-			//Adding to the heap_address decreases the size of this free data by size_in_bytes
 			free_data.heap_address += size_in_bytes;
+			free_data.size_in_bytes -= size_in_bytes;
 		}
 		return alloc_heap_address, NO_CPU_ERROR;
 	}
@@ -16138,7 +16141,9 @@ FreeHeapMem :: (input_start : int, input_size : int, ad : *AllData) -> CPUError 
 	if input_start < heap_base || input_start >= heap_current || 
 		input_end < heap_base || input_end > heap_current 
 	{
-		return CPUErr("Can only free memory on the heap.");
+		return CPUErr(tprint(
+			"Can only free memory already allocated on the heap : hbp : %, hcp : %, input_start : %, input_end : %", 
+			heap_base, heap_current, input_start, input_end));
 	}
 
 	data_is_freed : bool = false;
@@ -16166,6 +16171,7 @@ FreeHeapMem :: (input_start : int, input_size : int, ad : *AllData) -> CPUError 
 			//If input_start == fl_start and input_end == fl end 
 			//then this case would keep it the same
 			fd.heap_address = input_start;
+			fd.size_in_bytes = fl_end - input_start;
 			data_is_freed = true;
 		}
 		else if input_start >= fl_start && input_start <= fl_end && 
@@ -16200,21 +16206,44 @@ FreeHeapMem :: (input_start : int, input_size : int, ad : *AllData) -> CPUError 
 		array_add(*ad.ram_free_list, free_data);
 	}
 
+	quick_sort(ad.ram_free_list, (f1, f2) => f1.heap_address - f2.heap_address);
+
+	//Combine overlapping free data free data
+	i : int = 0;
+	while i + 1 < ad.ram_free_list.count {
+		f0 : *RAMFreeData = *ad.ram_free_list[i];
+		end_f0 : int = f0.heap_address + f0.size_in_bytes;
+		f1 : *RAMFreeData = *ad.ram_free_list[i+1];
+		end_f1 : int = f1.heap_address + f1.size_in_bytes;
+		if end_f0 >= end_f1 {
+			array_ordered_remove_by_index(*ad.ram_free_list, i+1);
+		} else if InRange(f0.heap_address, f1.heap_address, end_f0) {
+			f0.size_in_bytes = max(end_f1,end_f0) - f0.heap_address;
+			array_ordered_remove_by_index(*ad.ram_free_list, i+1);
+		} else {
+			i += 1;
+		}
+	}
+
 	/*Set the current heap address back if we have adjacent free data right before.
 	This only needs to happen once because all other free data will have been merged above when added.
 	*/
-	for * fd : ad.ram_free_list {
-		if fd.heap_address + fd.size_in_bytes == heap_current {
-			ad.all_register_memory[RegDef.hcp].int_value = fd.heap_address;
-			remove fd;
-			break;
-		}
+	last_free : RAMFreeData = peek(ad.ram_free_list);
+	if last_free.heap_address + last_free.size_in_bytes >= heap_current {
+		ad.all_register_memory[RegDef.hcp].int_value = last_free.heap_address;
+		ad.ram_free_list.count -= 1;
 	}
 
 	//Sort smallest to biggest free size. This way we take the smallest free value with alloc.
 	quick_sort(ad.ram_free_list, (f1, f2) => f1.size_in_bytes - f2.size_in_bytes);
 
 	return NO_CPU_ERROR;
+}
+FindFreeData :: inline (heap_address : int, size_in_bytes : int, free_list : [] RAMFreeData) -> *RAMFreeData, found : bool {
+	for * free_list if it.heap_address == heap_address && it.size_in_bytes == size_in_bytes {
+		return it, true;
+	}
+	return null, false;
 }
 
 ComputeMovSize :: inline (operand : MusicOperand, all_registers : [] MemoryValue, ram : RAMMemory) -> int {
