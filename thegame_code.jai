@@ -8935,7 +8935,7 @@ CompileCode :: inline (cs : CompileSettings, code : string) -> *CompilationData 
 				if !found_path {
 					CreateCompErr(cd, .EVALUATION, node,
 					sprint("Path not found for : %.\n", file_name));
-					break load_pass;					
+					break load_pass;
 				}
 				for cd.all_directive_load_files if it.absolute_path_name == absolute_path_name {
 					CreateCompErr(cd, .EVALUATION, node,
@@ -11993,6 +11993,7 @@ DebugBreakpoint :: struct {
 	asm_index : int;
 	end_asm_index : int;
 	bp_type : BreakpointType;
+	absolute_path_name : string;
 }
 DebugControl :: enum u8 {
 	//TODO We could add this if needed, maybe could use for reset_watch_data
@@ -12012,8 +12013,8 @@ DebugControl :: enum u8 {
 	// RESTART;
 }
 //TODO Eventually comp_data will likely be stored within the text op space data.
-//Could also possibly just pass in breakpoints array
-PressCodeBreakpoint :: inline (line_number : int, text_op : *TextOpSpaceData, comp_data : *CompilationData) {
+//TODO Could also possibly just pass in breakpoints array
+PressCodeBreakpoint :: inline (line_number : int, text_file : TextFile, text_op : *TextOpSpaceData) {
 	//TODO We could pull this out as function and test it for convenience and also
 	//then we can use it to set break_points from other places like tests or somewhere else in the code
 
@@ -12025,7 +12026,9 @@ PressCodeBreakpoint :: inline (line_number : int, text_op : *TextOpSpaceData, co
 	*/
 	found_breakpoint : bool = false;
 	for text_op.exec_info.debug_info.break_points {
-		if it.bp_type == .BP_CODE && it.line_number == line_number {
+		if it.bp_type == .BP_CODE && it.line_number == line_number && 
+			it.absolute_path_name == text_file.absolute_path_name 
+		{
 			//TODO Do a memcpy remove here once we implement it in general.
 			array_ordered_remove_by_index(*text_op.exec_info.debug_info.break_points, it_index);
 			found_breakpoint = true;
@@ -12047,9 +12050,10 @@ PressCodeBreakpoint :: inline (line_number : int, text_op : *TextOpSpaceData, co
 		break_point.line_number = line_number;
 		break_point.asm_index = -1;
 		break_point.end_asm_index = -1;
+		break_point.absolute_path_name = text_file.absolute_path_name;
 		//TODO Grab this instead once we have multiple compilation data possible
-		if comp_data != null && comp_data.all_debug_lines.count > 0 {
-			for comp_data.all_debug_lines {
+		if text_op.text_comp_data != null && text_op.text_comp_data.all_debug_lines.count > 0 {
+			for text_op.text_comp_data.all_debug_lines {
 				//TODO Could set this to >= so we take the next line that is available for debugging
 				if it.line_number == break_point.line_number {
 					break_point.asm_index = it.start_asm_index;

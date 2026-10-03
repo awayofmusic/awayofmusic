@@ -2183,7 +2183,7 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 			else if IsKeyboardPress(.MOUSE_BUTTON_LEFT, .DOWN_THIS_FRAME, game_input) {
 				is_text_op_mouse_input = true;
 				ChangeTextPane(.TEXT, text_op, perm.all_data);
-				PressCodeBreakpoint(mouse_line_number, text_op, text_op.text_comp_data);
+				PressCodeBreakpoint(mouse_line_number, text_file, text_op);
 			} 
 		}
 		else if IsInRectangle(op_mouse, text_op.ator.l_text_rect) {
@@ -2820,9 +2820,11 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 			if text_op.exec_info.exec_mode == ExecutionMode.DEBUG && 
 				IsInputMapPress(.DEBUG_SET_BREAKPOINT, .DOWN_THIS_FRAME, game_input)
 			{
+			 	text_file = ArrayFindFirstByNameId(perm.all_data.all_text_files,
+					text_op.file_tabs[text_op.ftab_i].text_file_id, "id");
 				#if 1 {
 				PressCodeBreakpoint(text_op.file_tabs[text_op.ftab_i].tab_cursor.cursor_line_number, 
-					text_op, text_op.text_comp_data);
+					text_file, text_op);
 				} else {
 				//TODO We could pull this out as function and test it for convenience and also
 				//then we can use it to set break_points from other places like tests or somewhere else in the code
@@ -5607,7 +5609,9 @@ for compile_event : perm.all_data.all_compile_code_events {
 				if break_pt.bp_type == .BP_CODE {
 					//TODO Can likely index this or do binary search to speed this up.
 					for debug_line : text_op.text_comp_data.all_debug_lines {
-						if break_pt.line_number <= debug_line.line_number {
+						if break_pt.line_number <= debug_line.line_number && 
+							break_pt.absolute_path_name == debug_line.absolute_path_name 
+						{
 							break_pt.line_number = debug_line.line_number;
 							break_pt.asm_index = debug_line.start_asm_index;
 							break_pt.end_asm_index = debug_line.end_asm_index;
@@ -8214,10 +8218,12 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 			//Although maybe it is useful for a debugger. Use left_margin_char_width to increase size and then just
 			//print the text outside of DEBUG since we can have lines withou debugging.
 			for text_op.exec_info.debug_info.break_points if it.bp_type == .BP_CODE {
-				if it.line_number >= text_op.file_tabs[text_op.ftab_i].tab_cursor.start_file_line_index && it.line_number <= end_render_line { 
+				if it.line_number >= start_render_line && it.line_number <= end_render_line &&
+					it.absolute_path_name == text_file.absolute_path_name
+				{ 
 					//TODO This should be a function to get LineIndexToOpPos since we reuse it above as well.
 					// op_pos : Vector2F = MakeV2F(DEBUG_START_X, LOC_START_Y - (TEXT_LINE_HEIGHT*it.line_number));
-					rel_y : int = it.line_number-text_op.file_tabs[text_op.ftab_i].tab_cursor.start_file_line_index;
+					rel_y : int = it.line_number-start_render_line;
 					// op_pos := Vector2F.{op_rect_min.x+1.0, op_rect_max.y - TEXT_LINE_HEIGHT*(rel_y+0.5)};
 					op_pos := Vector2F.{DEBUG_START_X, DEBUG_START_Y - TEXT_LINE_HEIGHT*rel_y};
 					cam_pos : Vector2F = OpSpaceToCameraSpace(op_pos, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
@@ -8226,29 +8232,35 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 				}
 			}
 
+			//TODO If chose_other_call_frame then we use the call_instr_index instead and draw an orange arrow
+			//if we are in the same file as the selected_call_frame_index otherwise if we are in the current stop_d_line
+			//then we draw this anyways
 			if text_op.exec_info.exec_state == .IS_DEBUG_STOP {
 				// hit_instr := text_op.exec_info.debug_info.break_points[text_op.exec_info.debug_info.current_break_point_index].line_number;
 				//TODO Technically we can compute this from start_asm_index
 				//TODO ACTUALLY we should just get this from ip register like we do for disassembly pane
+				//TODO If we grab this from the currently selected call stack 
 				stop_d_line, found_d_line := GetDebugLineAsm(perm.all_data.all_register_memory[RegDef.pc].int_value, text_op.text_comp_data);
 				//We used to have an assertion in GetDebugLineAsm here and it would not get hit so if it does then we should look into it
 				//This should always be valid since pc register should be valid
 				assert(found_d_line);
-				// stop_index : int = text_op.exec_info.debug_info.stop_line - text_op.file_tabs[text_op.ftab_i].tab_cursor.start_file_line_index;
-				stop_index : int = stop_d_line.line_number - text_op.file_tabs[text_op.ftab_i].tab_cursor.start_file_line_index;
-				//TODO Hardcoded for now since we always have asm starting on first line
-				// hit_instr -= 1;
-				//TODO This should be a function like above
-				op_pos : Vector2F = MakeV2F(DEBUG_START_X, DEBUG_START_Y - (TEXT_LINE_HEIGHT*stop_index));
-				cam_pos : Vector2F = OpSpaceToCameraSpace(op_pos, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
-				PushQuadArrowViewport(cam_pos,cam_pos+Vector2F.{0.85,0},YELLOW_V,0.1,op_space.render_groups.scissor_group,order=left_margin_order+2);
-				//TODO Can use this code for line highlighting or also cursor highlighting.
-				#if 0 {
-				//TODO This is taken from PushTypeCursor so we should either recompute it somewhere or make a function.
-				font_height_squares : float = ComputeFontHeightSquares(perm.text_editor_data.char_height, op_space.render_groups.scissor_group);
-				//TODO Need to put x here as the size of the text + debug 
-				rect := RectMinDim(cam_pos-Vector2F.{0,0.6*font_height_squares}, Vector2F.{15,font_height_squares});
-				PushRectangle(rect, DBLUE_V, op_space.render_groups.scissor_group, 10001);
+				if text_file.absolute_path_name == stop_d_line.absolute_path_name {
+					// stop_index : int = text_op.exec_info.debug_info.stop_line - text_op.file_tabs[text_op.ftab_i].tab_cursor.start_file_line_index;
+					stop_index : int = stop_d_line.line_number - text_op.file_tabs[text_op.ftab_i].tab_cursor.start_file_line_index;
+					//TODO Hardcoded for now since we always have asm starting on first line
+					// hit_instr -= 1;
+					//TODO This should be a function like above
+					op_pos : Vector2F = MakeV2F(DEBUG_START_X, DEBUG_START_Y - (TEXT_LINE_HEIGHT*stop_index));
+					cam_pos : Vector2F = OpSpaceToCameraSpace(op_pos, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
+					PushQuadArrowViewport(cam_pos,cam_pos+Vector2F.{0.85,0},YELLOW_V,0.1,op_space.render_groups.scissor_group,order=left_margin_order+2);
+					//TODO Can use this code for line highlighting or also cursor highlighting.
+					#if 0 {
+					//TODO This is taken from PushTypeCursor so we should either recompute it somewhere or make a function.
+					font_height_squares : float = ComputeFontHeightSquares(perm.text_editor_data.char_height, op_space.render_groups.scissor_group);
+					//TODO Need to put x here as the size of the text + debug 
+					rect := RectMinDim(cam_pos-Vector2F.{0,0.6*font_height_squares}, Vector2F.{15,font_height_squares});
+					PushRectangle(rect, DBLUE_V, op_space.render_groups.scissor_group, 10001);
+					}
 				}
 			}
 

@@ -14444,6 +14444,7 @@ Test_BubbleSort :: (
 //could also add testing stepping through another file here for Basic
 // a := int.[5,4,1,2,3,-12,-4,100,-6,-6000,239];
 #string DONE
+#load "c_load/Basic";
 main :: () {
 	a := int.[5,4,1,2,3];
 	BubbleSort(cast(*void) a.data, a.count, size_of(int), CompareInts);
@@ -14453,37 +14454,6 @@ main :: () {
 
 	an := NewArray(5, neume);
 	BubbleSort(cast(*void) an.data, an.count, size_of(int), CompareNeumes);
-}
-BubbleSort :: (base : *void, nmemb : int, size : int, Compare : (*void, *void) -> int) {
-	last_j : int = nmemb-2;
-	while true {
-		latest_swap : int = -1;
-		for j : 0..last_j {
-			base_j : *void = base + j;
-			base_1 : *void = base + j + 1;
-			if Compare(base_j, base_1) > 0 {
-				#asm { swap base_j, base_1, size; }
-				latest_swap = j;
-			}
-		}
-
-		if latest_swap == -1 { return; }
-		last_j = latest_swap - 1;
-	}
-}
-CompareInts :: (a : *void, b : *void) -> int {
-	ai := cast(*int) a;
-	bi := cast(*int) b;
-	d : int = ai.* - bi.*;
-	return d;
-}
-CompareFloats :: (a : *void, b : *void) -> int {
-	af := cast(*float) a;
-	bf := cast(*float) b;
-	d : float = af.* - bf.*;
-	if d < 0. { return -1; }
-	if d > 0. { return 1; }
-	return 0;
 }
 CompareNeumes :: (a : *void, b : *void) -> int {
 	an := cast(*neume) a;
@@ -14522,7 +14492,7 @@ DONE);
 			// print(text_op.text_comp_data.disassembly);
 			// AddWatchDataForTest(.["a","s","p","i","j","base_i","base_i.*","base_j","base_j.*","ai","ai.*","bi","bi.*","d"], text_op);
 			AddWatchDataForTest(.["a"], text_op);
-			CodeBPForTest(4, *text_op.exec_info.debug_info, text_op.text_comp_data);
+			CodeBPForTest(5, *text_op.exec_info.debug_info, text_op.text_comp_data);
 			DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
 		}
 	}
@@ -14534,7 +14504,7 @@ DONE);
 	case 5; DownUpInputMap(.TEXT_WATCH_PANE, game_input);
 	case 6; DownUpThisFrame(.ENTER, game_input);
 	case 7; {
-		d_line := GetDebugLineForTest(4, text_op.text_comp_data);
+		d_line := GetDebugLineForTest(5, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 
 		a_0 := GetWatch("a[0]", text_op.watch_data_rows);
@@ -14550,6 +14520,116 @@ DONE);
 
 		//TEST step onto break
 		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	}
+
+	ContinueTest(*perm.test_data);
+
+} @ITest
+
+TAB_TEST_FILE_NAME :: #run sprint("%/tab_test", C_TEST_DIR_NAME);
+BASIC_FILE_NAME :: #run sprint("%/Basic", C_LOAD_DIR_NAME);
+Test_MultiTabDebug :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	test_string :: "test";
+	perm : *Persist = GetPermanentStorage(game_memory);
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+		perm.all_data = InitAllData();
+		ResetAllRendererData(renderer_data);
+
+		array_resize(*perm.test_data.all_sub_tests, 7+1);
+	} 
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	text_op : *TextOpSpaceData;
+	if perm.all_data.all_text_op_space_data.count > 0 {
+		text_op = *perm.all_data.all_text_op_space_data[0];
+	}
+
+	TAB_ABS_PATH := get_absolute_path(TAB_TEST_FILE_NAME);
+	BASIC_ABS_PATH := get_absolute_path(BASIC_FILE_NAME);
+
+	if perm.test_data.sub_test_index == {
+	case 0; {
+		open_test := MakeTerminalEvent(.load_op, "tab_test", TAB_TEST_FILE_NAME);
+		array_add(*perm.all_data.all_terminal_events, open_test);
+	}
+	case 1; DownUpInputMap(.TEXT_DEBUG_TOGGLE, game_input);
+	case 2; DownUpInputMap(.TEXT_COMPILE, game_input);
+	case 3; {
+		if IsCompilationFail(text_op.text_comp_data) {
+			EndTest(*perm.test_data);
+		} else {
+			// print(text_op.text_comp_data.disassembly);
+			// AddWatchDataForTest(.["a","s","p","i","j","base_i","base_i.*","base_j","base_j.*","ai","ai.*","bi","bi.*","d"], text_op);
+			AddWatchDataForTest(.["a"], text_op);
+			CodeBPForTest(3,  *text_op.exec_info.debug_info, text_op.text_comp_data, TAB_ABS_PATH);
+			DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+		}
+	}
+	case 4; {
+		d_line := GetDebugLineForTest(3, text_op.text_comp_data, TAB_ABS_PATH);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		AssertEquals(1, text_op.file_tabs.count);
+		AssertEquals(0, text_op.ftab_i);
+	 	text_file, found_text_file := ArrayFindFirstByNameId(perm.all_data.all_text_files,
+			text_op.file_tabs[text_op.ftab_i].text_file_id, "id");
+	 	AssertEquals(true, found_text_file);
+	 	if found_text_file {
+		 	AssertEquals(TAB_ABS_PATH, text_file.absolute_path_name);
+		 }
+
+		//TEST that we change tabs and open the basic file when we step into ti
+		DownUpInputMap(.DEBUG_STEP_INTO, game_input);
+	}
+	case 5; {
+		d_line := GetDebugLineForTest(7, text_op.text_comp_data, BASIC_ABS_PATH);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		AssertEquals(2, text_op.file_tabs.count);
+		AssertEquals(1, text_op.ftab_i);
+	 	text_file, found_text_file := ArrayFindFirstByNameId(perm.all_data.all_text_files,
+			text_op.file_tabs[text_op.ftab_i].text_file_id, "id");
+	 	AssertEquals(true, found_text_file);
+	 	if found_text_file {
+		 	AssertEquals(BASIC_ABS_PATH, text_file.absolute_path_name);
+		}
+
+		//TEST change tab and debug step over should bring us back to the tab thats currently debug stopped on
+		DownUpInputMap(.TEXT_FILE_TAB_LEFT, game_input);
+	}
+	case 6; {
+		d_line := GetDebugLineForTest(7, text_op.text_comp_data, BASIC_ABS_PATH);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		AssertEquals(2, text_op.file_tabs.count);
+		AssertEquals(0, text_op.ftab_i);
+	 	text_file, found_text_file := ArrayFindFirstByNameId(perm.all_data.all_text_files,
+			text_op.file_tabs[text_op.ftab_i].text_file_id, "id");
+	 	AssertEquals(true, found_text_file);
+	 	if found_text_file {
+		 	AssertEquals(TAB_ABS_PATH, text_file.absolute_path_name);
+		}
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 7; {
+		d_line := GetDebugLineForTest(8, text_op.text_comp_data, BASIC_ABS_PATH);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+		AssertEquals(2, text_op.file_tabs.count);
+		AssertEquals(1, text_op.ftab_i);
+	 	text_file, found_text_file := ArrayFindFirstByNameId(perm.all_data.all_text_files,
+			text_op.file_tabs[text_op.ftab_i].text_file_id, "id");
+	 	AssertEquals(true, found_text_file);
+	 	if found_text_file {
+		 	AssertEquals(BASIC_ABS_PATH, text_file.absolute_path_name);
+		}		
 	}
 	}
 

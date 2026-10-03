@@ -5727,7 +5727,9 @@ CodeBPForTest :: inline (
 	break_point.line_number = d_line.line_number;
 	break_point.asm_index = d_line.start_asm_index;
 	break_point.end_asm_index = d_line.end_asm_index;
+	break_point.absolute_path_name = d_line.absolute_path_name;
 }
+//TODO DONT USE THIS AND REMOVE IT USE THE ABOVE LINE INSTEAD
 CodeBPForTestInFile :: inline (
 	line_number : int, 
 	file_name : string,
@@ -5741,6 +5743,7 @@ CodeBPForTestInFile :: inline (
 	break_point.line_number = d_line.line_number;
 	break_point.asm_index = d_line.start_asm_index;
 	break_point.end_asm_index = d_line.end_asm_index;
+	break_point.absolute_path_name = d_line.absolute_path_name;
 }
 /*NOTE TODO Could remove breakpoints with this as well and then
 reuse this in the code. I think that is a good idea once we know
@@ -5748,6 +5751,9 @@ that the breakpoint code is good so we can functionalize it
 and then we write unit tests specifically for those functions
 and reuse them. ALSO if we want to create breakpoints from
 other places, we would separate out the functionality then.
+
+Should get debug line for this one and set the line number and file name properly
+Not really using it right now though so...
 */
 AsmBPForTest :: inline (
 	asm_index : int, 
