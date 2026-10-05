@@ -2263,6 +2263,143 @@ DONE,, unit_test_alloc);
 
 } @UnitTest
 
+Test_ParseDirectiveGlobal :: () {
+	ptd := MakeParseTestData();
+
+	/*
+		#global
+		    \
+		     ::
+		    /   \
+		   PI    3.14159
+	*/	
+	array_reset_keeping_memory(*ptd.cd.lexer.lexer_tokens);
+	LexCodeTokens(*ptd.cd.lexer, "#global PI :: 3.14159;");
+	node := ParseExpression(ptd.cd, S64_MIN);
+
+	array_reset_keeping_memory(*ptd.ordered_nodes);
+	DFSPreWithNull(node, *ptd.ordered_nodes, GetOrderedNodesWithNull);
+	ptd.expected_nodes = BinaryNode.[
+		BNode(LCToken(#char "#", cast(int) CodeDirective.global), .UNARY_OP), NULL_NODE,
+		BNode(LCToken(.DOUBLE_COLON), .BINARY_OP),
+		BNode(LCToken(.IDENT, "PI")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(.FLOAT, 3.14159)), NULL_NODE, NULL_NODE,
+	];
+	TestNodes(ptd.expected_nodes, ptd.ordered_nodes);
+
+	node = ParseExpression(ptd.cd, S64_MIN);
+	AssertEquals(node.value.token_type, #char ";");
+
+
+	/*
+		#global
+		    \
+		     :
+		    /   \
+		 test    int
+	*/	
+	array_reset_keeping_memory(*ptd.cd.lexer.lexer_tokens);
+	LexCodeTokens(*ptd.cd.lexer, "#global test : int;");
+	node = ParseExpression(ptd.cd, S64_MIN);
+
+	array_reset_keeping_memory(*ptd.ordered_nodes);
+	DFSPreWithNull(node, *ptd.ordered_nodes, GetOrderedNodesWithNull);
+	ptd.expected_nodes = BinaryNode.[
+		BNode(LCToken(#char "#", cast(int) CodeDirective.global), .UNARY_OP), NULL_NODE,
+		BNode(LCToken(#char ":"), .BINARY_OP),
+		BNode(LCToken(.IDENT, "test")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(.DATA_TYPE_INT, "int")), NULL_NODE, NULL_NODE,
+	];
+	TestNodes(ptd.expected_nodes, ptd.ordered_nodes);
+
+	node = ParseExpression(ptd.cd, S64_MIN);
+	AssertEquals(node.value.token_type, #char ";");
+
+	/*
+		#global
+		    \
+		     :
+		    /   \
+		 test    TestStruct
+	*/	
+	array_reset_keeping_memory(*ptd.cd.lexer.lexer_tokens);
+	LexCodeTokens(*ptd.cd.lexer, "#global t : TestStruct;");
+	node = ParseExpression(ptd.cd, S64_MIN);
+
+	array_reset_keeping_memory(*ptd.ordered_nodes);
+	DFSPreWithNull(node, *ptd.ordered_nodes, GetOrderedNodesWithNull);
+	ptd.expected_nodes = BinaryNode.[
+		BNode(LCToken(#char "#", cast(int) CodeDirective.global), .UNARY_OP), NULL_NODE,
+		BNode(LCToken(#char ":"), .BINARY_OP),
+		BNode(LCToken(.IDENT, "t")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(.IDENT, "TestStruct")), NULL_NODE, NULL_NODE,
+	];
+	TestNodes(ptd.expected_nodes, ptd.ordered_nodes);
+
+	node = ParseExpression(ptd.cd, S64_MIN);
+	AssertEquals(node.value.token_type, #char ";");
+
+
+	/*
+		#global
+		    \
+		     ::
+		    /   \
+		 t       .
+		        /  \
+		  TestEnum  VALUE
+	*/	
+	array_reset_keeping_memory(*ptd.cd.lexer.lexer_tokens);
+	LexCodeTokens(*ptd.cd.lexer, "#global t :: TestEnum.VALUE;");
+	node = ParseExpression(ptd.cd, S64_MIN);
+
+	array_reset_keeping_memory(*ptd.ordered_nodes);
+	DFSPreWithNull(node, *ptd.ordered_nodes, GetOrderedNodesWithNull);
+	ptd.expected_nodes = BinaryNode.[
+		BNode(LCToken(#char "#", cast(int) CodeDirective.global), .UNARY_OP), NULL_NODE,
+		BNode(LCToken(.DOUBLE_COLON), .BINARY_OP),
+		BNode(LCToken(.IDENT, "t")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(#char "."), .BINARY_OP),
+		BNode(LCToken(.IDENT, "TestEnum")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(.IDENT, "VALUE")), NULL_NODE, NULL_NODE,
+	];
+	TestNodes(ptd.expected_nodes, ptd.ordered_nodes);
+
+	node = ParseExpression(ptd.cd, S64_MIN);
+	AssertEquals(node.value.token_type, #char ";");
+
+
+	/*
+		#global
+		    \
+		        :
+		    /         \
+		 :               .
+	  /   \	        /    \
+	 t	 TestEnum  TestEnum VALUE
+	*/	
+	array_reset_keeping_memory(*ptd.cd.lexer.lexer_tokens);
+	LexCodeTokens(*ptd.cd.lexer, "#global t : TestEnum : TestEnum.VALUE;");
+	node = ParseExpression(ptd.cd, S64_MIN);
+
+	array_reset_keeping_memory(*ptd.ordered_nodes);
+	DFSPreWithNull(node, *ptd.ordered_nodes, GetOrderedNodesWithNull);
+	ptd.expected_nodes = BinaryNode.[
+		BNode(LCToken(#char "#", cast(int) CodeDirective.global), .UNARY_OP), NULL_NODE,
+		BNode(LCToken(#char ":"), .BINARY_OP),
+		BNode(LCToken(#char ":"), .BINARY_OP),
+		BNode(LCToken(.IDENT, "t")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(.IDENT, "TestEnum")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(#char "."), .BINARY_OP),
+		BNode(LCToken(.IDENT, "TestEnum")), NULL_NODE, NULL_NODE,
+		BNode(LCToken(.IDENT, "VALUE")), NULL_NODE, NULL_NODE,
+	];
+	TestNodes(ptd.expected_nodes, ptd.ordered_nodes);
+
+	node = ParseExpression(ptd.cd, S64_MIN);
+	AssertEquals(node.value.token_type, #char ";");
+
+} @UnitTest
 //TODO Need to account for having variables that are not in functions
 //Then also update stack vars to all do push before functions.
 //What about #asm for scope on if/for/while and maybe also functions
@@ -2276,39 +2413,249 @@ Test_GlobalScope :: () {
 	cs : CompileSettings;
 	cd : *CompilationData;
 
-/*TODO Should we only allow constant declarations for
-global variables or also non-constant values?
-*/
 	cd = CompileCode(cs,
 #string DONE
-i : int;
-main :: () {
+#global gi : int;
+Foo :: (x : int) -> int {
+	return x;
 }
-x : int = 1;
-DONE,, unit_test_alloc);
+#global gt : Test;
+Test :: struct {
+	x : int;
+	f : float;
+	ta : [] int;
+}
+#global gf : float;
+main :: () {
+	gf = 3.1;
+	f : float = gf + 1.;
+	gp = *gi;
+	gi = gp.*;
+	gt.x = gi + 10;
+	gt.f = gf;
 
-	vars_equal : bool = TestManyVarDeclSameStack(cd.all_variables, .[
-		VarDecl("i", *cd.int_type_info, scope_index=0),
-		VarDecl("x", *cd.int_type_info, scope_index=0)
+	ge = TestEnum.TWO;
+
+	//TEST setting these in integration test
+	ga[3] = 7;
+
+	pf : *float = *gf;
+	// pf.* = gf;
+	ppf : **float = **gf;
+
+	ppi : **int = *gp;
+	gi = gpp.*.*;
+}
+#global ga : [] int;
+#global ge : TestEnum;
+TestEnum :: enum {
+	ONE;
+	TWO;
+}
+#global gp : *int;
+#global gpp : **int;
+DONE,, unit_test_alloc);
+	is_comp_success : bool = AssertEquals(false, IsCompilationFail(cd));
+	if !is_comp_success return;
+	// print(cd.disassembly);
+
+	int_p_t_info, found_int_p := GetTypeInfoPointer(*cd.int_type_info, cd);
+	AssertEquals(true, found_int_p);
+	int_p_p_t_info, found_int_p_p := GetTypeInfoPointer(int_p_t_info, cd);
+	AssertEquals(true, found_int_p_p);
+	float_p_t_info, found_float_p := GetTypeInfoPointer(*cd.float_type_info, cd);
+	AssertEquals(true, found_float_p);
+	float_p_p_t_info, found_float_p_p := GetTypeInfoPointer(float_p_t_info, cd);
+	AssertEquals(true, found_float_p_p);
+
+	fa_info, found_fa_info := GetArrayType(cd, *cd.int_type_info, .VIEW);
+	AssertEquals(true, found_fa_info);
+	if !found_fa_info return;
+
+	test_info, found_test_info := GetTypeInfoStructByName("Test", cd.all_type_info_struct);
+	AssertEquals(true, found_test_info);
+
+	enum_info, found_enum_info := GetTypeInfoEnumByName("TestEnum", cd.all_type_info_enum);
+	AssertEquals(true, found_enum_info);
+	if !found_enum_info return;
+
+	var_index : int;
+	vars_equal : bool = TestNextManyVarDecl(*var_index, cd.all_variables, .[
+		VarDecl("gi", *cd.int_type_info, RamMem(.hsp,0), scope_index=0),
+		VarDecl("gt", test_info, RamMem(.hsp,8), scope_index=0),
+		VarDecl("gf", *cd.float_type_info, RamMem(.hsp,8+test_info.runtime_size), scope_index=0),
+		VarDecl("ga", fa_info, RamMem(.hsp,16+test_info.runtime_size), scope_index=0),
+		VarDecl("ge", enum_info, RamMem(.hsp,32+test_info.runtime_size), scope_index=0),
+		VarDecl("gp", int_p_t_info, RamMem(.hsp,40+test_info.runtime_size), scope_index=0),
+		VarDecl("gpp", int_p_p_t_info, RamMem(.hsp,48+test_info.runtime_size), scope_index=0),
+
+		VarDecl("x", *cd.int_type_info, RamMem(.sbp,0), scope_index=1),
+		VarDecl("f", *cd.float_type_info, RamMem(.sbp,0), scope_index=1),
+		VarDecl("pf", float_p_t_info, RamMem(.sbp,8), scope_index=1),
+		VarDecl("ppf", float_p_p_t_info, RamMem(.sbp,16), scope_index=1),
+		VarDecl("ppi", int_p_p_t_info, RamMem(.sbp,24), scope_index=1),
 	]);
 	if !vars_equal return;
-	i_var := cd.all_variables[0];
-	x_var := cd.all_variables[1];
+	gi_var := cd.all_variables[0];
+	gt_var := cd.all_variables[1];
+	gf_var := cd.all_variables[2];
+	ga_var := cd.all_variables[3];
+	ge_var := cd.all_variables[4];
+	gp_var := cd.all_variables[5];
+	gpp_var := cd.all_variables[6];
+	x_var := cd.all_variables[7];
+	f_var := cd.all_variables[8];
+	pf_var := cd.all_variables[9];
+	ppf_var := cd.all_variables[10];
+	ppi_var := cd.all_variables[11];
+
+	max_heap_offset : int = GlobalVarMaxHeapOffset(cd.all_variables);
 
 	instr_index : int = 0;
 	TestNextManyInstr(*instr_index, cd, .[
-		//Initialize i : int
-		MakeMI(.mset, i_var.op, Imm(0), Imm(i_var.t_info.runtime_size)),
+		MakeMI(.mov, RamMem(.sbp,-PRE_PROC_STACK_SIZE-cd.int_type_info.runtime_size), 
+			x_var.op, Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.ret),
+	]);
+
+	gi_0, gi_1 := GetMemoryAddressAsOperands(gi_var.op);
+	ga_0, ga_1 := GetMemoryAddressAsOperands(ga_var.op);
+	TestNextManyInstr(*instr_index, cd, .[
+		//First instruction since we added global vars
+		MakeMI(.add, RegMem(.hcp), Imm(max_heap_offset)),
+		//gf = 3.;
+		MakeMI(.mov, gf_var.op, FImm(3.1), Imm(cd.float_type_info.runtime_size)),
+		//f : float = gf + 1.;
+		FloatInstr(.add, f_var.op, gf_var.op, FImm(1.)),
+		//ga = *gi;
+		MakeMI(.add, RamMem(.sbp,8), gi_0, gi_1),
+		MakeMI(.mov, gp_var.op, RamMem(.sbp,8), Imm(int_p_t_info.runtime_size)),
+		//gi = gp.*;
+		MakeMI(.mov, RamMem(.sbp,8), gp_var.op, Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mov, RegMem(.r0), RamMem(.sbp,8), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mov, gi_var.op, RamMem(.r0), Imm(int_p_t_info.runtime_size)),
+
+		//gt.x = gi + 10;
+		MakeMI(.add, RamMem(.sbp,8), gi_var.op, Imm(10)),
+		MakeMI(.mov, gt_var.op, RamMem(.sbp,8), Imm(cd.int_type_info.runtime_size)),
+		//gt.f = gf;
+		MakeMI(.mov, AddOperandOffset(8,gt_var.op), gf_var.op, Imm(cd.float_type_info.runtime_size)),
+		//ge = TestEnum.TWO;
+		MakeMI(.mov, ge_var.op, Imm(1), Imm(enum_info.runtime_size)),
+	]);
+
+	gf_0, gf_1 := GetMemoryAddressAsOperands(gf_var.op);
+	ppf_0, ppf_1 := GetMemoryAddressAsOperands(ppf_var.op);
+	gp_0, gp_1 := GetMemoryAddressAsOperands(gp_var.op);
+	TestNextManyInstr(*instr_index, cd, .[
+		//ga[3] = 7;
+		MakeMI(.add, RamMem(.sbp,8), ga_0, ga_1),
+		MakeMI(.add, RegMem(.ax), RamMem(.sbp,8), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mov, RamMem(.sbp,8), RamMem(.ax), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mul, RegMem(.ax), Imm(3), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.add, RamMem(.sbp,8), RamMem(.sbp,8), RegMem(.ax)),
+		MakeMI(.mov, RegMem(.r0), RamMem(.sbp,8), Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mov, RamMem(.r0), Imm(7), Imm(cd.int_type_info.runtime_size)),
+	]);
+	TestNextManyInstr(*instr_index, cd, .[
+		//pf : *float = *gf;
+		MakeMI(.add, pf_var.op, gf_0, gf_1),
+		//ppf : **float = **gf;
+		MakeMI(.add, ppf_var.op, gf_0, gf_1),
+		MakeMI(.add, RamMem(.sbp,24), ppf_0, ppf_1),
+		MakeMI(.mov, ppf_var.op, RamMem(.sbp,24), Imm(float_p_p_t_info.runtime_size)),
+
+		//ppi : **int = *gp;
+		MakeMI(.add, RamMem(.sbp,24), gp_0, gp_1),
+
+		//gi = gpp.*.*;
+		MakeMI(.mov, RamMem(.sbp,32), gpp_var.op, Imm(int_p_p_t_info.runtime_size)),
+		MakeMI(.mov, RegMem(.r0), RamMem(.sbp,32), Imm(int_p_p_t_info.runtime_size)),
+		MakeMI(.mov, RamMem(.sbp,32), RamMem(.r0), Imm(int_p_p_t_info.runtime_size)),
+		MakeMI(.mov, RegMem(.r0), RamMem(.sbp,32), Imm(int_p_p_t_info.runtime_size)),
+		MakeMI(.mov, gi_var.op, RamMem(.r0), Imm(cd.int_type_info.runtime_size)),
 
 		MakeMI(.exit),
 	]);
 
-	TestNextManyInstr(*instr_index, cd, .[
-		//x : int = 1
-		MakeMI(.mov, x_var.op, Imm(1), Imm(x_var.t_info.runtime_size)),
-	]);
-
 	AssertEquals(instr_index, cd.all_music_instructions.count);
+
+	//TEST cannot have global vars with same names
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+#global fa : int;
+main :: () {}
+#global fa : float;
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST cannot have global fixed array declaration
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+#global fa : [1] int;
+main :: () {}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST cannot have global var not in global scope
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	#global x : int;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST if statement cannot be in global scope
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+if 0 {}
+main :: () {}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST for loop cannot be in global scope
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+for 0..10 {}
+main :: () {}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST while loop cannot be in global scope
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+while 0 == 1 {}
+main :: () {}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST Function call cannot be in global scope
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {}
+Foo :: () {}
+Foo();
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST Function call cannot be in global scope
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {}
+Foo :: (i : int) -> bool {}
+Foo(0);
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST Variable Assignment not allowed in global scope
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+x : int = 1;
+main :: () {}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
 
 } @UnitTest
 
@@ -5323,40 +5670,155 @@ Test_CompileConstant :: () {
 
 	cd = CompileCode(cs,
 #string DONE
-x :: 10;
-b :: true;
-y : int : 2;
-pi : float : 3.14159;
-main :: () {}
+#global x :: 10;
+#global b :: true;
+#global b2 : bool : false;
+main :: () {
+	i : int = x;
+	f : float = PI;
+	bs : bool = b;
+
+	i = x + 1;
+	f = PI - 2.3;
+}
+#global y : int : 2;
+#global PI : float : 3.14159;
 DONE,,unit_test_alloc);
+	is_comp_success : bool = AssertEquals(false, IsCompilationFail(cd));
+	if !is_comp_success return;
+	// print(cd.disassembly);
 
 	var_index : int = 0;
 	vars_equal := TestNextManyVarDecl(*var_index, cd.all_variables, .[
 		VarDecl("x", *cd.int_type_info, Imm(10), 0),
 		VarDecl("b", *cd.bool_type_info, Imm(1), 0),
+		VarDecl("b2", *cd.bool_type_info, Imm(0), 0),
 		VarDecl("y", *cd.int_type_info, Imm(2), 0),
-		VarDecl("pi", *cd.float_type_info, FImm(3.14159), 0),
+		VarDecl("PI", *cd.float_type_info, FImm(3.14159), 0),
+
+		VarDecl("i", *cd.int_type_info, RamMem(.sbp,0), 1),
+		VarDecl("f", *cd.float_type_info, RamMem(.sbp,8), 1),
+		VarDecl("bs", *cd.bool_type_info, RamMem(.sbp,16), 1),
 	]);
 	if !vars_equal return;
-	x_foo_var := cd.all_variables[0];
+	x_var := cd.all_variables[0];
+	b_var := cd.all_variables[1];
+	b2_var := cd.all_variables[2];
+	y_var := cd.all_variables[3];
+	PI_var := cd.all_variables[4];
+	i_var := cd.all_variables[5];
+	f_var := cd.all_variables[6];
+	bs_var := cd.all_variables[7];
 
 	instr_index : int = 0;
 	TestNextManyInstr(*instr_index, cd, .[
+		MakeMI(.mov, i_var.op, x_var.op, Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.mov, f_var.op, PI_var.op, Imm(cd.float_type_info.runtime_size)),
+		MakeMI(.mov, bs_var.op, b_var.op, Imm(cd.bool_type_info.runtime_size)),
+
+		//i = x + 1;
+		MakeMI(.add, RamMem(.sbp,24), x_var.op, Imm(1)),
+		MakeMI(.mov, i_var.op, RamMem(.sbp,24), Imm(cd.int_type_info.runtime_size)),
+		//f = PI + 2.3;
+		FloatInstr(.sub, RamMem(.sbp,24), PI_var.op, FImm(2.3)),
+		MakeMI(.mov, f_var.op, RamMem(.sbp,24), Imm(cd.float_type_info.runtime_size)),
+
 		MakeMI(.exit),
 	]);
 
 	AssertEquals(instr_index, cd.all_music_instructions.count);
 
-	#if 0 {
-	instr_index : int = 0;
-	TestNextManyInstr(*instr_index, cd, .[
-		//v : *void;
-		MakeMI(.mset, RamMem(.scp), Imm(0), Imm(v_var.t_info.runtime_size)),
-		MakeMI(.add, RegMem(.scp), Imm(v_var.t_info.runtime_size)),
-		//i : * int = cast(*int) v;
-		MakeMI(.push, v_var.op, Imm(i_var.t_info.runtime_size)),
-	]);
-	}
+	//TEST cannot have global type struct
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+#global test :: neume.{};
+main :: () {}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST cannot assign value to global constant
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+#global test :: 1;
+main :: () {
+	test = 2;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST cannot have global constant not in global scope
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {
+	#global test :: 1;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST invalid global constant with same name
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+#global test :: 1;
+main :: () {}
+#global test :: 2.0;
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST invalid global constant without global directive
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+t :: 1;
+main :: () {}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST invalid global constant without global directive
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+t : float : 1.0;
+main :: () {}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST enum not available as constant
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+#global t : Test : Test.TWO;
+main :: () {}
+Test :: enum {
+	ONE;
+	TWO;
+	THREE;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+#global t2 :: Test.THREE;
+main :: () {}
+Test :: enum {
+	ONE;
+	TWO;
+	THREE;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST struct not available as constant
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+s : neume : neume.{};
+main :: () {}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST struct not available as constant
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+s :: neume.{};
+main :: () {}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
 
 } @UnitTest
 
@@ -13369,6 +13831,146 @@ DONE,,unit_test_alloc);
 
 } @UnitTest
 
+
+Test_ParseDirectiveImport :: () {
+	ptd := MakeParseTestData();
+
+	/*
+		#import
+		    \
+		  "c_load/Basic"
+	*/	
+	array_reset_keeping_memory(*ptd.cd.lexer.lexer_tokens);
+	LexCodeTokens(*ptd.cd.lexer, "#import \"c_load/Basic\";");
+	node := ParseExpression(ptd.cd, S64_MIN);
+
+	array_reset_keeping_memory(*ptd.ordered_nodes);
+	DFSPreWithNull(node, *ptd.ordered_nodes, GetOrderedNodesWithNull);
+	ptd.expected_nodes = BinaryNode.[
+		BNode(LCToken(#char "#", cast(int) CodeDirective.import), .UNARY_OP), NULL_NODE,
+		BNode(LCToken(.STRING, "c_load/Basic")), NULL_NODE, NULL_NODE,
+	];
+	TestNodes(ptd.expected_nodes, ptd.ordered_nodes);
+
+	node = ParseExpression(ptd.cd, S64_MIN);
+	AssertEquals(node.value.token_type, #char ";");
+
+} @UnitTest
+
+Test_DirectiveImport :: () {
+	cs : CompileSettings;
+	cd : *CompilationData;
+	count_equal : bool;
+
+//TEST we also import import_test_2 in import_test so
+//we it should compile with 1 import below
+	cd = CompileCode(cs,
+#string DONE
+#import "c_test/import_test";
+#import "c_test/import_test_2";
+main :: () {
+  v : V2;
+  x := Foo(0);
+}
+DONE,,unit_test_alloc);
+
+	v2_info, found_v2_info := GetTypeInfoStructByName("V2", cd.all_type_info_struct);
+	AssertEquals(true, found_v2_info);
+	if !found_v2_info return;
+	AssertEquals(16, v2_info.runtime_size);
+	AssertEquals("V2", v2_info.name);
+	AssertEquals(TypeInfoTag.STRUCT, v2_info.type_enum);
+	v2_x_info, found_x_info := GetStructMember("x", v2_info);
+	AssertEquals(true, found_x_info);
+	if !found_x_info return;
+	AssertEquals(cd.float_type_info.runtime_size, v2_x_info.t_info.runtime_size);
+	AssertEquals("x", v2_x_info.name);
+	AssertEquals(TypeInfoTag.FLOAT, v2_x_info.t_info.type_enum);
+	AssertEquals(0, v2_x_info.offset_in_bytes);
+	v2_y_info, found_y_info := GetStructMember("y", v2_info);
+	AssertEquals(true, found_y_info);
+	if !found_y_info return;
+	AssertEquals(cd.float_type_info.runtime_size, v2_y_info.t_info.runtime_size);
+	AssertEquals("y", v2_y_info.name);
+	AssertEquals(TypeInfoTag.FLOAT, v2_y_info.t_info.type_enum);
+	AssertEquals(8, v2_y_info.offset_in_bytes);
+
+	//NOTE : First type is main type () -> ()
+	count_equal = AssertEquals(2, cd.all_type_info_procedure.count);
+	foo_type : *TypeInfoProcedure;
+	if count_equal {
+		foo_type = cd.all_type_info_procedure[1];
+		AssertEquals(1, foo_type.argument_types.count);
+		AssertEquals(*cd.int_type_info, foo_type.argument_types[0]);
+		AssertEquals(1, foo_type.return_types.count);
+		AssertEquals(*cd.int_type_info, foo_type.return_types[0]);
+	}
+
+	count_equal = AssertEquals(2, cd.all_function_declarations.count);
+	foo_decl : FunctionDeclaration;
+	if count_equal {
+		foo_decl = cd.all_function_declarations[1];
+		AssertEquals(foo_type, foo_decl.t_info_proc);
+	}
+
+	var_index : int;
+	vars_equal := TestNextManyVarDecl(*var_index, cd.all_variables, .[
+		VarDecl("v", *v2_info.info, RamMem(.sbp,0)),
+		VarDecl("x", *cd.int_type_info, RamMem(.sbp,v2_info.runtime_size)),
+		VarDecl("x", *cd.int_type_info, RamMem(.sbp,0)),
+		VarDecl("y", *cd.int_type_info, RamMem(.sbp,8)),
+	]);
+	if !vars_equal return;
+	v_var := cd.all_variables[0];
+	x_var := cd.all_variables[1];
+	x_foo_var := cd.all_variables[2];
+	y_foo_var := cd.all_variables[3];
+
+	instr_index : int = 0;
+	TestNextManyInstr(*instr_index, cd, .[
+		// v : V2;
+		MakeMI(.mset, v_var.op, Imm(0), Imm(v2_info.runtime_size)),
+	]);
+
+	return_op := RamMem(.sbp,v_var.t_info.runtime_size);
+	next_stack_p : int = v_var.t_info.runtime_size + PRE_PROC_STACK_SIZE;
+	for cd.all_function_return_variables if it.function_id == foo_decl.id {
+		next_stack_p += it.t_info.runtime_size;
+	}
+	TestNextManyInstr(*instr_index, cd, .[
+		//Foo(0)
+		//Push all reg values on (including sbp and scp) so we can get them back after
+		MakeMI(.push_all_stack_reg, AddOperandOffset(foo_type.return_types[0].runtime_size, return_op)),
+		//Push on integer 0 argument
+		MakeMI(.mov, RamMem(.sbp,next_stack_p), Imm(0), Imm(cd.int_type_info.runtime_size)),
+		//Reset the .sbp for the new stack
+		MakeMI(.add, RegMem(.sbp), RegMem(.sbp), Imm(next_stack_p)),
+		//Push where we need to jmp back to
+		MakeMI(.mov, PROC_RETURN_OP, Imm(instr_index+5)),
+		//call foo with instruction index = 0
+		MakeMI(.call, Imm(foo_decl.start_instr_index)),
+		//Reload all values from previous satck so we get back our last sbp and scp here too.
+		MakeMI(.pop_all_stack_reg, PREVIOUS_SBP_OP),
+
+		//Return optimized out since we copy to the same place
+		// MakeMI(.mov, pr_var.op, return_op, Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.exit),
+	]);
+
+	//Foo :: (x : int) -> int
+	TestNextManyInstr(*instr_index, cd, .[
+		MakeMI(.add, y_foo_var.op, x_foo_var.op, Imm(1)),
+		MakeMI(.mov, 
+			RamMem(.sbp,-PRE_PROC_STACK_SIZE-cd.int_type_info.runtime_size),
+			y_foo_var.op, 
+			Imm(cd.int_type_info.runtime_size)),
+		MakeMI(.ret),
+	]);
+
+	AssertEquals(instr_index, cd.all_music_instructions.count);
+
+} @UnitTest
+
 Test_ParseDirectiveLoad :: () {
 	ptd := MakeParseTestData();
 
@@ -13388,6 +13990,9 @@ Test_ParseDirectiveLoad :: () {
 		BNode(LCToken(.STRING, "Basic")), NULL_NODE, NULL_NODE,
 	];
 	TestNodes(ptd.expected_nodes, ptd.ordered_nodes);
+
+	node = ParseExpression(ptd.cd, S64_MIN);
+	AssertEquals(node.value.token_type, #char ";");
 
 } @UnitTest
 Test_DirectiveLoad :: () {

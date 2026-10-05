@@ -735,7 +735,7 @@ if(Window) {
 			dt_apollo = current_time_monotonic() - start_apollo;
 		}
 		} 
-		#if 1 {
+		#if 0 {
 		//NOTE : We can remove this sleeping and just use spin lock if we have any framerate issues.
 		//But I am testing for now to see if it works in most basic cases which should help with cpu load in general.
 		//We give 2 milliseconds grace so the process can come back which seems to be enough on both mac and windows. 

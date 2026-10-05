@@ -844,6 +844,8 @@ CodeDirective :: enum {
 	asm;
 	type;
 	load;
+	import;
+	global;
 }
 DirectiveTypeName :: struct {
 	t_info : *TypeInfo;
@@ -1728,9 +1730,15 @@ ParseLeaf :: (cd : *CompilationData, pl : ParserLevel = .STATEMENT) -> *BinaryNo
 		case .asm;
 			node = MakeBinaryNode(null,next,null,*cd.binary_tree);
 		//TODO Could just make this the default case if that is it.
+		case .global; #through;
+		case .import; #through;
 		case .load; #through;
 		case .type;
 			type_expr := ParseExpression(cd,S64_MIN,pl);
+			if type_expr == null {
+				CreateCompErr(cd, .PARSER, type_expr, "Directive requires an argument.");
+				return null, false;
+			}
 			node = MakeBinaryNode(null,next,type_expr,*cd.binary_tree,.UNARY_OP);
 		}
 	}
@@ -3807,8 +3815,15 @@ AddByteOffsetFromSbp :: inline (size : int, cd : *CompilationData) {
 //Likely can think about this and add it when we update everything to work with structs on the stack.
 CreateStackVarData :: inline (cd : *CompilationData, name : string, t_info : *TypeInfo, 
 	var_type : VariableType = .DEFAULT)
--> *VariableData
+-> *VariableData, is_error : bool
 {
+	//TODO Need to check this on the return depending on how were creating. 
+	//OR we just pass in a node and create the same error here
+	// current_scope : ScopeData = GetCurrentScope(cd);
+	// for cd.variable_data_stack if it.name == name && current_scope.id == it.scope_id {
+	// 	return null, true;
+	// }
+
 	stack_var_op : MusicOperand = RamMem(.sbp, cd.byte_offset_from_sbp);
 	var : *VariableData = CreateVarData(cd, name, t_info, stack_var_op, var_type);
 
@@ -3820,7 +3835,7 @@ CreateStackVarData :: inline (cd : *CompilationData, name : string, t_info : *Ty
 	// cd.byte_offset_from_sbp += var.t_info.runtime_size;
 	AddByteOffsetFromSbp(var.t_info.runtime_size, cd);
 
-	return var;
+	return var, false;
 }
 
 CreateVarData :: inline (
@@ -4312,12 +4327,14 @@ TanoStackTestInstr :: (t_stack_op : MusicOperand, from_op : MusicOperand, cd : *
 }
 
 IsConstant :: inline (node : *BinaryNode) -> bool {
-	if node.code_ir.op.operand_type == {
+	return IsConstantOp(node.code_ir.op);
+}
+IsConstantOp :: inline (op : MusicOperand) -> bool {
+	if op.operand_type == {
 	case MusicOperandType.FLOAT; #through;
 	case MusicOperandType.INTEGER;
 		return true;
 	}
-
 	return false;
 }
 
@@ -5365,7 +5382,7 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 			!AllOrEquals(node.left.code_ir.t_info.type_enum, STRUCT_TYPE_INTERNAL) 
 		{
 			CreateCompErr(cd, .EVALUATION, node, "Not struct type.");
-			return false;			
+			return false;		
 		}
 
 		struct_info := cast(*TypeInfoStruct) node.left.code_ir.t_info;
@@ -5420,7 +5437,7 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 					if eq_node.value.token_type != #char "=" {
 						CreateCompErr(cd, .EVALUATION, eq_node, 
 						"Cannot have non-\"=\" after \"=\" struct member assigment.");
-						return false;						
+						return false;					
 					}
 					//TODO Should check that this works on parsing as well.
 					if eq_node.right == null || eq_node.left == null {
@@ -5439,7 +5456,7 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 				if no_equals_nodes.count != struct_info.struct_members.count {
 					CreateCompErr(cd, .EVALUATION, node, 
 					"Not enough values provided in this struct literal.");
-					return false;					
+					return false;				
 				}
 			}
 
@@ -5450,7 +5467,7 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 				if !success {
 					CreateCompErr(cd, .EVALUATION, literal_node, 
 					sprint("Invalid struct member type : %\n", member_info.name));
-					return false;					
+					// return false;				
 				}
 			}
 
@@ -5465,7 +5482,7 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 				if !found_member_info {
 					CreateCompErr(cd, .EVALUATION, eq_node, 
 					sprint("Struct member not found : %\n", eq_node.left.value.token_string));
-					return false;			
+					// return false;	
 				}
 
 				member_op := AddOperandOffset(member_info.offset_in_bytes, node.code_ir.op);
@@ -5473,7 +5490,7 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 				if !success {
 					CreateCompErr(cd, .EVALUATION, eq_node.right, 
 					sprint("Invalid struct member type : %\n", member_info.name));
-					return false;					
+					// return false;			
 				}
 			}
 		}
@@ -6650,12 +6667,14 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 	}
 	case .DOUBLE_COLON; #through;
 	case #char ":"; {
-		//TODO Sanity check : This can be remove once we check it in the parser.
-		assert(node.left != null && node.right != null);
-
 		if node.value.token_type == .DOUBLE_COLON {
 			assert(cd.comp_level.type == .STATEMENT_LEVEL, 
 				"Only evaluating :: for constant variables. All other :: should be evaluated externally in the parser. : %\n", node);
+		}
+		//TODO Sanity check : This can be remove once we check it in the parser.
+		if node.left == null || node.right == null {
+			CreateCompErr(cd, .EVALUATION, node, "Invalid node.");
+			return false;
 		}
 
 		/*Maybe we could check this somewhere else but this just skips the node for now for constants.
@@ -6755,20 +6774,23 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 		// 	node.code_ir.ir_type == node.right.code_ir.ir_type;
 		// 	node.code_ir.t_info == node.right.code_ir.t_info;
 		// }
-		else if cd.comp_level.type == .STATEMENT_LEVEL &&
 				//x :: 0;
-				(node.value.token_type == .DOUBLE_COLON || 
-					//x : int : 0;
-			  		(node.value.token_type == #char ":" && node.left.value.token_type == #char ":")
-				)
-	   {
+				// (node.value.token_type == .DOUBLE_COLON || 
+				// 	//x : int : 0;
+			  	// 	(node.value.token_type == #char ":" && node.left.value.token_type == #char ":")
+				// )
+
+		else if cd.comp_level.type == .STATEMENT_LEVEL && node.value.token_type == .DOUBLE_COLON &&
+			IsCodeDirectives(node.right.value, .[.type])
+		{
+			return true;
+		}
+		else if cd.comp_level.type == .STATEMENT_LEVEL && IsConstantDeclaration(node) {
 	   	//TODO We can check this out of order on global scope as well on second pass by keeping track
 	   	//of scope there and then running it here at statement level in scopes and in order when in scope.
-
-	   	//TODO Could check this in the if above if that is better.
-	   	if node.right != null && node.right.value.token_type == #char "#" {
-	   		//We already parsed this on second pass so no need to parse here in this case
-	   		return true;
+	   	if !IsCodeDirectives(node.parent.value, .[.global]) || !IsInGlobalScope(cd) {
+				CreateCompErr(cd, .EVALUATION, node, "Constants must be #global directives in global scope.");
+				return false;	   		
 	   	}
 
 	   	/*In general, we only have constant ints, float and bools. We don't want other constant types. 
@@ -6779,10 +6801,11 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 	   	*/
 	   	//NOTE : This also checks that we only allow ints, floats and bools as constant for now.
 	   	if !IsConstant(node.right) {
-				CreateCompErr(cd, .EVALUATION, node.right, "Constant value required.");
+				CreateCompErr(cd, .EVALUATION, node.right, "Constant value required : int, float, bool or enum.");
 				return false;
 			}
 
+			VALID_GLOBAL_CONSTANT_TYPES :: TypeInfoTag.[.INTEGER, .FLOAT, .BOOL];
 			//TODO Maybe we should just separate these cases. They are the same just different syntax that is why.
 			//So any common functionality like the IsConstant check would remain the same as above.
 			//TODO We could just add base literals (float, int, bool) constants for now.
@@ -6790,42 +6813,60 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 			//the size and values of each struct, but then that would require in order processing.
 			//SO we could allow global struct constants but they have to be after the declaration of the struct.
 	   	if node.value.token_type == .DOUBLE_COLON {
-				if node.left.value.token_type != .IDENT {
-					CreateCompErr(cd, .EVALUATION, node.left.left, "Identifier required.");
+				if node.left == null || node.left.value.token_type != .IDENT {
+					CreateCompErr(cd, .EVALUATION, node, "Identifier required.");
 					return false;
 				}
+				if node.right.code_ir.t_info == null || 
+					!AllOrEquals(node.right.code_ir.t_info.type_enum, VALID_GLOBAL_CONSTANT_TYPES) 
+				{
+					CreateCompErr(cd, .EVALUATION, node, tprint("Valid global constant types are %.", VALID_GLOBAL_CONSTANT_TYPES));
+					return false;					
+				}
 
-				//TODO We could pull out name and type here and just call this on the bottom to reuse
+				name_already_exists : bool = GlobalVarNameAlreadyExists(node.left, cd);
+				if name_already_exists return false;
+
 				CreateVarData(cd, node.left.value.token_string, node.right.code_ir.t_info, node.right.code_ir.op);
 	   	}
 			else if node.left.value.token_type == #char ":" {
 				//TODO Can remove this assertion once we know COLON and DOUBLE_COLON are working properly.
-				assert(node.left.right != null, "Internal Error : Invalid double colon with no type on node : %.\n", node);
+				// assert(node.left.right != null, "Internal Error : Invalid double colon with no type on node : %.\n", node);
+				if node.left.right == null || node.left.right.code_ir.t_info == null || node.right.code_ir.t_info == null {
+					CreateCompErr(cd, .EVALUATION, node.left.right, "Invalid constant var.");
+					return false;					
+				}
 				if node.left.right.code_ir.ir_type != .DATA_TYPE_INFO {
 					CreateCompErr(cd, .EVALUATION, node.left.right, "Data type required.");
 					return false;
 				}
-				if node.left.left.value.token_type != .IDENT {
+				if node.left.left == null || node.left.left.value.token_type != .IDENT {
 					CreateCompErr(cd, .EVALUATION, node.left.left, "Identifier required.");
 					return false;
 				}
 
 				right_t_info : *TypeInfo = node.right.code_ir.t_info;
 				left_t_info : *TypeInfo = node.left.right.code_ir.t_info;
+				if !AllOrEquals(right_t_info.type_enum, VALID_GLOBAL_CONSTANT_TYPES) {
+					CreateCompErr(cd, .EVALUATION, node, tprint("Valid global constant types are %.", VALID_GLOBAL_CONSTANT_TYPES));
+					return false;	
+				}
 				if left_t_info != right_t_info {
-					CreateCompErr(cd, .EVALUATION, node.right, "Constant value required.");
+					CreateCompErr(cd, .EVALUATION, node, "Not the same types.");
 					return false;
 				}
+
+				name_already_exists : bool = GlobalVarNameAlreadyExists(node.left.left, cd);
+				if name_already_exists return false;
 
 				CreateVarData(cd, node.left.left.value.token_string, left_t_info, node.right.code_ir.op);
 			}
 		}
 		//TODO Check this based on new CompilationLevel flag
-		else if cd.comp_level.type == .STATEMENT_LEVEL &&
-				node.value.token_type == #char ":" &&
-				node.left.value.token_type == .IDENT && 
-				node.right.code_ir.ir_type == .DATA_TYPE_INFO 
-		{
+				// node.value.token_type == #char ":" &&
+				// node.left.value.token_type == .IDENT && 
+				// node.right.code_ir.ir_type == .DATA_TYPE_INFO 
+		else if cd.comp_level.type == .STATEMENT_LEVEL && IsVariableDeclaration(node) {
 			//ACTUALLY, I think having this add here works in all cases because even if we create a pointer
 			//on the heap, this would still add the pointer size. So I think this is works in all cases.
 			//x : int; AND x : int = 0; AND x : *int = New(int);
@@ -6835,7 +6876,32 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 				//TODO I think maybe we don't need this case anymore since we have ":=" as one token now
 				//TODO Technically we can just set this later... especially if we can node.right == null
 				node.code_ir.t_info = node.right.code_ir.t_info;
-			} else if node.parent == null {
+			} 
+			else if node.parent != null && IsCodeDirectives(node.parent.value, .[.global]) {
+		   	if !IsInGlobalScope(cd) {
+					CreateCompErr(cd, .EVALUATION, node, "Global variables must be in global scope.");
+					return false;
+		   	}
+
+				name_already_exists : bool = GlobalVarNameAlreadyExists(node.left, cd);
+				if name_already_exists return false;
+
+				if node.right.code_ir.t_info == null || IsArrayInfoType(.FIXED, node.right.code_ir.t_info) {
+					CreateCompErr(cd, .EVALUATION, node, "Invalid global variable type. Cannot be fixed array.");
+					return false;
+				}
+
+		   	total_heap_offset : int = GlobalVarMaxHeapOffset(cd.all_variables);
+				global_var := CreateVarData(cd, node.left.value.token_string, node.right.code_ir.t_info, 
+					RamMem(.hsp, total_heap_offset));
+
+				//Don't actually need this since this is a directive so it won't be accessed anywhere up the tree.
+				// node.code_ir.op = global_var.op;
+				// node.code_ir.t_info = global_var.t_info;
+				// node.code_ir.ir_type = CodeIRType.STACK_VARIABLE; //Should this be STACK_VARIABLE_DECLARATION?
+				// node.code_ir.code_value_type = .L_VALUE;
+			}
+			else if node.parent == null {
 				/*TODO If this is a struct, then we need to set it's default values. We could do that with either
 				a set of single mov instructions OR store the default struct as a constant and just copy it over
 				with one mov instruction with mov_size.
@@ -6848,6 +6914,7 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 				//Constant memory copied at the beginning instead of instructions is faster and less instructions than outputting instructions for all constants and struct defaults.
 				var := CreateStackVarData(cd, node.left.value.token_string, node.right.code_ir.t_info);
 				//TODO Could add default struct or other assignments if needed.
+				//If we are in global scope then we don't add anything and just add the var to the global stack section
 				if var.t_info.type_enum == .POINTER {
 					//Default pointer assignment (eg "x : *int;")
 					CreateMInstr(.mov, var.op, NULL_POINTER_OP, Imm(var.t_info.runtime_size), d=cd);
@@ -6864,7 +6931,8 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 
 				cd.already_reset_stack = true;
 			} else {
-				assert(false, "Parent of \":\" : % is invalid node : %.\n", node.*, node.parent.*);
+				CreateCompErr(cd, .EVALUATION, node, "Invalid parnent node.");
+				return false;
 			}
 		} 
 		else if node.value.token_type == #char ":" && node.left.value.token_type == .IDENT && node.right == null {
@@ -6880,6 +6948,7 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 		// }
 		else if node.right != null && node.right.code_ir.ir_type == .UNKNOWN_IDENT {
 			CreateCompErr(cd, .EVALUATION, node.right, "Unknown identifier.");
+			return false;
 		}
 		else {
 			//TODO Maybe this should be an unknown internal error? We have some errors on top as well.
@@ -7263,7 +7332,15 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 				found_enum_value = true;
 				break;
 			}
-			assert(found_enum_value); //sanity check
+			if !found_enum_value {
+				CreateCompErr(cd, .EVALUATION, l_node, 
+				sprint("Enum value not found : %.", l_node.value.token_string));
+				//We let this go up in case we have other errors up the tree. Best to do this in as many places as possible.
+				//OR if an error message is low down the tree later we can just remove the return if it's not a null error kind of thing.
+				//For example, enum constant in global scope not allowed so up the tree it will say that with the #global directive
+				// return false;
+			}
+			// assert(found_enum_value); //sanity check
 
 			l_node.code_ir.t_info = enum_info;
 			l_node.code_ir.op = Imm(enum_value);
@@ -7286,6 +7363,17 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 				break;
 			}
 
+			found_global_var : bool = false;
+			global_var : VariableData;
+			if !found_var {
+				global_vars : [] VariableData = GetAllGlobalVars(cd.all_variables);
+				for global_vars if it.name == node.value.token_string {
+					found_global_var = true;
+					global_var = it;
+					break;	
+				}
+			}
+
 			//TODO Maybe this is inefficient to check here and we should just check it on function calls?
 			/*DOC : For now we don't do function name overload type inference so we just error out if we find > 1.
 			A current work around is setting a function pointer eg (x : (int) -> int = Foo;) by specific type.
@@ -7301,7 +7389,11 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 				func_decl = it;
 			}
 
-			struct_type, found_struct_type := GetTypeInfoStructByName(node.value.token_string, cd.all_type_info_struct);
+			found_struct_type : bool = false;
+			struct_type : *TypeInfoStruct;
+			if !found_global_var {
+				struct_type, found_struct_type = GetTypeInfoStructByName(node.value.token_string, cd.all_type_info_struct);
+			}
 
 			found_enum_type : bool = false;
 			enum_type : *TypeInfoEnum;
@@ -7334,6 +7426,24 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 				//because the register will get reused.
 				node.code_ir.op = var.op;
 			} 
+			else if found_global_var {
+				if IsGlobalConstant(global_var) {
+					//We cannot update a constant value so it can only be on the right of an assignment
+					node.code_ir.code_value_type = CodeValueType.R_VALUE;
+					if global_var.op.operand_type == .INTEGER {
+						node.code_ir.ir_type = .INTEGER;
+					} else if global_var.op.operand_type == .FLOAT {
+						node.code_ir.ir_type = .FLOAT;
+					}
+				} else {
+					node.code_ir.code_value_type = CodeValueType.L_VALUE;
+					//This is used for pointer checking but is not a great name since global vars are stored on the heap
+					node.code_ir.ir_type = .STACK_VARIABLE;
+				}
+				node.code_ir.ir_data_id = global_var.id;
+				node.code_ir.t_info = global_var.t_info;
+				node.code_ir.op = global_var.op;
+			}
 			else if found_struct_type {
 				node.code_ir.ir_type = .DATA_TYPE_INFO;
 				// node.code_ir.ir_data_id = struct_type.id;
@@ -8779,13 +8889,14 @@ REMINDER : we need to make sure that context.allocator passed in is used for all
 and we need to add an internal allocator that gets cleared at the end of compilation and also maybe one that gets cleared
 after each pass OR also for each expression/statement parsing and evaluation.
 */
+GLOBAL_SCOPE_ID :: 0;
 CompileCode :: inline (cs : CompileSettings, code : string) -> *CompilationData {
 	//TODO I think we only need to return some of the data in here eventually.
 	cd : *CompilationData = MakeCompilationData();
 
 	//Create the global_scope. We don't use CreateScope because there is no actual data associated to it.
 	//TODO We could pull this out if needed and we want to use it everywhere and since it will be constant.
-	global_scope := ScopeData.{id=0,scope_index=0,scope_type=.GLOBAL_SCOPE};
+	global_scope := ScopeData.{id=GLOBAL_SCOPE_ID,scope_index=0,scope_type=.GLOBAL_SCOPE};
 	array_add(*cd.all_scope_data, global_scope);
 	array_add(*cd.open_scope_stack, global_scope.id);
 	cd.next_scope_id = 1;
@@ -8871,10 +8982,7 @@ CompileCode :: inline (cs : CompileSettings, code : string) -> *CompilationData 
 			//TODO Can use this if we have to parse everything sequentially like when we checked brackets here.
 			// current_index : int = cd.lexer.next_index;
 			current_token : LCodeToken = cd.lexer.lexer_tokens[cd.lexer.next_index];
-			if current_token.token_type == #char "#" && 
-				//TODO Can add import here later when we implement it
-				AllOrEquals(code_directive_enums[current_token.int_value], .[.load])
-			{
+			if IsCodeDirectives(current_token, .[.load, .import]) {
 				/*DOC : For now for simplicity, we are lexing each file completely and then looping over each file and
 				parsing each file on each pass that we load in.
 				TODO EVENTUALLY with lazy lexing, we can just lex the tokens directly from the file string for each pass
@@ -8893,6 +9001,8 @@ CompileCode :: inline (cs : CompileSettings, code : string) -> *CompilationData 
 					"Invalid load directive.");
 					break load_pass;
 				}
+
+				if IsSemicolonError(cd) break load_pass;
 
 				//TODO We could make this a function to load files with TextFile as well
 				//and then reuse to load the main file or grab from text file if we already have it.
@@ -8931,57 +9041,72 @@ CompileCode :: inline (cs : CompileSettings, code : string) -> *CompilationData 
 				}
 
 				//TODO Write a test to make sure this error is working
-				absolute_path_name, found_path := get_absolute_path(file_name);
+				//Apparently absolute path can return true on windows even if not found so we check file exists just in case
+				absolute_path_name := get_absolute_path(file_name);
+				found_path : bool = file_exists(absolute_path_name);
 				if !found_path {
 					CreateCompErr(cd, .EVALUATION, node,
 					sprint("Path not found for : %.\n", file_name));
 					break load_pass;
 				}
+
+				/*Right now #import does not load again and #load just returns an error for duplicate loads.
+				TODO We could have some cyclical dependency checking for #import
+				*/
+				already_loaded_file : bool = false;
 				for cd.all_directive_load_files if it.absolute_path_name == absolute_path_name {
-					CreateCompErr(cd, .EVALUATION, node,
-					sprint("Already loaded file : %.\n", absolute_path_name));
-					break load_pass;					
+					if code_directive_enums[current_token.int_value] == {
+					case CodeDirective.load; {
+						CreateCompErr(cd, .EVALUATION, node,
+						sprint("Already loaded file : %.\n", absolute_path_name));
+						break load_pass;
+					}
+					case CodeDirective.import; {
+						already_loaded_file = true;
+						break;
+					}
+					}
 				}
 
-				//TODO Should we use absolute path here or the one that was passed in?
-				modtime, resource_file_size, read_time_success := file_modtime_and_size(absolute_path_name);
-				//TODO Can add back max file-size here if needed.
-				// if !(read_time_success && resource_file_size < max_allowable_file_size) {
-				if !read_time_success {
-					CreateCompErr(cd, .EVALUATION, node,
-					sprint("Could not read modtime or file size : %.\n", absolute_path_name));
-					break load_pass;
+				if !already_loaded_file {
+					//TODO Should we use absolute path here or the one that was passed in?
+					modtime, resource_file_size, read_time_success := file_modtime_and_size(absolute_path_name);
+					//TODO Can add back max file-size here if needed.
+					// if !(read_time_success && resource_file_size < max_allowable_file_size) {
+					if !read_time_success {
+						CreateCompErr(cd, .EVALUATION, node,
+						sprint("Could not read modtime or file size : %.\n", absolute_path_name));
+						break load_pass;
+					}
+
+					resource_file, resource_is_open := file_open(absolute_path_name);
+					if !resource_is_open {
+						CreateCompErr(cd, .EVALUATION, node,
+						sprint("Resource file : % could not be opened.\n", absolute_path_name));
+						break load_pass;
+					}
+
+					//TODO We should probably use a separate allocator to store these files and then maybe clear
+					//it at the end of compilation. Could even technically use the temp allocator and then have it
+					//clear on the next frame or use an allocator in the compiler that gets reused after each compilation
+					//or something like that. Right now this gets held on afterwards which is unnecessary.
+					file_string := alloc_string(resource_file_size);
+					read_file_success := file_read(resource_file, file_string.data, resource_file_size);
+					// Make sure we close the resource file after using it since we now have the file_string
+					file_close(*resource_file);
+					if !read_file_success {
+						CreateCompErr(cd, .EVALUATION, node,
+						sprint("Resource file : % could not be read.\n", absolute_path_name));
+						break load_pass;
+					}
+
+					//Later we can make this more efficient with lazy lexing.
+					load_file : *DirectiveLoadFile = array_add(*cd.all_directive_load_files);
+					// load_file.file_name = copy_string(file_name);
+					load_file.absolute_path_name = copy_string(absolute_path_name);
+					//TODO Storing the file string here so we can use this once we do lazy lexing.
+					load_file.file_string = file_string;
 				}
-
-				resource_file, resource_is_open := file_open(absolute_path_name);
-				if !resource_is_open {
-					CreateCompErr(cd, .EVALUATION, node,
-					sprint("Resource file : % could not be opened.\n", absolute_path_name));
-					break load_pass;
-				}
-
-				//TODO We should probably use a separate allocator to store these files and then maybe clear
-				//it at the end of compilation. Could even technically use the temp allocator and then have it
-				//clear on the next frame or use an allocator in the compiler that gets reused after each compilation
-				//or something like that. Right now this gets held on afterwards which is unnecessary.
-				file_string := alloc_string(resource_file_size);
-				read_file_success := file_read(resource_file, file_string.data, resource_file_size);
-				// Make sure we close the resource file after using it since we now have the file_string
-				file_close(*resource_file);
-				if !read_file_success {
-					CreateCompErr(cd, .EVALUATION, node,
-					sprint("Resource file : % could not be read.\n", absolute_path_name));
-					break load_pass;
-				}
-
-				//Later we can make this more efficient with lazy lexing.
-				load_file : *DirectiveLoadFile = array_add(*cd.all_directive_load_files);
-				// load_file.file_name = copy_string(file_name);
-				load_file.absolute_path_name = copy_string(absolute_path_name);
-				//TODO Storing the file string here so we can use this once we do lazy lexing.
-				load_file.file_string = file_string;
-
-				if IsSemicolonError(cd) break load_pass;
 			}
 			else {
 				/*DOC : since we only allow load and import at beggining, once we don't have them, continue to next file.
@@ -9100,7 +9225,6 @@ CompileCode :: inline (cs : CompileSettings, code : string) -> *CompilationData 
 
 	found_main_function : bool = false;
 	cd.byte_offset_from_sbp = 0;
-	cd.comp_level.type = .NONE;
 	cd.lexer.next_index = 0;
 	cd.load_index = 0;
 	while second_pass := cd.load_index < cd.all_directive_load_files.count {
@@ -9109,11 +9233,37 @@ CompileCode :: inline (cs : CompileSettings, code : string) -> *CompilationData 
 		SetLoadedFile(*cd.lexer, loaded_file);
 		defer cd.load_index += 1; //put here in case we call continue
 		while cd.lexer.next_index < cd.lexer.lexer_tokens.count {
+			cd.comp_level.type = .NONE;
 			defer cd.lexer.next_index += 1;
+
+			next_token : LCodeToken = cd.lexer.lexer_tokens[cd.lexer.next_index];
 			//TODO Can also check for variable declaration on second pass and declare variables
 			//and place them on global scope but without initialization, so just also check ":" here and
 			//keep track of global scope. So there should be no code associated with global scope variable declaration.
-			if cd.lexer.lexer_tokens[cd.lexer.next_index].token_type == .DOUBLE_COLON {
+			if IsCodeDirectives(next_token, .[.global]) {
+				node : *BinaryNode = ParseExpression(cd,S64_MIN);
+				if cd.comp_errors.all_compiler_errors.count > 0 break second_pass;
+
+				if IsSemicolonError(cd) break second_pass;
+
+				if node.right == null || !AllOrEquals(node.right.value.token_type, .[.DOUBLE_COLON, #char ":"]) {
+					CreateCompErr(cd, .EVALUATION, node, GLOBAL_SCOPE_ERROR_MSG);
+					break second_pass;
+				} 
+
+				cd.comp_level.type = .STATEMENT_LEVEL;
+				DFSPost(node.right, cd, VisitStatementNode);
+				if cd.comp_errors.all_compiler_errors.count > 0 break second_pass;
+
+				is_global_constant : bool = IsConstantDeclaration(node.right) && IsConstant(node.right.right);
+				is_var_decl : bool = IsVariableDeclaration(node.right);
+				is_allowed_global : bool = is_global_constant || is_var_decl;
+				if !is_allowed_global {
+					CreateCompErr(cd, .EVALUATION, node, GLOBAL_SCOPE_ERROR_MSG);
+					break second_pass;
+				}
+			}
+			else if next_token.token_type == .DOUBLE_COLON {
 				/*DOC : We only need to do this on the second pass since we only process functions and operator overloads
 				  on the second pass. The cases are
 				  1) enum - "name :: enum"
@@ -9415,6 +9565,9 @@ CompileCode :: inline (cs : CompileSettings, code : string) -> *CompilationData 
 					//This is convenient or now but is not really part of TypeInfo, especially if we pass that 
 					//back to the user and allow them to see it as well.
 					struct_info.last_token_index = cd.lexer.next_index;
+					//The next index is the token after "}" so we can skip to that in the next pass
+					//so we go back one so that when we add it on the next loop we get the next correct token
+					cd.lexer.next_index -= 1;
 
 					//NOTE : Set this to null now so we don't accidentally keep it for something else and error out instead
 					cd.current_struct_info = null;
@@ -9514,6 +9667,7 @@ CompileCode :: inline (cs : CompileSettings, code : string) -> *CompilationData 
 					//back to the user and allow them to see it as well.
 					// struct_info.last_token_index = cd.lexer.next_index;
 					enum_info.last_token_index = cd.lexer.next_index;
+					cd.lexer.next_index -= 1;
 				}
 				else if node.right != null && node.right.value.token_type == #char "#" {
 					/*DOC : For now we allow #type anywhere but sicne it get's added to an array separate from
@@ -9592,6 +9746,8 @@ CompileCode :: inline (cs : CompileSettings, code : string) -> *CompilationData 
 
 	//Reset the byte_offset_from_sbp here since we used it in first pass for function declaration args and returns.
 	cd.byte_offset_from_sbp = 0;
+	array_reset_keeping_memory(*cd.variable_data_stack);
+
 
 	//TODO Need to set .sbp to whatever it should be past the constants and null starting value
 	// stack_start_value : int = 8;
@@ -9613,6 +9769,22 @@ CompileCode :: inline (cs : CompileSettings, code : string) -> *CompilationData 
 			//TODO Should we check null her or check for compiler errors...? Maybe can do again when we make
 			//the parsing function non-recursive.
 			if s_node == null break third_pass;
+
+			//global scope check
+			if IsInGlobalScope(cd) {
+				assert(cd.open_scope_stack[0] == GLOBAL_SCOPE_ID); //sanity check
+				is_declaration : bool = IsStructDeclaration(s_node) || IsEnumDeclaration(s_node) || IsFunctionDeclaration(s_node);
+				is_directive : bool = IsCodeDirectives(s_node.value, .[.load, .import, .global]) ||
+					(s_node.value.token_type == .DOUBLE_COLON && s_node.right != null && IsCodeDirectives(s_node.right.value, .[.type]));
+				is_semicolon : bool = s_node.value.token_type == #char ";" && s_node.left == null && s_node.right == null;
+				is_allowed_in_global_scope : bool = is_declaration || is_directive || is_semicolon;
+				if !is_allowed_in_global_scope {
+					CreateCompErr(cd, .EVALUATION, s_node, GLOBAL_SCOPE_ERROR_MSG);
+					break third_pass;
+				}
+			}
+
+
 			//TODO Could just store these in a buffer and clear once we hit a ';' or '{' or '}'
 			//The full storage could just be set for testing.
 			/*For now we store them all since we were using them for scope but we don't need to do that and can
@@ -9646,6 +9818,17 @@ CompileCode :: inline (cs : CompileSettings, code : string) -> *CompilationData 
 				//a variable on the stack probably... hmmm not sure i want that but let's see
 				//TODO Can make this for #asm {} once we remove arrays from assembler
 				if cast(CodeDirective) s_node.value.int_value == {
+				//IMPORTANT NOTE : we just skip over global, import, load and type directives here by doing nothing
+				case CodeDirective.global; #through;
+				case CodeDirective.load; #through;
+				case CodeDirective.import; {
+					//We do nothing here since these are evaluated in the passes before here.
+					//These directive are only allowed in global scope for clarity.
+					if !IsInGlobalScope(cd) {
+						CreateCompErr(cd, .EVALUATION, s_node, GLOBAL_SCOPE_ERROR_MSG);
+						break third_pass;
+					}
+				}
 				case CodeDirective.asm;
 					peek_token := PeekNextToken(cd.lexer);
 					if peek_token.token_type == #char "{" {
@@ -9983,6 +10166,11 @@ CompileCode :: inline (cs : CompileSettings, code : string) -> *CompilationData 
 				//NOTE : We check that this is valid on the second pass when we parse function declarations
 				if fd.name == "main" {
 					cd.main_function_instr_index = cd.all_music_instructions.count;
+
+					total_heap_offset : int = GlobalVarMaxHeapOffset(cd.all_variables);
+					if total_heap_offset > 0 {
+						CreateMInstr(.add, RegMem(.hcp), Imm(total_heap_offset), d=cd);
+					}
 				}
 
 				//Sanity check. We do this in the second pass so just double check assertion here.			
@@ -10088,7 +10276,7 @@ CompileCode :: inline (cs : CompileSettings, code : string) -> *CompilationData 
 }
 //DOC : We grab the last token since the next token would be on the next line
 //and the ; should be on the current line which is of the last token.
-IsSemicolonError :: (cd : *CompilationData) -> is_error : bool {
+IsSemicolonError :: inline (cd : *CompilationData) -> is_error : bool {
 	peek_token := PeekNextToken(cd.lexer);
 	if peek_token.token_type != #char ";" {
 		last_token := PeekLastToken(cd.lexer);
@@ -10096,6 +10284,28 @@ IsSemicolonError :: (cd : *CompilationData) -> is_error : bool {
 		return true;
 	}
 	return false;
+}
+
+GLOBAL_SCOPE_ERROR_MSG :: 
+#string DONE
+Not usable in global scope. 
+Can declare structs, enums, functions, #import, #load, #global".
+#global constants can be int, float or bool.
+eg - #global x :: 1.1;
+#global variables cannot be fixed arrays.
+Cannot use any operations, assignments or functions in global scope.
+DONE;
+
+IsInGlobalScope :: inline (cd : *CompilationData) -> bool {
+	in_global : bool = cd.open_scope_stack.count == 1;
+	return in_global;
+}
+
+IsCodeDirectives :: inline (token : LCodeToken, directives : [] CodeDirective) -> bool {
+	is_code_dir : bool = token.token_type == #char "#" && 
+		//TODO Can add import here later when we implement it
+		AllOrEquals(code_directive_enums[token.int_value], directives);
+	return is_code_dir;
 }
 
 IsFunctionDeclaration :: inline (node : *BinaryNode) -> bool {
@@ -10109,20 +10319,84 @@ IsFunctionDeclaration :: inline (node : *BinaryNode) -> bool {
 	   (node.left != null && AllOrEquals(node.left.value.token_type, .[.IDENT, .KEYWORD_OPERATOR]));
    return is_function_declaration;
 }
-
 IsStructDeclaration :: inline (node : *BinaryNode) -> bool {
 	is_struct_decl : bool = node != null && node.value.token_type == .DOUBLE_COLON &&
 		node.right != null && node.right.value.token_type == .KEYWORD_STRUCT &&
 		node.left != null && node.left.value.token_type == .IDENT;
 	return is_struct_decl;
 }
-
 IsEnumDeclaration :: inline (node : *BinaryNode) -> bool {
 	is_enum_decl : bool = node != null && node.value.token_type == .DOUBLE_COLON &&
 		node.right != null && node.right.value.token_type == .KEYWORD_ENUM &&
 		node.left != null && node.left.value.token_type == .IDENT;
 	return is_enum_decl;
 }
+IsConstantDeclaration :: inline (node : *BinaryNode) -> bool {
+	is_const_decl : bool = 
+		//x :: 0;
+		(node.value.token_type == .DOUBLE_COLON) || 
+		//x : int : 0;
+		(node.value.token_type == #char ":" && 
+		 node.left != null && node.left.value.token_type == #char ":");
+	return is_const_decl;
+}
+IsVariableDeclaration :: inline (node : *BinaryNode) -> bool {
+	is_var_decl : bool = 
+		node.value.token_type == #char ":" &&
+		node.left != null && node.left.value.token_type == .IDENT && 
+		node.right != null && node.right.code_ir.ir_type == .DATA_TYPE_INFO;
+	return is_var_decl;
+}
+IsGlobalVariable :: inline (var : VariableData) -> bool {
+	is_global_var : bool = var.scope_id == GLOBAL_SCOPE_ID &&
+		var.op.operand_type == .RAM_MEMORY;
+	return is_global_var;
+}
+IsGlobalConstant :: inline (var : VariableData) -> bool {
+	is_global_const : bool = var.scope_id == GLOBAL_SCOPE_ID &&
+		IsConstantOp(var.op);
+	return is_global_const;
+}
+GetAllGlobalVars :: inline (all_variables : [] VariableData) -> [] VariableData {
+	global_vars : [] VariableData;
+	global_vars.data = all_variables.data;
+	for all_variables {
+		if it.scope_id == GLOBAL_SCOPE_ID {
+			global_vars.count += 1;
+		} else {
+			//Global vars are at the beginning so we can jump out once we are done
+			break;
+		}
+	}
+	return global_vars;
+}
+GlobalVarNameAlreadyExists :: inline (node : *BinaryNode, cd : *CompilationData) -> bool {
+	global_vars : [] VariableData = GetAllGlobalVars(cd.all_variables);
+	for var : global_vars if var.name == node.value.token_string {
+		if IsGlobalConstant(var) {
+			CreateCompErr(cd, .EVALUATION, node, "Already have a global constant with this name.");
+		} else {
+			CreateCompErr(cd, .EVALUATION, node, "Already have a global var with this name.");
+		}
+		return true;
+	}
+	return false;
+}
+
+//Variables are added on sequentially so the last one is the current max heap offset
+//If we don't find any then we start at 0 and add the variable.
+GlobalVarMaxHeapOffset :: inline (all_variables : [] VariableData) -> int {
+	max_heap_offset : int = 0;
+	global_vars : [] VariableData = GetAllGlobalVars(all_variables);
+	for var : global_vars if IsGlobalVariable(var) {
+		heap_offset : int = var.op.values[1].int_value + var.t_info.runtime_size;
+		if heap_offset > max_heap_offset {
+			max_heap_offset = heap_offset;
+		}
+	}
+	return max_heap_offset;
+}
+
 
 PopAndCloseScope :: inline (cd : *CompilationData) {
 	//0 is the global scope so we never want to pop that.
@@ -12135,6 +12409,7 @@ CreateDebugCallFrame :: inline (
 	//NOTE : We are keeping this separate so maybe it is easier when we have multiple compilations later
 	cd : *CompilationData,
 	ad : *AllData)
+-> *DebugCallFrame
 {
 	found_function_scope : bool = false;
 	start_index : int;
@@ -12201,6 +12476,8 @@ CreateDebugCallFrame :: inline (
 	for cd.all_variables if it.scope_id == c_frame.function_scope.id {
 		array_add(*c_frame.frame_vars, it);
 	}
+
+	return c_frame;
 }
 HasCallInstrInRange :: inline (start_instr : int, end_instr : int, ami : [] MusicInstruction) -> bool {
 	for start_instr..end_instr if ami[it].op_code == OpCode.call {
@@ -12372,8 +12649,13 @@ ExecuteManyInstructions :: inline (exec : *ExecutionInfo, ad : *AllData) -> CPUE
 			//eventually and this prevents that from ever happening.
 			if !found_main_func return CPUErr(sprint("No main function found.\n"));
 
-			//TODO We should be adding all the variables in the global scope here
-			CreateDebugCallFrame(exec.main_instr_index, exec, ad.comp_data, ad);
+			main_call_frame := CreateDebugCallFrame(exec.main_instr_index, exec, ad.comp_data, ad);
+			
+			//We get this directly in the debugger watch value.
+			//Having it here is weird anyways since its in a different scope than the other vars in that scope
+			// for ad.comp_data.all_variables if it.scope_id == GLOBAL_SCOPE_ID {
+			// 	array_add(*main_call_frame.frame_vars, it);
+			// }
 		}
 		//TODO Eventually we would just take an available memory pool I think once we have memory per execution.
 		//Now we only have 1 so we reset it but once we can execute multiple code, then we would have multiple memorys

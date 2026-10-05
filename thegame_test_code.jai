@@ -14296,6 +14296,383 @@ DONE);
 
 } @ITest
 
+Test_GlobalScope :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	test_string :: "test";
+	perm : *Persist = GetPermanentStorage(game_memory);
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+		perm.all_data = InitAllData();
+		ResetAllRendererData(renderer_data);
+
+		text_file := CreateTestTextFile(*ALL_NEXT_IDS, *perm.all_data.all_text_files);
+		WriteFileString(text_file, 
+#string DONE
+#global gi : int;
+Foo :: (x : int) -> int {
+	return x + gi;
+}
+#global gt : Test;
+Test :: struct {
+	x : int;
+	f : float;
+	ta : [] int;
+}
+#global gpt : *Test;
+#global gf : float;
+main :: () {
+	gi = 1;
+	gf = 3.1;
+	f : float = gf + 1.;
+
+	pt : *Test = *gt;
+	gt.x = gi + 10;
+	pt.*.f = gf;
+	gpt = *gt;
+
+	ge = TestEnum.TWO;
+
+	ga = NewArray(3,int);
+	ga[2] = 7;
+	gt.ta = ga;
+	gpt.*.ta[0] = 2;
+
+	gp = *gi;
+	i : int = gp.*;
+	gp.* = 10;
+	gpp = *gp;
+	gpp.*.* = 16;
+
+	gi = Foo(gi);
+}
+#global TEST_C :: -1.1;
+#global ga : [] int;
+#global ge : TestEnum;
+TestEnum :: enum {
+	ONE;
+	TWO;
+}
+#global gp : *int;
+#global gpp : **int;
+DONE);
+		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
+			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+
+		array_resize(*perm.test_data.all_sub_tests, 27+1);
+	} 
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	text_op : *TextOpSpaceData;
+	if perm.all_data.all_text_op_space_data.count > 0 {
+		text_op = *perm.all_data.all_text_op_space_data[0];
+	}
+
+	if perm.test_data.sub_test_index == {
+	case 0; {
+		open_test := MakeTerminalEvent(.open_op, TEST_TEXT_NAME);
+		array_add(*perm.all_data.all_terminal_events, open_test);
+	}
+	case 1; DownUpInputMap(.TEXT_DEBUG_TOGGLE, game_input);
+	case 2; DownUpInputMap(.TEXT_COMPILE, game_input);
+	case 3; {
+		if IsCompilationFail(text_op.text_comp_data) {
+			EndTest(*perm.test_data);
+		} else {
+			// print(text_op.text_comp_data.disassembly);
+			AddWatchDataForTest(.["gt","ga","gpt.*","gi","gf","ge","gp","gpp","i","f","pt","*gp","gpp.*.*","gpt","TEST_C"], text_op);
+			CodeBPForTest(31, *text_op.exec_info.debug_info, text_op.text_comp_data);
+			DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+		}
+	}
+	case 4; DownUpInputMap(.TEXT_WATCH_PANE, game_input);
+	case 5; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 6; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 7; DownUpThisFrame(.ENTER, game_input);
+	case 8; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 9; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 10; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 11; DownUpThisFrame(.ENTER, game_input);
+	case 12; DownUpThisFrame(.ARROW_UP, game_input);
+	case 13; DownUpThisFrame(.ARROW_UP, game_input);
+	case 14; DownUpThisFrame(.ARROW_UP, game_input);
+	case 15; DownUpThisFrame(.ARROW_UP, game_input);
+	case 16; DownUpThisFrame(.ENTER, game_input);
+	case 17; DownUpThisFrame(.ARROW_UP, game_input);
+	case 18; DownUpThisFrame(.ENTER, game_input);
+	case 19; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 20; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 21; DownUpThisFrame(.ARROW_DOWN, game_input);
+	case 22; DownUpThisFrame(.ENTER, game_input);
+	case 23; {
+		d_line := GetDebugLineForTest(31, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		hsp_value : int = perm.all_data.all_register_memory[RegDef.hsp].int_value;
+		max_heap_offset : int = GlobalVarMaxHeapOffset(text_op.text_comp_data.all_variables);
+		new_heap : int = perm.all_data.ram_memory.stack_size + max_heap_offset;
+
+		//Add 3*8 for the new array with 3 ints
+		AssertEquals(new_heap+3*8, perm.all_data.all_register_memory[RegDef.hcp].int_value);
+
+		//TODO FROM HERE add the rest of these var tests before pushing
+		gt_x := GetWatch("gt.x", text_op.watch_data_rows);
+		AssertEquals("11", gt_x.value_str);
+		AssertEquals("int", gt_x.type_str);
+		gt_f := GetWatch("gt.f", text_op.watch_data_rows);
+		AssertEquals("3.1", gt_f.value_str);
+		AssertEquals("float", gt_f.type_str);
+		gt_ta := GetWatch("gt.ta", text_op.watch_data_rows);
+		AssertEquals(tprint(ARRAY_WATCH_VALUE,3,new_heap), gt_ta.value_str);
+		AssertEquals("[] int", gt_ta.type_str);
+		gt_ta_0 := GetWatch("gt.ta[0]", text_op.watch_data_rows);
+		AssertEquals("2", gt_ta_0.value_str);
+		AssertEquals("int", gt_ta_0.type_str);
+		gt_ta_1 := GetWatch("gt.ta[1]", text_op.watch_data_rows);
+		AssertEquals("0", gt_ta_1.value_str);
+		AssertEquals("int", gt_ta_1.type_str);
+		gt_ta_2 := GetWatch("gt.ta[2]", text_op.watch_data_rows);
+		AssertEquals("7", gt_ta_2.value_str);
+		AssertEquals("int", gt_ta_2.type_str);
+
+		gpt := GetWatch("gpt", text_op.watch_data_rows);
+		AssertEquals(tprint("%",hsp_value+8), gpt.value_str);
+		AssertEquals("*Test", gpt.type_str);
+		gpt_s_x := GetWatch("gpt.*.x", text_op.watch_data_rows);
+		AssertEquals("11", gpt_s_x.value_str);
+		AssertEquals("int", gpt_s_x.type_str);
+		gpt_s_f := GetWatch("gpt.*.f", text_op.watch_data_rows);
+		AssertEquals("3.1", gpt_s_f.value_str);
+		AssertEquals("float", gpt_s_f.type_str);
+		gpt_s_ta := GetWatch("gpt.*.ta", text_op.watch_data_rows);
+		AssertEquals(tprint(ARRAY_WATCH_VALUE,3,new_heap), gpt_s_ta.value_str);
+		AssertEquals("[] int", gpt_s_ta.type_str);
+		gpt_ta_0 := GetWatch("gpt.*.ta[0]", text_op.watch_data_rows);
+		AssertEquals("2", gpt_ta_0.value_str);
+		AssertEquals("int", gpt_ta_0.type_str);
+		gpt_ta_1 := GetWatch("gpt.*.ta[1]", text_op.watch_data_rows);
+		AssertEquals("0", gpt_ta_1.value_str);
+		AssertEquals("int", gpt_ta_1.type_str);
+		gpt_ta_2 := GetWatch("gpt.*.ta[2]", text_op.watch_data_rows);
+		AssertEquals("7", gpt_ta_2.value_str);
+		AssertEquals("int", gpt_ta_2.type_str);
+
+		ga := GetWatch("ga", text_op.watch_data_rows);
+		AssertEquals(tprint(ARRAY_WATCH_VALUE,3,new_heap), ga.value_str);
+		AssertEquals("[] int", ga.type_str);
+		ga_0 := GetWatch("ga[0]", text_op.watch_data_rows);
+		AssertEquals("2", ga_0.value_str);
+		AssertEquals("int", ga_0.type_str);
+		ga_1 := GetWatch("ga[1]", text_op.watch_data_rows);
+		AssertEquals("0", ga_1.value_str);
+		AssertEquals("int", ga_1.type_str);
+		ga_2 := GetWatch("ga[2]", text_op.watch_data_rows);
+		AssertEquals("7", ga_2.value_str);
+		AssertEquals("int", ga_2.type_str);
+
+		gi := GetWatch("gi", text_op.watch_data_rows);
+		AssertEquals("1", gi.value_str);
+		AssertEquals("int", gi.type_str);
+		gf := GetWatch("gf", text_op.watch_data_rows);
+		AssertEquals("3.1", gf.value_str);
+		AssertEquals("float", gf.type_str);
+		ge := GetWatch("ge", text_op.watch_data_rows);
+		AssertEquals("TWO (1)", ge.value_str);
+		AssertEquals("TestEnum", ge.type_str);
+
+		gp := GetWatch("gp", text_op.watch_data_rows);
+		AssertEquals(tprint("%",perm.all_data.ram_memory.stack_size), gp.value_str);
+		AssertEquals("*int", gp.type_str);
+		p_gp := GetWatch("*gp", text_op.watch_data_rows);
+		AssertEquals(tprint("%",new_heap-8*2), p_gp.value_str);
+		AssertEquals("**int", p_gp.type_str);
+
+		f := GetWatch("f", text_op.watch_data_rows);
+		AssertEquals("4.1", f.value_str);
+		AssertEquals("float", f.type_str);
+		i := GetWatch("i", text_op.watch_data_rows);
+		AssertEquals("1", i.value_str);
+		AssertEquals("int", i.type_str);
+		pt := GetWatch("pt", text_op.watch_data_rows);
+		AssertEquals(tprint("%",perm.all_data.ram_memory.stack_size+8), pt.value_str);
+		AssertEquals("*Test", pt.type_str);
+
+		test_c := GetWatch("TEST_C", text_op.watch_data_rows);
+		AssertEquals("-1.1", test_c.value_str);
+		AssertEquals("float", test_c.type_str);
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 24; {
+		d_line := GetDebugLineForTest(32, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		gi := GetWatch("gi", text_op.watch_data_rows);
+		AssertEquals("10", gi.value_str);
+		AssertEquals("int", gi.type_str);
+
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 25; {
+		d_line := GetDebugLineForTest(33, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		max_heap_offset : int = GlobalVarMaxHeapOffset(text_op.text_comp_data.all_variables);
+		new_heap : int = perm.all_data.ram_memory.stack_size + max_heap_offset;
+
+		gpp := GetWatch("gpp", text_op.watch_data_rows);
+		AssertEquals(tprint("%",new_heap-8*2), gpp.value_str);
+		AssertEquals("**int", gpp.type_str);
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 26; {
+		d_line := GetDebugLineForTest(35, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		gpp_pp := GetWatch("gpp.*.*", text_op.watch_data_rows);
+		AssertEquals("16", gpp_pp.value_str);
+		AssertEquals("int", gpp_pp.type_str);
+		gi := GetWatch("gi", text_op.watch_data_rows);
+		AssertEquals("16", gi.value_str);
+		AssertEquals("int", gi.type_str);
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 27; {
+		d_line := GetDebugLineForTest(36, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		gpp_pp := GetWatch("gpp.*.*", text_op.watch_data_rows);
+		AssertEquals("32", gpp_pp.value_str);
+		AssertEquals("int", gpp_pp.type_str);
+		gi := GetWatch("gi", text_op.watch_data_rows);
+		AssertEquals("32", gi.value_str);
+		AssertEquals("int", gi.type_str);	
+
+		test_c := GetWatch("TEST_C", text_op.watch_data_rows);
+		AssertEquals("-1.1", test_c.value_str);
+		AssertEquals("float", test_c.type_str);	
+	}
+	}
+
+	ContinueTest(*perm.test_data);
+
+} @ITest
+
+Test_CompileConstant :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	test_string :: "test";
+	perm : *Persist = GetPermanentStorage(game_memory);
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+		perm.all_data = InitAllData();
+		ResetAllRendererData(renderer_data);
+
+		text_file := CreateTestTextFile(*ALL_NEXT_IDS, *perm.all_data.all_text_files);
+		WriteFileString(text_file, 
+#string DONE
+#global x :: 10;
+#global b :: true;
+#global b2 : bool : false;
+main :: () {
+	i : int = x;
+	f : float = PI;
+	bs : bool = b;
+
+	i = x + 1;
+	f = PI - 2.3;
+}
+#global PI :: 3.141593;
+#global y : int : 2;
+DONE);
+		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
+			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+
+		array_resize(*perm.test_data.all_sub_tests, 5+1);
+	} 
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	text_op : *TextOpSpaceData;
+	if perm.all_data.all_text_op_space_data.count > 0 {
+		text_op = *perm.all_data.all_text_op_space_data[0];
+	}
+
+	if perm.test_data.sub_test_index == {
+	case 0; {
+		open_test := MakeTerminalEvent(.open_op, TEST_TEXT_NAME);
+		array_add(*perm.all_data.all_terminal_events, open_test);
+	}
+	case 1; DownUpInputMap(.TEXT_DEBUG_TOGGLE, game_input);
+	case 2; DownUpInputMap(.TEXT_COMPILE, game_input);
+	case 3; {
+		if IsCompilationFail(text_op.text_comp_data) {
+			EndTest(*perm.test_data);
+		} else {
+			// print(text_op.text_comp_data.disassembly);
+			AddWatchDataForTest(.["x","b","b2","y","PI","i","f"], text_op);
+			CodeBPForTest(8, *text_op.exec_info.debug_info, text_op.text_comp_data);
+			DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+		}
+	}
+	case 4; {
+		d_line := GetDebugLineForTest(8, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		x := GetWatch("x", text_op.watch_data_rows);
+		AssertEquals("10", x.value_str);
+		AssertEquals("int", x.type_str);
+		b := GetWatch("b", text_op.watch_data_rows);
+		AssertEquals("true", b.value_str);
+		AssertEquals("bool", b.type_str);
+		b2 := GetWatch("b2", text_op.watch_data_rows);
+		AssertEquals("false", b2.value_str);
+		AssertEquals("bool", b2.type_str);
+		y := GetWatch("y", text_op.watch_data_rows);
+		AssertEquals("2", y.value_str);
+		AssertEquals("int", y.type_str);
+		pi := GetWatch("PI", text_op.watch_data_rows);
+		AssertEquals(tprint("%",PI), pi.value_str);
+		AssertEquals("float", pi.type_str);
+		i := GetWatch("i", text_op.watch_data_rows);
+		AssertEquals("10", i.value_str);
+		AssertEquals("int", i.type_str);
+		f := GetWatch("PI", text_op.watch_data_rows);
+		AssertEquals(tprint("%",PI), f.value_str);
+		AssertEquals("float", f.type_str);
+
+
+		CodeBPForTest(10, *text_op.exec_info.debug_info, text_op.text_comp_data);
+		DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+	}
+	case 5; {
+		i := GetWatch("i", text_op.watch_data_rows);
+		AssertEquals("11", i.value_str);
+		AssertEquals("int", i.type_str);
+		f := GetWatch("f", text_op.watch_data_rows);
+		AssertEquals(tprint("%", PI-2.3), f.value_str);
+		AssertEquals("float", f.type_str);
+	}
+	}
+
+	ContinueTest(*perm.test_data);
+
+} @ITest
+
 //TODO FROM HERE Do a similar test for QSort and check array to make sure step over is good
 //ALSO write a general test for bubble sort with a struct function pointer from the Functions library
 //and rename Functions to Basic and then #import Library into Basic once #import is working
@@ -14527,6 +14904,14 @@ DONE);
 
 } @ITest
 
+//TODO FROM HERE Should have a custom Basic here instead of actual basic with bubble sort
+//in case we update basic later then this test won't fail
+//TODO FROM HERE DO A CUSTOM TEST FOR IMPORT with 3 files and we import something twice
+//and we debug stop and step into to make sure we step into the correct files
+//THEN WE CAN ADD A SEPARATE TEST that moves around text tabs when we click specific call stack
+//TODO TAB TEST should not be using Basic and should be using a custom import
+//then also add a third file to check 3 maybe do that for the call stack debug test
+//TODO ALSO AN #import #global vars and constants test to make sure that works with import
 TAB_TEST_FILE_NAME :: #run sprint("%/tab_test", C_TEST_DIR_NAME);
 BASIC_FILE_NAME :: #run sprint("%/Basic", C_LOAD_DIR_NAME);
 Test_MultiTabDebug :: (

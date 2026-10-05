@@ -1,6 +1,7 @@
 //TODO Pull out larger scale test chunks here so we don't have any text editing issues since these test chunks seems to be in the 10k+ loc
 //I think maybe we can also put tests in the same file as code if we separate some of it out eventually
 #load "thegame_test_text.jai";
+#load "thegame_test_text_2.jai";
 #load "thegame_test_2.jai";
 #load "thegame_test_code.jai";
 /*

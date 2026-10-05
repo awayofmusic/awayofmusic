@@ -921,9 +921,11 @@ ComputeWatchValueAndType :: inline (watch_data : *WatchData, text_op : *TextOpSp
 		//and then store in t_info. So WatchValue should be based on t_info and not a string directly here anymore.
 		value_string = WatchValue(debug_info.debug_all_registers[reg_index], watch_data.node.code_ir.t_info);
 	case MusicOperandType.INTEGER;
-		value_string = tprint("%", watch_op.values[0].int_value);
+		// In case we have a constant or something different with an integer like a bool
+		// value_string = tprint("%", watch_op.values[0].int_value);
+		value_string = WatchValue(watch_op.values[0].value, watch_data.node.code_ir.t_info);
 	case MusicOperandType.FLOAT;
-		value_string = tprint("%", formatFloat(watch_op.values[0].float_value));
+		value_string = tprint("%", formatFloat(watch_op.values[0].float_value, zero_removal=.ONE_ZERO_AFTER_DECIMAL));
 	case;
 		value_string = "invalid expression";
 	}
@@ -1315,7 +1317,15 @@ VisitWatchNodes :: (node : *BinaryNode, vwd : VisitWatchData) -> is_valid : bool
 				found_var = true;
 				break;
 			}
-			// var, found_var := ArrayFindFirstByNameId(c_frame.frame_vars, node.value.token_string, "name");
+
+			if !found_var {
+				global_vars : [] VariableData = GetAllGlobalVars(cd.all_variables);
+				for global_vars if it.name == node.value.token_string {
+					found_var = true;
+					var = it;
+					break;	
+				}
+			}
 
 			//TODO Maybe this is inefficient to check here and we should just check it on function calls?
 			//TODO Maybe we don't need functions here, or maybe we do... not sure
@@ -1372,11 +1382,13 @@ VisitWatchNodes :: (node : *BinaryNode, vwd : VisitWatchData) -> is_valid : bool
 				//TODO If we have an array here then make a RamArray Op from the var op so that we can
 				//pass that up and then free the registers later. We can't store it in var.op directly
 				//because the register will get reused.
-				ram_address : int = ComputeRAMLocation(var.op, debug_info.debug_all_registers, vwd.all_data.ram_memory);
-				bounds_err : CPUError = MemoryInBounds(vwd.all_data.ram_memory, ram_address, 8);
-				if bounds_err.is_error {
-					SetWatchError(vwd.watch_data, "Memory out of bounds");
-					return false;
+				if var.op.operand_type == .RAM_MEMORY {
+					ram_address : int = ComputeRAMLocation(var.op, debug_info.debug_all_registers, vwd.all_data.ram_memory);
+					bounds_err : CPUError = MemoryInBounds(vwd.all_data.ram_memory, ram_address, 8);
+					if bounds_err.is_error {
+						SetWatchError(vwd.watch_data, "Memory out of bounds");
+						return false;
+					}
 				}
 				node.code_ir.op = var.op;
 
@@ -3126,6 +3138,7 @@ WatchValue :: (mv : MemoryValue, t_info : *TypeInfo) -> string {
 	case .POINTER; #through;
 	case .PROCEDURE; #through;
 	case .INTEGER; vs = tprint("%", mv.int_value);
+	// case .BOOL; vs = ifx cast(bool) mv.int_value then "true" else "false";
 	case .BOOL; vs = tprint("%", cast(bool) mv.int_value); //TODO Does this actually set to true and false string?
 	case .FLOAT; vs = tprint("%", formatFloat(mv.float_value,trailing_width=tw));
 	case .ENUM; {
