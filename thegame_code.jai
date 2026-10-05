@@ -12166,8 +12166,8 @@ GenerateAsmInstructionManual :: () -> AsmInstructionManual {
 	}
 	case OpCode.free; {
 		aim.valid_instr_info[it] = .{.[
-		.{.[.[.REGISTER, .RAM_MEMORY],
-		   ALL_SINGLE_INT_OPERANDS, 
+		.{.[ALL_SINGLE_INT_OPERANDS,
+		   .[.NONE], 
 			.[.NONE]]},
 		]};
 	}
@@ -12232,8 +12232,8 @@ ValidateMusicInstruction :: inline (instr : MusicInstruction) -> CPUError {
 	//TODO Could generate that file string internally the AsmInstructionManual.
 	//Could also generate a system file in a formatted way to use externally for all instructions.
 	return CPUErr(
-	tprint("Invalid % instruction. In thegame_code.jai go to ASM_INSTRUCTION_MANUAL to view valid asm instructions.", 
-		instr.op_code));
+	tprint("Invalid % instruction. In thegame_code.jai go to ASM_INSTRUCTION_MANUAL to view valid asm instructions. Valid types are %.", 
+		instr.op_code, vii));
 }
 
 /*END OF ASSEMBLY
@@ -14677,11 +14677,21 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		}
 	}
 	case OpCode.free; {
-		input_start : int = ComputeOperandInt(ci.operands[0], ad.all_register_memory, ad.ram_memory);
-		input_size : int = ComputeOperandInt(ci.operands[1], ad.all_register_memory, ad.ram_memory);
-
-		err := FreeHeapMem(input_start, input_size, ad);
+		input_address : int = ComputeOperandInt(ci.operands[0], ad.all_register_memory, ad.ram_memory);
+		err := FreeHeapMem(input_address, ad);
 		if err.is_error return err;
+
+		//We could set the return pointer to -1 so we don't use the now freed address
+		//but it seems like other languages just leave the pointer as is so I will do that for now.
+		#if 0 {
+		if ci.operands[0].operand_type == {
+		case MusicOperandType.RAM_MEMORY;
+	    	SetRAMValue(input_address, NULL_POINTER_ADDRESS, *ad.ram_memory);
+		case MusicOperandType.REGISTER; 
+			reg_v : int = ci.operands[0].values[0].int_value;
+			ad.all_register_memory[reg_v].int_value = NULL_POINTER_ADDRESS;
+		}
+		}
 	}
 	case OpCode.itof; #through;
 	case OpCode.ftoi; {
@@ -16379,18 +16389,27 @@ ExecMov :: inline (ci : MusicInstruction, df_mspace : *MusicSpaceData, ad : *All
 We use this function so we can allocate memory on the heap anywhere in asm.
 */
 AllocHeapMem :: inline (size_in_bytes : int, ad : *AllData) -> alloc_heap_address : int, out_of_memory : CPUError {
-	//Free list is sorted by size_in_bytes every time we free
-	for * free_data : ad.ram_free_list if free_data.size_in_bytes >= size_in_bytes {
-		alloc_heap_address : int = free_data.heap_address;
-		if free_data.size_in_bytes == size_in_bytes {
-			//This avoids having to sort after and keeping it in size
-			//TODO We could just memcpy it back
-			array_ordered_remove_by_index(*ad.ram_free_list, it_index);
-		} else {
-			free_data.heap_address += size_in_bytes;
-			free_data.size_in_bytes -= size_in_bytes;
+	for * alloc_data, alloc_index : ad.ram_alloc_list {
+		if alloc_data.alloc_type == .FREE && alloc_data.size_in_bytes >= size_in_bytes {
+			new_alloc_address : int = alloc_data.heap_address;
+			if alloc_data.size_in_bytes == size_in_bytes {
+				alloc_data.alloc_type = .ALLOCATED;
+			} 
+			else if alloc_data.size_in_bytes > size_in_bytes {
+				alloc_data.heap_address += size_in_bytes;
+				alloc_data.size_in_bytes -= size_in_bytes;
+
+				new_alloc : RAMAllocData;
+				new_alloc.heap_address = new_alloc_address;
+				new_alloc.size_in_bytes = size_in_bytes;
+				new_alloc.alloc_type = .ALLOCATED;
+				array_add(*ad.ram_alloc_list, new_alloc);
+				//No need to insert since we are sorting after anyways
+				// array_insert_at(*ad.ram_alloc_list, new_alloc, alloc_index);
+			}
+			quick_sort(ad.ram_alloc_list, AllocMemSort);
+			return new_alloc_address, NO_CPU_ERROR;
 		}
-		return alloc_heap_address, NO_CPU_ERROR;
 	}
 
 	alloc_heap_address : int = ad.all_register_memory[RegDef.hcp].int_value;
@@ -16401,111 +16420,51 @@ AllocHeapMem :: inline (size_in_bytes : int, ad : *AllData) -> alloc_heap_addres
 			ad.ram_memory.bytes.count, alloc_heap_address, size_in_bytes,,context.allocator));
 		return -1, err;
 	}
+
+	alloc_data : RAMAllocData;
+	alloc_data.heap_address = ad.all_register_memory[RegDef.hcp].int_value;
+	alloc_data.size_in_bytes = size_in_bytes;
+	alloc_data.alloc_type = .ALLOCATED;
+	array_add(*ad.ram_alloc_list, alloc_data);
+
 	//TODO Could also check if this is out of bounds at the end of every instruction and return an error if so.
 	//OR that might be different when we use the free list for heap allocation.
 	ad.all_register_memory[RegDef.hcp].int_value += size_in_bytes;
 	return alloc_heap_address, NO_CPU_ERROR;
 }
-
-//heap_start_address. called it input_start for clarity on all the free cases below
-FreeHeapMem :: (input_start : int, input_size : int, ad : *AllData) -> CPUError {
-	if input_size <= 0 return CPUErr(tprint("Free size % must be > 0.", input_size));
-
-	s_err := MemoryInBounds(ad.ram_memory, input_start);
+//Sort smallest to biggest free size. This way we take the smallest free value with alloc.
+AllocMemSort :: (f1 : RAMAllocData, f2 : RAMAllocData) -> int {
+	return f1.size_in_bytes - f2.size_in_bytes;
+}
+FREE_ERROR_MSG :: "Can only free memory already allocated on the heap : hbp : %, hcp : %, input_address : %";
+FreeHeapMem :: (input_address : int, ad : *AllData) -> CPUError {
+	s_err := MemoryInBounds(ad.ram_memory, input_address);
 	if s_err.is_error return s_err;
 
-	input_end : int = input_start + input_size;
-	e_err := MemoryInBounds(ad.ram_memory, input_end);
-	if e_err.is_error return e_err;
-
-	//We only allow freeing on the heap memory that has already been allocated
-	//otherwise we can override stack compiler values which could get messy.
-	//We could allow this later if needed but this prevents unecessary issues.
-	//heap_end_address. called it input_end for clarity on all the free cases below
 	heap_base : int = ad.all_register_memory[RegDef.hsp].int_value;
-	heap_current : int = ad.all_register_memory[RegDef.hcp].int_value;
-	if input_start < heap_base || input_start >= heap_current || 
-		input_end < heap_base || input_end > heap_current 
-	{
-		return CPUErr(tprint(
-			"Can only free memory already allocated on the heap : hbp : %, hcp : %, input_start : %, input_end : %", 
-			heap_base, heap_current, input_start, input_end));
+	heap_current : int = ad.all_register_memory[RegDef.hcp].int_value; 
+	if input_address < heap_base || input_address >= heap_current {
+		return CPUErr(tprint(FREE_ERROR_MSG, heap_base, heap_current, input_address));
 	}
 
-	data_is_freed : bool = false;
-	for * fd : ad.ram_free_list {
-		fl_start : int = fd.heap_address;
-		fl_end : int = fd.heap_address + fd.size_in_bytes;
-		if input_start >= fl_start && input_end <= fl_end {
-			/*
-			fl   : |       |
-			input:   |   |
-			final: |       |
-			*/
-			//If input_start == fl_start and input_end == fl end 
-			//then this case would keep it the same
-			data_is_freed = true;
-		}
-		else if input_start <= fl_start && 
-			input_end >= fl_start && input_end <= fl_end 
-		{
-			/*
-			fl   :   |   |
-			input: |   |
-			final: |     |
-			*/
-			//If input_start == fl_start and input_end == fl end 
-			//then this case would keep it the same
-			fd.heap_address = input_start;
-			fd.size_in_bytes = fl_end - input_start;
-			data_is_freed = true;
-		}
-		else if input_start >= fl_start && input_start <= fl_end && 
-			input_end > fl_end 
-		{
-			/*
-			fl   : |   |
-			input:   |   |
-			final: |     |
-			*/
-			fd.size_in_bytes = input_end - fl_start;
-			data_is_freed = true;
-		}
-		else if input_start < fl_start && input_end > fl_end {
-			/*
-			fl   :   |   |
-			input: |       |
-			final: |       |
-			*/
-			fd.heap_address = input_start;
-			fd.size_in_bytes = input_size;
-			data_is_freed = true;
-		}
-
-		if data_is_freed break;
+	found_allocated_data : bool = false;
+	allocated_data : RAMAllocData;
+	for * ad.ram_alloc_list if it.alloc_type == .ALLOCATED && it.heap_address == input_address {
+		found_allocated_data = true;
+		it.alloc_type = .FREE;
+		break;
 	}
+	if !found_allocated_data return CPUErr(tprint(FREE_ERROR_MSG, heap_base, heap_current, input_address));
 
-	if !data_is_freed {
-		free_data : RAMFreeData;
-		free_data.heap_address = input_start;
-		free_data.size_in_bytes = input_size;
-		array_add(*ad.ram_free_list, free_data);
-	}
-
-	quick_sort(ad.ram_free_list, (f1, f2) => f1.heap_address - f2.heap_address);
-
-	//Combine overlapping free data free data
+	//Combine any overlapping sequentially freed data
+	quick_sort(ad.ram_alloc_list, (f1, f2) => f1.heap_address - f2.heap_address);
 	i : int = 0;
-	while i + 1 < ad.ram_free_list.count {
-		f0 : *RAMFreeData = *ad.ram_free_list[i];
-		end_f0 : int = f0.heap_address + f0.size_in_bytes;
-		f1 : *RAMFreeData = *ad.ram_free_list[i+1];
-		end_f1 : int = f1.heap_address + f1.size_in_bytes;
-		if end_f0 >= end_f1 {
-			array_ordered_remove_by_index(*ad.ram_free_list, i+1);
-		} else if InRange(f0.heap_address, f1.heap_address, end_f0) {
-			f0.size_in_bytes = max(end_f1,end_f0) - f0.heap_address;
-			array_ordered_remove_by_index(*ad.ram_free_list, i+1);
+	while i + 1 < ad.ram_alloc_list.count {
+		f0 : *RAMAllocData = *ad.ram_alloc_list[i];
+		f1 : *RAMAllocData = *ad.ram_alloc_list[i+1];
+		if f0.alloc_type == .FREE && f1.alloc_type == .FREE {
+			f0.size_in_bytes += f1.size_in_bytes;
+			array_ordered_remove_by_index(*ad.ram_alloc_list, i+1);
 		} else {
 			i += 1;
 		}
@@ -16514,19 +16473,21 @@ FreeHeapMem :: (input_start : int, input_size : int, ad : *AllData) -> CPUError 
 	/*Set the current heap address back if we have adjacent free data right before.
 	This only needs to happen once because all other free data will have been merged above when added.
 	*/
-	last_free : RAMFreeData = peek(ad.ram_free_list);
-	if last_free.heap_address + last_free.size_in_bytes >= heap_current {
-		ad.all_register_memory[RegDef.hcp].int_value = last_free.heap_address;
-		ad.ram_free_list.count -= 1;
+	last_alloc : RAMAllocData = peek(ad.ram_alloc_list);
+	if last_alloc.alloc_type == .FREE && 
+		last_alloc.heap_address + last_alloc.size_in_bytes >= ad.all_register_memory[RegDef.hcp].int_value
+	{
+		ad.all_register_memory[RegDef.hcp].int_value = last_alloc.heap_address;
+		ad.ram_alloc_list.count -= 1;
 	}
 
 	//Sort smallest to biggest free size. This way we take the smallest free value with alloc.
-	quick_sort(ad.ram_free_list, (f1, f2) => f1.size_in_bytes - f2.size_in_bytes);
+	quick_sort(ad.ram_alloc_list, AllocMemSort);
 
 	return NO_CPU_ERROR;
 }
-FindFreeData :: inline (heap_address : int, size_in_bytes : int, free_list : [] RAMFreeData) -> *RAMFreeData, found : bool {
-	for * free_list if it.heap_address == heap_address && it.size_in_bytes == size_in_bytes {
+FindAllocData :: inline (heap_address : int, size_in_bytes : int, alloc_type : RAMAllocType, free_list : [] RAMAllocData) -> *RAMAllocData, found : bool {
+	for * free_list if it.alloc_type == alloc_type && it.heap_address == heap_address && it.size_in_bytes == size_in_bytes {
 		return it, true;
 	}
 	return null, false;

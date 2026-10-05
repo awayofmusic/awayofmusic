@@ -3126,7 +3126,10 @@ AllData :: struct #type_info_no_size_complaint {
 	//changing the memory_base. A [..] resize would move the memory_base.
 	//Flat_Pool is also a fresh chunk of memory and does not use the default memory allocator.
 	ram_memory : RAMMemory;
-	ram_free_list : [..] RAMFreeData;
+	//We can put this in ram_memory if that is better.
+	//I will remove all cpu data in 1 struct eventually anyways
+	//so i can separate out thegame_code into it's own module
+	ram_alloc_list : [..] RAMAllocData;
 
 	//Linear Space Data
 	//TODO should this just be a tile grid on the whole world map?
@@ -7540,7 +7543,7 @@ ResetCodeMemory :: inline (all_data : *AllData) {
 	all_data.all_register_memory[RegDef.hsp].int_value = all_data.ram_memory.stack_size;
 	all_data.all_register_memory[RegDef.hcp].int_value = all_data.all_register_memory[RegDef.hsp].int_value;
 
-	array_reset_keeping_memory(*all_data.ram_free_list);
+	array_reset_keeping_memory(*all_data.ram_alloc_list);
 
 	//TODO For now we don't reset anything because eventually we will
 	//just grab new data only when we are running.
@@ -7552,9 +7555,14 @@ ResetCodeMemory :: inline (all_data : *AllData) {
 	// 	get(*all_data.ram_memory.ram_alloc_pool, 
 	// 		all_data.ram_memory.bytes.count);
 }
-RAMFreeData :: struct {
+RAMAllocType :: enum {
+	ALLOCATED;
+	FREE;
+}
+RAMAllocData :: struct {
 	heap_address : int;
 	size_in_bytes : int;
+	alloc_type : RAMAllocType;
 }
 
 /*This memory model allows for array bounds check in jai.

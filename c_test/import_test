@@ -1,0 +1,5 @@
+#import "c_test/import_test_2";
+V2 :: struct {
+  x : float;
+  y : float;
+}

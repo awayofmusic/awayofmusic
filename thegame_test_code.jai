@@ -14673,6 +14673,122 @@ DONE);
 
 } @ITest
 
+Test_AllocFree :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	perm : *Persist = GetPermanentStorage(game_memory);
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+		perm.all_data = InitAllData();
+		ResetAllRendererData(renderer_data);
+
+		text_file := CreateTestTextFile(*ALL_NEXT_IDS, *perm.all_data.all_text_files);
+		WriteFileString(text_file,
+#string DONE
+main :: () {
+	pi : *int;
+	#asm { alloc 8, pi; }
+	pv : *void;
+	#asm { alloc 16, pv; }
+	#asm { free pi; }
+	#asm { free pv; }
+}
+DONE);
+		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
+			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+
+		array_resize(*perm.test_data.all_sub_tests, 8+1);
+	} 
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	text_op : *TextOpSpaceData;
+	if perm.all_data.all_text_op_space_data.count > 0 {
+		text_op = *perm.all_data.all_text_op_space_data[0];
+	}
+
+	if perm.test_data.sub_test_index == {
+	case 0; {
+		open_test := MakeTerminalEvent(.open_op, TEST_TEXT_NAME);
+		array_add(*perm.all_data.all_terminal_events, open_test);
+	}
+	case 1; DownUpInputMap(.TEXT_DEBUG_TOGGLE, game_input);
+	case 2; DownUpInputMap(.TEXT_COMPILE, game_input);
+	case 3; {
+		if IsCompilationFail(text_op.text_comp_data) {
+			EndTest(*perm.test_data);
+		} else {
+			// print(text_op.text_comp_data.disassembly);
+			AddWatchDataForTest(.["pi","pv"], text_op);
+			CodeBPForTest(3, *text_op.exec_info.debug_info, text_op.text_comp_data);
+			DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+		}
+	}
+	case 4; {
+		d_line := GetDebugLineForTest(3, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		AssertEquals(perm.all_data.all_register_memory[RegDef.hsp].int_value+8, 
+			perm.all_data.all_register_memory[RegDef.hcp].int_value);
+
+		heap_base : int = perm.all_data.ram_memory.stack_size;
+
+		pi := GetWatch("pi", text_op.watch_data_rows);
+		AssertEquals(tprint("%",heap_base), pi.value_str);
+		AssertEquals("*int", pi.type_str);
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 5; DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	case 6; {
+		d_line := GetDebugLineForTest(5, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		AssertEquals(perm.all_data.all_register_memory[RegDef.hsp].int_value+8+16, 
+			perm.all_data.all_register_memory[RegDef.hcp].int_value);
+
+
+		heap_base : int = perm.all_data.ram_memory.stack_size;
+
+		pi := GetWatch("pi", text_op.watch_data_rows);
+		AssertEquals(tprint("%",heap_base), pi.value_str);
+		AssertEquals("*int", pi.type_str);
+
+		pv := GetWatch("pv", text_op.watch_data_rows);
+		AssertEquals(tprint("%",heap_base+8), pv.value_str);
+		AssertEquals("*void", pv.type_str);
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 7; {
+		d_line := GetDebugLineForTest(6, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		AssertEquals(perm.all_data.all_register_memory[RegDef.hsp].int_value+8+16, 
+			perm.all_data.all_register_memory[RegDef.hcp].int_value);
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	case 8; {
+		d_line := GetDebugLineForTest(7, text_op.text_comp_data);
+		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		AssertEquals(perm.all_data.all_register_memory[RegDef.hsp].int_value, 
+			perm.all_data.all_register_memory[RegDef.hcp].int_value);
+
+		DownUpInputMap(.DEBUG_STEP_OVER, game_input);
+	}
+	}
+
+	ContinueTest(*perm.test_data);
+
+} @ITest
+
 //TODO FROM HERE Do a similar test for QSort and check array to make sure step over is good
 //ALSO write a general test for bubble sort with a struct function pointer from the Functions library
 //and rename Functions to Basic and then #import Library into Basic once #import is working
@@ -14702,7 +14818,7 @@ QSort :: (base : *void, nmemb : int, size : int, compar : (*void, *void) -> int)
 	p : *void;
 	#asm { alloc size, p; }
 	QSortHelper(base, nmemb, size, compar, p);
-	#asm { free p, size; }
+	#asm { free p; }
 }
 QSortHelper :: (base : *void, nmemb : int, size : int, compar : (*void, *void) -> int, p : *void) {
 	if nmemb < 2 { return; }
@@ -14782,6 +14898,9 @@ DONE);
 	case 6; {
 		d_line := GetDebugLineForTest(3, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
+
+		//TEST that heap data was reset since we grabbed and freed a value
+		AssertEquals(perm.all_data.all_register_memory[RegDef.hsp].int_value, perm.all_data.all_register_memory[RegDef.hcp].int_value);
 
 		AssertEquals(1, GetMemValue(0,int,perm.all_data.ram_memory));
 		AssertEquals(2, GetMemValue(8,int,perm.all_data.ram_memory));
