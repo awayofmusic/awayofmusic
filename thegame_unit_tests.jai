@@ -2263,6 +2263,22 @@ DONE,, unit_test_alloc);
 
 } @UnitTest
 
+Test_AsmCallErr :: () {
+	cd : *CompilationData;
+
+	//TEST Call should not be allowed in asm
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {	
+	#asm { call 0; }
+}
+DONE,, unit_test_alloc);
+	AssertEquals(1, cd.comp_errors.all_compiler_errors.count);
+
+
+} @UnitTest
+
 Test_ParseDirectiveGlobal :: () {
 	ptd := MakeParseTestData();
 
@@ -18160,6 +18176,147 @@ Test_ConstMov :: () {
 
 } @UnitTest
 
+Test_RemoveMusicPtsInTano :: () {
+	ad : *AllData = InitAllData(,,unit_test_alloc);
+	SetupMusicAndRows(ad, TWO_ROWS);
+
+	mspace_0 : *MusicSpaceData = *ad.all_mspace_data[0];
+
+	CreateManyMusicPtsInMemory(float64.[0,4,7], 0, 0, 2, *mspace_0.all_music_pts);
+	CreateManyMusicPtsInMemory(float64.[10,11,12], 0, 2, 4, *mspace_0.all_music_pts);
+	CreateManyMusicPtsInMemory(float64.[13,14,15], 1, 3, 5, *mspace_0.all_music_pts);
+	AssertEquals(9, mspace_0.all_music_pts.count);
+
+	t : tano;
+	t.x_start = 3;
+	t.x_end = 4;
+	t.row_start = 0;
+	t.row_end = 1;
+	RemoveAllMusicPtsInTano(t, *mspace_0.all_music_pts);
+	AssertEquals(3, mspace_0.all_music_pts.count);
+	AssertFoundMusicPt(mspace_0.all_music_pts, .{
+		music_pt_float=0.,
+		x_start_float=0.,
+		x_end_float=2.,
+		row_index=0,
+	});
+	AssertFoundMusicPt(mspace_0.all_music_pts, .{
+		music_pt_float=4.,
+		x_start_float=0.,
+		x_end_float=2.,
+		row_index=0,
+	});
+	AssertFoundMusicPt(mspace_0.all_music_pts, .{
+		music_pt_float=7.,
+		x_start_float=0.,
+		x_end_float=2.,
+		row_index=0,
+	});
+
+
+} @UnitTest
+
+Test_TClear :: () {
+	ci : MusicInstruction;
+	ad : *AllData = InitAllData(,,unit_test_alloc);
+	SetupMusicAndRows(ad, TWO_ROWS);
+	mspace_0 : *MusicSpaceData = *ad.all_mspace_data[0];
+
+	gcmd : GetOrCreateMSpaceData;
+	gcmd.mspace_name = "test";
+	mspace_1 := GetOrCreateMusicSpace(gcmd, ad.runtime_settings, *ad.all_mspace_data, *ad.free_mspace_data_pool);
+	for TWO_ROWS {
+		crd : CreateRowData = it;
+		crd.mspace_id = mspace_1.mspace_id;
+		CreateMusicRow(crd, ad);
+	}
+
+
+	CreateManyMusicPtsInMemory(float64.[0,4,7], 0, 0, 2, *mspace_0.all_music_pts);
+	CreateManyMusicPtsInMemory(float64.[10,11,12], 0, 2, 4, *mspace_0.all_music_pts);
+	CreateManyMusicPtsInMemory(float64.[13,14,15], 1, 3, 5, *mspace_0.all_music_pts);
+	AssertEquals(9, mspace_0.all_music_pts.count);
+
+
+	ci = Instr(.mov, RegMem(.ax), Imm(2), d=ad);
+	ExecMInstr(ci, ad);
+
+	//TEST row range out of bounds
+	ci = Instr(.tclear, MusicMem(0,0.), MusicMem(RegDef.ax,4.), d=ad);
+	err := ExecMInstr(ci, ad);
+	AssertEquals(true, err.is_error);
+
+	ci = Instr(.mov, RegMem(.ax), Imm(1), d=ad);
+	ExecMInstr(ci, ad);
+	ci = Instr(.tclear, MusicMem(0,2.), MusicMem(RegDef.ax,4.), d=ad);
+	ExecMInstr(ci, ad);
+
+	AssertEquals(3, mspace_0.all_music_pts.count);
+	AssertFoundMusicPt(mspace_0.all_music_pts, .{
+		music_pt_float=0.,
+		x_start_float=0.,
+		x_end_float=2.,
+		row_index=0,
+	});
+	AssertFoundMusicPt(mspace_0.all_music_pts, .{
+		music_pt_float=4.,
+		x_start_float=0.,
+		x_end_float=2.,
+		row_index=0,
+	});
+	AssertFoundMusicPt(mspace_0.all_music_pts, .{
+		music_pt_float=7.,
+		x_start_float=0.,
+		x_end_float=2.,
+		row_index=0,
+	});
+
+
+	CreateManyMusicPtsInMemory(float64.[13,14], 1, 3, 5, *mspace_1.all_music_pts);
+	CreateManyMusicPtsInMemory(float64.[15,16], 1, 4, 5, *mspace_1.all_music_pts);
+	AssertEquals(4, mspace_1.all_music_pts.count);
+
+	ci = FInstr(.mov, RegMem(.ax), FImm(3.), d=ad);
+	ExecMInstr(ci, ad);
+	//Test do nothing since we did not have any notes on this row
+	ci = Instr(.tclear, MusicMem(0,RegDef.ax), MusicMem(0,0), Imm(1), d=ad);
+	ExecMInstr(ci, ad);
+	AssertEquals(4, mspace_1.all_music_pts.count);
+
+	//TEST clearing a point in another mspace
+	ci = Instr(.tclear, MusicMem(1,RegDef.ax), Imm(1), d=ad);
+	ExecMInstr(ci, ad);
+	AssertEquals(2, mspace_1.all_music_pts.count);
+	AssertFoundMusicPt(mspace_1.all_music_pts, .{
+		music_pt_float=15.,
+		x_start_float=4.,
+		x_end_float=5.,
+		row_index=1,
+	});
+	AssertFoundMusicPt(mspace_1.all_music_pts, .{
+		music_pt_float=16.,
+		x_start_float=4.,
+		x_end_float=5.,
+		row_index=1,
+	});
+
+	ci = Instr(.mov, RegMem(.dfms), Imm(1), d=ad);
+	ExecMInstr(ci, ad);
+	//TEST clearing a point in another mspace with dfms default
+	ci = Instr(.tclear, MusicMem(1,4.), d=ad);
+	ExecMInstr(ci, ad);
+	AssertEquals(0, mspace_1.all_music_pts.count);
+
+
+	//Delete from dfms==0 by default
+	ci = Instr(.mov, RegMem(.dfms), Imm(0), d=ad);
+	ExecMInstr(ci, ad);
+	ci = Instr(.tclear, MusicMem(0,1.), d=ad);
+	ExecMInstr(ci, ad);
+	AssertEquals(0, mspace_0.all_music_pts.count);
+
+
+} @UnitTest
 
 Test_TMov :: () {
 	ci : MusicInstruction;

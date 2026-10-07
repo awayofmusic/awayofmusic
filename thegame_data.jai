@@ -3369,7 +3369,7 @@ FindMusicRow :: inline (
 -> *MusicLaneRow, CPUError
 {
 	if !InRange(0, row_index, mspace.all_music_lane_rows.count-1) {
-		return null, CPUErr(tprint("Row index % not found in mspace %.", mspace.mspace_id));
+		return null, CPUErr(tprint("Row index % not found in mspace %.", row_index, mspace.mspace_id));
 	} 
 	return *mspace.all_music_lane_rows[row_index], NO_CPU_ERROR;
 }
@@ -3381,7 +3381,7 @@ ValidateMSpaceRowAndX :: inline (
 {
 	row, row_err := FindMusicRow(row_index, mspace);
 	if row_err.is_error return row_err;
-	if !InRange(0, cast(int) x_index, row.row_size) {
+	if !InRange(0, round_to_int(x_index), row.row_size) {
 		return CPUErr(tprint("x index % not found for row % in mspace %.", x_index, row_index, mspace.mspace_id));
 	}	
 	return NO_CPU_ERROR;
@@ -7031,10 +7031,9 @@ OpCode :: enum u8 {
 	// MOVE_MPS; //Move entire MPS with replacement
 	mov; //MOVE_IMMEDIATE; //Move constant MPS value directly with replacement
 	mset; //This performs a memset so we can initialize things easily and efficiently in ram memory
-	clear;
 
-	swap;
-	movp;
+	swap; //swap pointer values - assumes operands are pointers
+	movp; //mov pointer values - assumes operands are pointers
 
 
 	//TODO If we need more operands (eg for chunk moves) then we could make this array compile-time constant.
@@ -7106,7 +7105,7 @@ OpCode :: enum u8 {
 	//eq19 : tuning = {a,b,c,d,e,f}
 	//eq19 : tuning = {0,120,240,600,1200}
 	//TODO This can be replaced with muscall altogether now
-	tune;
+	// tune;
 
 	//TODO Can be replaced with muscall
 	mlen;
@@ -7163,6 +7162,7 @@ OpCode :: enum u8 {
 	// jmpa;
 	//TODO Can remove this, leaving here for now for backwards
 	//compatibilty with old execution for old example checking.
+	//jr can be replicated by using the pc or ir register to jmp from the current(ir) or next(pc) instruction
 	// jr; //TODO is the word 'call' better here
 
 	/*TODO For storing and loading ireg like a stack
@@ -7244,16 +7244,10 @@ OpCode :: enum u8 {
 	OR allow keyboard strokes to have an effect.
 	*/
 
-	//TODO I think we should should move all the base muscalls in here.
-	//Then we don't have update assembler or the values in tests.
-	mspace_clear;
-	//TODO Could also allow moving spaces to a specific index so people can cycle in any order they want.
-	//Could call it move_mspace or swap_mspace might be clearer.
-	// swap_mspace;
-
 	//New instructions for muscall (like syscall) so we can generalize
 	//thinks like creating. The first operand can have a corresponding
 	//enum for code legibility.
+	//TODO Remove this once we move out all muscall instructions
 	muscall;
 
 	//Music and op space asm instructions
@@ -8156,7 +8150,7 @@ ReplaceMusicPtsInMemory :: inline (
 	all_music_pts : *[..] MusicPoint)
 -> [] MusicPoint
 {
-	RemoveAllMusicPtsInMemory(row_index, x_pos, all_music_pts);
+	RemoveAllMusicPtsAtMemoryX(row_index, x_pos, all_music_pts);
 
 	result_music_pts : [] MusicPoint = NewArray(input_music_pt_poses.count, MusicPoint, false,, temp);
 	for music_pt_pos, input_index : input_music_pt_poses {
@@ -8305,12 +8299,14 @@ NewCreateMusicPtInMemory :: inline (
 	return music_pt;
 }
 
+#if 0 {
 NewReplaceMusicPtsInMemory :: inline (
 	input_music_pt_poses : [] $T,
 	x_pos : int,
 	row_index : int)
 {
 	ReplaceMusicPtsInMemory(input_music_pt_poses, x_pos, row_index, *context.c_all_data.all_mspace_data[0].all_music_pts);
+}
 }
 
 /*TODO 
@@ -8325,7 +8321,7 @@ operator [] :: (row : MusicLaneRow, index: int) -> [] *MusicPoint {
 }
 
 operator []= :: (row : *MusicLaneRow, index: int, value: [] *MusicPoint) {
-	RemoveAllMusicPtsInMemory(row.total_row_index, index, *context.c_all_data.all_mspace_data[0].all_music_pts);
+	RemoveAllMusicPtsAtMemoryX(row.total_row_index, index, *context.c_all_data.all_mspace_data[0].all_music_pts);
 	for pointer : value {
 		mp : MusicPoint = MakeMemoryMusicPoint(pointer.music_pt_pos, index, index+1, row.total_row_index);
 		array_add(*context.c_all_data.all_mspace_data[0].all_music_pts, mp);
@@ -8350,10 +8346,9 @@ operator [] :: (row : MusicLaneRow, index: float) -> AggregateMusicPts {
 	amp.pts = GetAllMusicPtPosByPosition(row.total_row_index, cast(int)index, context.c_all_data.all_mspace_data[0].all_music_pts, MusicPoint);
 	return amp;
 }
-}
 
 operator []= :: (row : *MusicLaneRow, index: int, value: AggregateMusicPts) {
-	RemoveAllMusicPtsInMemory(row.total_row_index, index, *context.c_all_data.all_mspace_data[0].all_music_pts);
+	RemoveAllMusicPtsAtMemoryX(row.total_row_index, index, *context.c_all_data.all_mspace_data[0].all_music_pts);
 	for pointer : value.pts {
 		mp : MusicPoint = MakeMemoryMusicPoint(pointer.music_pt_float, index, index+1, row.total_row_index);
 		array_add(*context.c_all_data.all_mspace_data[0].all_music_pts, mp);
@@ -8361,7 +8356,7 @@ operator []= :: (row : *MusicLaneRow, index: int, value: AggregateMusicPts) {
 }
 
 operator []= :: (row : *MusicLaneRow, index: float, value: AggregateMusicPts) {
-	RemoveAllMusicPtsInMemory(row.total_row_index, cast(int)index, *context.c_all_data.all_mspace_data[0].all_music_pts);
+	RemoveAllMusicPtsAtMemoryX(row.total_row_index, cast(int)index, *context.c_all_data.all_mspace_data[0].all_music_pts);
 	for pointer : value.pts {
 		mp : MusicPoint = MakeMemoryMusicPoint(pointer.music_pt_float, cast(int)index, cast(int)index+1, row.total_row_index);
 		array_add(*context.c_all_data.all_mspace_data[0].all_music_pts, mp);
@@ -8372,7 +8367,6 @@ operator [] :: (row : AggregateMusicPts, index: int) -> MusicPoint {
 	return row.pts[index];
 }	
 
-#if 0 {
 operator []= :: (amp_out : *AggregateMusicPts, index: float, value: MusicPoint) {
 	amp_in.pts[index];
 }
@@ -8389,6 +8383,7 @@ AggregateMusicPts :: struct {
 	row_index : int;
 }
 
+#if 0 {
 operator []= :: (row : *MusicLaneRow, index: int, value: int) {
 	array : [1] int;
 	array[0] = value;
@@ -8403,6 +8398,7 @@ operator []= :: (row : *MusicLaneRow, index: int, value: float64) {
 
 operator []= :: (row : *MusicLaneRow, index: int, value: [] $T) {
 	NewReplaceMusicPtsInMemory(value, index, row.total_row_index);
+}
 }
 
 #if 0 {
@@ -8421,6 +8417,7 @@ operator [] :: (row : *MemoryIndex, index: int, value: [] $T) -> AggregateMusicP
 }	
 }
 
+#if 0 {
 InterOnsetIntervals :: struct {
 	intervals : [] int;
 	start_index : int;
@@ -8584,6 +8581,7 @@ RowToVertical :: inline (
 	return_amp : AggregateMusicPts;
 	return_amp.pts = vert_pts;
 	return return_amp;
+}
 }
 
 AggregateOpType :: enum u8 {

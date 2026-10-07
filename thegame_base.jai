@@ -2381,7 +2381,7 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 						ChangeTextPane(SelectedTextPane.CALL_STACK, text_op, perm.all_data);
 					}
 					text_op.highlighted_call_stack_index = Clamp(0, mouse_call_stack_index, text_op.exec_info.debug_info.debug_call_stack.count-1);
-					SelectHighlightedCallFrame(text_op, perm.all_data);
+					SelectHighlightedCallFrame(text_op, perm.all_data, op_space, perm.text_editor_data);
 				}
 				//TODO Can add a double click here to choose that call stack OR set it when we move up there
 				//and see if they overlap. ALSO need to adjust code pointer so we can see where we are in the code
@@ -3688,7 +3688,7 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 					*text_op.start_call_stack_index, *text_op.end_call_stack_index);
 			} 
 			else if IsKeyboardPress(.ENTER, .DOWN_THIS_FRAME, game_input) {
-				SelectHighlightedCallFrame(text_op, perm.all_data);
+				SelectHighlightedCallFrame(text_op, perm.all_data, op_space, perm.text_editor_data);
 			}
 
 			//TODO If we store the rectangle then we can move the camera if we are outside the rectangle
@@ -5777,6 +5777,11 @@ if perm.all_data.all_music_instructions.count > 0 {
 			//ACTUALLY maybe technically you don't need to but you would not be able to see anything.
 			//We could lock the text editor into debug mode while is_debug_stop.
 			assert(text_op.exec_info.exec_mode == .DEBUG);//sanity check
+			#if 1 {
+			//NOTE : We only want to reset_data here if we just started executing since we have note
+			//created the expression tree yet. Otherwise we only want to visit/evaluate the nodes.
+			ReevaluateAllWatchData(text_op, perm.all_data, reset_watch_data);
+			} else {
 			if text_op.watch_data_rows.count > 1 {
 				//We don't want to process the last row since it is always empty.
 				//We could also check if that watch_data.name.count == 0 if there are issues with this.
@@ -5797,9 +5802,11 @@ if perm.all_data.all_music_instructions.count > 0 {
 					//something like the size of an of an array changed. 
 					//Right now you have to undrop and redrop the row.
 
+
 					EvaluateWatchData(e_index, text_op, perm.all_data, reset_watch_data);
 					e_index += 1;
 				}
+			}
 			}
 
 			op_space, found_op_space := ArrayFindFirstByNameId(perm.all_data.all_open_op_spaces, 
@@ -8262,6 +8269,20 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 					PushRectangle(rect, DBLUE_V, op_space.render_groups.scissor_group, 10001);
 					}
 				}
+				if text_op.exec_info.debug_info.chose_other_call_frame {
+					c_frame : *DebugCallFrame = GetCallFrame(*text_op.exec_info.debug_info);
+					call_d_line, found_call_d_line := GetDebugLineAsm(c_frame.call_instr_index, text_op.text_comp_data);
+					//REPORT : DebugCallFrame instr_index should be valid with the DebugLine for the same compilation
+					assert(found_call_d_line, "REPORT : Debug line does not exist for call frame asm index %.\n", c_frame.call_instr_index);
+					//TODO We could only draw this if in text line index range but it gets scissored out anyways
+					//So this might draw a portion of the arrow on the edges of the text pane or maybe not...
+					if found_call_d_line && call_d_line.absolute_path_name == text_file.absolute_path_name {
+						rel_line_index : int = call_d_line.line_number - start_render_line;
+						op_pos : Vector2F = MakeV2F(DEBUG_START_X, DEBUG_START_Y - (TEXT_LINE_HEIGHT*rel_line_index));
+						cam_pos : Vector2F = OpSpaceToCameraSpace(op_pos, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
+						PushQuadArrowViewport(cam_pos,cam_pos+Vector2F.{0.85,0},GREY_V,0.1,op_space.render_groups.scissor_group,order=left_margin_order+2);
+					}
+				}
 			}
 
 
@@ -8814,6 +8835,15 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 							cam_pos : Vector2F = OpSpaceToCameraSpace(op_pos, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
 							PushQuadArrowViewport(cam_pos,cam_pos+Vector2F.{0.85,0},YELLOW_V,0.1,op_space.render_groups.scissor_group,order=l_bottom_order+5);
 						}
+						if text_op.exec_info.debug_info.chose_other_call_frame {
+							c_frame : *DebugCallFrame = GetCallFrame(*text_op.exec_info.debug_info);
+							if InRange(text_op.start_disasm_index, c_frame.call_instr_index, text_op.end_disasm_index) {
+								rel_call_index : int = c_frame.call_instr_index - text_op.start_disasm_index;
+								op_pos : Vector2F = MakeV2F(DEBUG_START_X, ASM_DEBUG_START_Y - (TEXT_LINE_HEIGHT*rel_call_index));
+								cam_pos : Vector2F = OpSpaceToCameraSpace(op_pos, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
+								PushQuadArrowViewport(cam_pos,cam_pos+Vector2F.{0.85,0},GREY_V,0.1,op_space.render_groups.scissor_group,order=l_bottom_order+5);
+							}
+						}
 
 						stop_d_line, found_d_line := GetDebugLineAsm(perm.all_data.all_register_memory[RegDef.pc].int_value, text_op.text_comp_data);
 						//We used to have an assertion in GetDebugLineAsm here and it would not get hit so if it does then we should look into it
@@ -8982,7 +9012,8 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 					from_top_index -= text_op.start_call_stack_index;
 					op_pos : Vector2F = MakeV2F(LOC_BOTTOM_START_X, LOC_BOTTOM_START_Y - (TEXT_LINE_HEIGHT*from_top_index));
 					cam_pos : Vector2F = OpSpaceToCameraSpace(op_pos, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
-					PushQuadArrowViewport(cam_pos,cam_pos+Vector2F.{0.85,0},ORANGE_V,0.1,op_space.render_groups.scissor_group,order=r_bottom_order+5);
+					// PushQuadArrowViewport(cam_pos,cam_pos+Vector2F.{0.85,0},ORANGE_V,0.1,op_space.render_groups.scissor_group,order=r_bottom_order+5);
+					PushQuadArrowViewport(cam_pos,cam_pos+Vector2F.{0.85,0},GREY_V,0.1,op_space.render_groups.scissor_group,order=r_bottom_order+5);
 				}
 
 				if text_op.selected_pane == SelectedTextPane.CALL_STACK {

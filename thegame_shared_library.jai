@@ -1237,30 +1237,33 @@ UpdateMusicPtLength :: inline (mp : *MusicPoint, new_length : float64) {
 //HOWEVER .and <x,y> [r] where r is empty array would clear the music_memory
 //If the first value in memory is always zero, so [0] is zero then that would be
 //a clear instruction without adding a new instruction, which seems ideal.
-RemoveAllMusicPtsInMemory :: inline (
-	row_index : int,
-	x_pos : $T,
-	all_music_pts : *[..] MusicPoint)
+RemoveAllMusicPtsAtMemoryX :: inline (
+	row_start : int,
+	row_end : int,
+	x_pos : float64,
+	all_music_pts : *[..] MusicPoint,
+	$return_pts : bool = false)
 -> [] MusicPoint
 {
+	#if return_pts {
 	music_pts : [..] MusicPoint;
 	music_pts.allocator = context.allocator;
+	}
 
-	//TODO BETTER WAY TO DO THIS IS JUST MEMCPY BACKWARDS AND THEN RESIZE ARRAY
-	//SHOULD TRY THAT AND TEST WITH NEW 2 OPERAND SET OPERATORS
 	mpi : int;
 	while mpi < all_music_pts.count {
 		mp := all_music_pts.*[mpi];
-		if ValueInMusicPt(x_pos, row_index, mp) {
-    		array_add(*music_pts, mp);
-    		//TODO I think its better to just remove it unordered and then sort once afterwards
-			array_ordered_remove_by_index(all_music_pts, mpi);
-			mpi -= 1;
+		if ValueInMusicPt(x_pos, mp) && MusicPtInRowRange(row_start, mp, row_end) {
+    		#if return_pts array_add(*music_pts, mp);
+			array_unordered_remove_by_index(all_music_pts, mpi);
+	   } else {
+	   	mpi += 1;
 	   }
-	   mpi += 1;
 	}
+	DefaultSortNeumes(all_music_pts.*);
 
-	return music_pts;
+	#if return_pts return music_pts;
+	else return .[];
 }
 
 //TODO Rename to CreateMemoryMusicPt or just CreateMusicPt if we don't do it anywhere else.
@@ -1311,6 +1314,7 @@ ValueInMusicPt :: inline (value : $T, row_index : int, mp : MusicPoint) -> bool 
 	}
 	return false;
 }
+
 //This is adjustable so that people can think about floating point in any case with 5 decimal points
 //being a good default. I think I should look at FloatEquals website also.
 //TODO Maybe 6 decimal points is better by default since that would still leave 9 lhs values, which is billions.
@@ -1489,6 +1493,15 @@ tano :: struct {
 	//have a stack for each mspace which is possible but for now we won't do it and can add it later if
 	//it is more practical than just making some functions or operator overloads for it.
 	// mspace_end : int = 0;
+}
+MakeTanoRange :: inline (rs : int, row_range : int, xs : float64, x_range : float64, ms : int = 0) -> tano {
+	t : tano;
+	t.row_start = rs;
+	t.row_end = rs + row_range;
+	t.x_start = xs;
+	t.x_end = xs + x_range;
+	t.mspace_start = ms;
+	return t;
 }
 MakeTano :: inline (rs : int, re : int, xs : float64, xe : float64, ms : int) -> tano {
 	t := tano.{rs,re,xs,xe,ms};
@@ -1743,29 +1756,30 @@ GetTanoNumOfPoints :: inline (t : tano, all_music_pts : [] MusicPoint) -> int {
 	}
 	return dim;
 }
-//This is not used and untested right now but is useful in general
-//TODO Can likely to a regular remove and then a DefaultSortNeumes
-//We can just do that now since we sort after every instruction execution
-//BUT WE SHOUDL write NotOrdered and leave a comment here saying we should
-//sort after this or may one with order that sorts after calling this
-RemoveTanoMusicPts :: inline (t : tano, all_music_pts : [] MusicPoint) {
+RemoveAllMusicPtsInTano :: inline (t : tano, all_music_pts : *[..] MusicPoint, $return_pts : bool = false) -> [] MusicPoint {
+	#if return_pts {
 	music_pts : [..] MusicPoint;
 	music_pts.allocator = context.allocator;
+	}
 
 	t_norm : tano = NormalizeTano(t);
 	mpi : int = 0;
 	while mpi < all_music_pts.count {
+		mp : MusicPoint = all_music_pts.*[mpi];
 		in_tano : bool = InTanoAssumeNorm(mp, t_norm);
 		if in_tano {
-    		array_add(*music_pts, mp);
-    		//TODO I think its better to just remove it unordered and then sort once afterwards
-			array_ordered_remove_by_index(all_music_pts, mpi);
-			mpi -= 1;
-	   }
-	   mpi += 1;
+    		#if return_pts array_add(*music_pts, mp);
+    		//We don't need ordered delete since we sort after the removal anyways. 
+			array_unordered_remove_by_index(all_music_pts, mpi);
+	   } else {
+		   mpi += 1;
+		}
 	}
 
-	return music_pts;
+	DefaultSortNeumes(all_music_pts.*);
+
+	#if return_pts return music_pts;
+	else return .[];
 }
 
 //TODO Update this function and use it in mov for music, then test

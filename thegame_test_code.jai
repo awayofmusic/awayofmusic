@@ -15030,7 +15030,13 @@ DONE);
 //THEN WE CAN ADD A SEPARATE TEST that moves around text tabs when we click specific call stack
 //TODO TAB TEST should not be using Basic and should be using a custom import
 //then also add a third file to check 3 maybe do that for the call stack debug test
+
+//TODO Could do a basic test that check global constants and jumps into sort function to make sure it works
+//and just check that we change tab
+
 //TODO ALSO AN #import #global vars and constants test to make sure that works with import
+
+//TODO FROM HERE REUSE TEST_RECURSE_STRING for a recursive test of call stack selection
 TAB_TEST_FILE_NAME :: #run sprint("%/tab_test", C_TEST_DIR_NAME);
 BASIC_FILE_NAME :: #run sprint("%/Basic", C_LOAD_DIR_NAME);
 Test_MultiTabDebug :: (
@@ -15038,7 +15044,7 @@ Test_MultiTabDebug :: (
 	game_memory : *GameMemory, 
 	renderer_data : *RendererData, 
    audio_data : *AudioData,
-   game_input : *GameInput) 
+   game_input : *GameInput)
 {
 	test_string :: "test";
 	perm : *Persist = GetPermanentStorage(game_memory);

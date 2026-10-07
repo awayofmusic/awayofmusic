@@ -427,6 +427,28 @@ SetWatchType :: inline (wd : *WatchData, type : string) {
 	memcpy(wd.type_str.data, type.data, s_count);
 	wd.type_str.count = s_count;
 }
+
+ReevaluateAllWatchData :: inline (text_op : *TextOpSpaceData, all_data : *AllData, reset_data : bool) {
+	if text_op.watch_data_rows.count > 1 {
+		//We don't want to process the last row since it is always empty.
+		//We could also check if that watch_data.name.count == 0 if there are issues with this.
+		//NOTE : this is also asserted in EvaluateWatchData for an extra resilience check.
+		//DOC : Had to change this inc ase we remove rows when evaluating if we have an error or different types.
+		// for 0..text_op.watch_data_rows.count-2 {
+		e_index : int = 0;
+		while e_index <= text_op.watch_data_rows.count-2 {
+			//NOTE : We only want to reset_data here if we just started executing since we have note
+			//created the expression tree yet. Otherwise we only want to visit/evaluate the nodes.
+
+			//TODO We could remove watch sub rows here and redrop each row in case 
+			//something like the size of an of an array changed. 
+			//Right now you have to undrop and redrop the row.
+
+			EvaluateWatchData(e_index, text_op, all_data, reset_data);
+			e_index += 1;
+		}
+	}	
+}
 /*TODO I think this needs a text_file_id passed in. We could have selected_text_op in all_data as well.
 But I think passing it in is more flexible so we can do multiple things at once later if needed.
 Technically this only needs the compilation data and the execution info because it only needs registers and ram
@@ -2057,7 +2079,7 @@ CreateTextOpSpace :: inline (
 	text_op : *TextOpSpaceData = array_add(*all_data.all_text_op_space_data);
 	text_op.op_space_id = op_space.id;
 	// text_op.file_tabs[text_op.ftab_i].text_file_id = text_file_id;
-	//TODO Could use OpenFileTab
+	//TODO Could use OpenFileTab. We don't for now because tests pass in invalid files
 	for text_file_ids {
 		//TOOD Should check that these are valid text file ids
 		text_tab : *TextTab = array_add(*text_op.file_tabs);
@@ -2554,6 +2576,8 @@ OpenFileTabWithExplorer :: inline (
 	//DOC : We put this here to prevent the explorer from opening unnecessarily if we hit the tab limit.
 	if text_op.file_tabs.count == MAX_TEXT_FILE_TABS {
 		SetTextStatus(TEXT_TAB_MAX_MSG, text_op);
+		print(TEXT_TAB_MAX_MSG);
+		return null, false;
 	}
 
 	fe_result := OpenFileWithExplorer();
@@ -2578,6 +2602,8 @@ OpenFileTab :: inline (
 {
 	if text_op.file_tabs.count == MAX_TEXT_FILE_TABS {
 		SetTextStatus(TEXT_TAB_MAX_MSG, text_op);
+		print(TEXT_TAB_MAX_MSG);
+		return null, false;
 	}
 	//TODO Could pull this out to LoadFileTab by file name directly
 	//Can use this for tests and also when opening a text op space from a file later
@@ -2606,7 +2632,9 @@ OpenFileTab :: inline (
 		ChangeTextTab(tab_index, text_file, text_op);
 	} 
 	else {
-		SetTextStatus(tprint("Cannot find file %", absolute_file_name), text_op);
+		file_not_found := tprint("Cannot find file %", absolute_file_name);
+		SetTextStatus(file_not_found, text_op);
+		print(file_not_found);
 	}	
 
 	return text_file, found_text_file;
@@ -3156,29 +3184,43 @@ If > 0 then we chose a different call frame so we set that one.
 This is where we subtract the highlighted index from the count so the selected index points to the right
 index in the array. Then we need to subtract it back for the ui.
 We could store both if that helps but I think this seems ok right now.
+
+REMINDER : This is separate from higlighted call index because we could have highlighted an index but not selected it.
 */
 SelectHighlightedCallFrame :: inline (
 	text_op : *TextOpSpaceData,
-	all_data : *AllData) 
+	all_data : *AllData,
+	op_space : OperationSpace,
+	ted : TextEditorData) 
 {
+	//sanity check should not happen since highlighted call stack index is checked on input
+	if !InRange(0, text_op.highlighted_call_stack_index, text_op.exec_info.debug_info.debug_call_stack.count-1) {
+		log_error("REPORT : highlighted_call_stack_index not in range for text_op %.\n", text_op.*);
+		return;
+	}
+
+	instr_index : int;
 	text_op.exec_info.debug_info.selected_call_frame_index = 
 		text_op.exec_info.debug_info.debug_call_stack.count-1-text_op.highlighted_call_stack_index;
 	if text_op.highlighted_call_stack_index == 0 {
 		text_op.exec_info.debug_info.chose_other_call_frame = false;
 		text_op.exec_info.debug_info.debug_all_registers = all_data.all_register_memory;
+		instr_index = all_data.all_register_memory[RegDef.pc].int_value;
 	} else {
 		text_op.exec_info.debug_info.chose_other_call_frame = true;
-		text_op.exec_info.debug_info.debug_all_registers = 
-			text_op.exec_info.debug_info.debug_call_stack[text_op.exec_info.debug_info.selected_call_frame_index].stored_frame_registers;
+		c_frame : *DebugCallFrame = GetCallFrame(*text_op.exec_info.debug_info);
+		text_op.exec_info.debug_info.debug_all_registers = c_frame.stored_frame_registers;
+		instr_index = c_frame.call_instr_index;
 	}
-	//TODO We could make this a function EvaluateAllWatchData since we reuse it here and after instr execution
-	if text_op.watch_data_rows.count > 1 {
-		//We don't want to process the last row since it is always empty.
-		//We could also check if that watch_data.name.count == 0 if there are issues with this.
-		//NOTE : this is also asserted in EvaluateWatchData for an extra resilience check.
-		for 0..text_op.watch_data_rows.count-2 {
-			EvaluateWatchData(it, text_op, all_data, reset_data=false);
-		}
+
+	d_line, found_d_line := GetDebugLineAsm(instr_index, text_op.text_comp_data);
+	//sanity check should not happen since debug call frames are only created with valid instructions in the debugger
+	assert(found_d_line, "REPORT : debug line asm not found in text op %.\n", text_op.*);
+
+	ReevaluateAllWatchData(text_op, all_data, reset_data=false);
+	text_file, found_text_file := OpenFileTab(d_line.absolute_path_name, text_op, *all_data.all_text_files, op_space, ted);
+	if found_text_file {
+		MoveToLine(d_line.line_number, text_file.file_string, *text_op.file_tabs[text_op.ftab_i].tab_cursor);
 	}
 }
 

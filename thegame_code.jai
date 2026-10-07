@@ -2214,7 +2214,7 @@ GetDebugLineAsm :: inline (
 
 	//REMINDER this used to be an assertion and was not getting hit anywhere
 	// assert(false, "No debug line found for asm_index %.\n", asm_index);
-	log("No debug line found for asm_index %.\n", asm_index);
+	log_error("REPORT : No debug line found for asm_index %.\n", asm_index);
 	return INVALID_DEBUG_LINE, false;
 }
 //This should be used in game and the other ones for tests
@@ -10956,6 +10956,11 @@ Assembler :: (asm_tokens : [] LCodeToken, total_asm_start_index : int, cd : *Com
 					l_string : string = c_tokens[c_index].token_string;
 					is_op_code, op_code_index := ArrayFindByValue(op_code_names, l_string);
 					if is_op_code {
+						if op_code_enums[op_code_index] == OpCode.call {
+		   				CreateCompErr(cd, .ASSEMBLY_ERROR, c_tokens[c_index],
+							"Use jmp instead of call. Call is used by the debugger for the call stack.");
+						}
+
 						CreateAsmIR(.OP_CODE, op_code_index, *current_asm_irs);
 						if c_index + 1 < c_tokens.count && c_tokens[c_index+1].token_type == #char "." {
 							if c_index + 2 < c_tokens.count {
@@ -11892,18 +11897,6 @@ GenerateAsmInstructionManual :: () -> AsmInstructionManual {
 			ALL_SINGLE_INT_OPERANDS]},
 		]};
 	}
-	case OpCode.clear; {
-		aim.valid_instr_info[it] = .{.[
-		.{.[.[.MUSIC_MEMORY]]},
-		]};
-	}
-	case OpCode.mspace_clear; {
-		aim.valid_instr_info[it] = .{.[
-		.{.[.[.NONE], 
-			.[.NONE],
-			.[.NONE]]},
-		]};
-	}
 	case OpCode.mod; #through;
 	case OpCode.div; #through;
 	case OpCode.mul; #through;
@@ -11971,9 +11964,17 @@ GenerateAsmInstructionManual :: () -> AsmInstructionManual {
 	}
 	case OpCode.tclear; {
 		aim.valid_instr_info[it] = .{.[
-		.{.[.[.NONE, .INTEGER, .REGISTER, .RAM_MEMORY], 
+		.{.[.[.NONE, .INTEGER, .REGISTER], 
 			.[.NONE, .REGISTER],
 			.[.NONE]]},
+		//just a tano
+		.{.[.[.RAM_MEMORY],
+			.[.NONE],
+			.[.NONE]]},
+		//Music memory
+		.{.[.[.MUSIC_MEMORY],
+			.[.NONE, .MUSIC_MEMORY, .INTEGER, .REGISTER, .RAM_MEMORY],
+			.[.NONE, .INTEGER, .REGISTER, .RAM_MEMORY]]},
 		]};
 	}
 	case OpCode.tmod; #through;
@@ -12121,7 +12122,6 @@ GenerateAsmInstructionManual :: () -> AsmInstructionManual {
 		]};
 	}
 	//TODO .tune and .mlen can be replace with .muscall altogether
-	case OpCode.tune; #through;
 	case OpCode.muscall; {
 		aim.valid_instr_info[it] = .{.[
 		.{.[ALL_SINGLE_INT_OPERANDS,
@@ -12370,6 +12370,9 @@ PressAsmBreakpoint :: inline (
 }
 //TODO Should this be called DebugStackFrame?
 DebugCallFrame :: struct {
+	//This is only valid if chose_other_call_frame = true
+	//otherwise we are at the current running instr and 
+	//so nothing was called
 	call_instr_index : int;
 	//TODO Do we need this or just use it from the array since 
 	//we will always have the function scope in there anyways.
@@ -12381,6 +12384,7 @@ DebugCallFrame :: struct {
 	//Can make a separate struct and set the data in CreateDebugCallFrame
 	// function_data : CallFrameFunctionData;
 	function_scope : ScopeData;
+	//TODO We can fremove this and just fetch it from the function_id in the function_scope above when needed
 	func_decl : FunctionDeclaration;
 
 	//DOCU : Which scope we are at within all_scopes_in_function
@@ -12799,47 +12803,53 @@ ExecuteManyInstructions :: inline (exec : *ExecutionInfo, ad : *AllData) -> CPUE
 					}
 				}
 				}
-			} else {
-				//NOTE : We just executed some instructions and so we check if need to debug stop
-				//If we are outside the original d_step then we stop
-				last_instr := ad.all_music_instructions[ad.all_register_memory[RegDef.ir].int_value];
-				//NOTE : We already checked that .pc is valid above so we can safely grab the instruction
-				// next_instr := ad.all_music_instructions[ad.all_register_memory[RegDef.pc].int_value];
-				if last_instr.op_code == .call {					
-					//sanity check : should always have the main call frame in here
-					assert(exec.debug_info.debug_call_stack.count > 0);
-					//Set the previous frame call_instr_index so we know where we are calling from
-					last_frame := peek_pointer(exec.debug_info.debug_call_stack);
-					last_frame.call_instr_index = ad.all_register_memory[RegDef.ir].int_value;
+			} 
+			else {
+				//If we haven't executed any instructions then ir reg is invalid since we don't have a last executed instruction.
+				if exec.total_instructions_run > 0 {
+					//NOTE : We just executed some instructions and so we check if need to debug stop
+					//If we are outside the original d_step then we stop
+					last_instr := ad.all_music_instructions[ad.all_register_memory[RegDef.ir].int_value];
+					//NOTE : We already checked that .pc is valid above so we can safely grab the instruction
+					// next_instr := ad.all_music_instructions[ad.all_register_memory[RegDef.pc].int_value];
+					if last_instr.op_code == .call {
+						//sanity check : should always have the main call frame in here
+						assert(exec.debug_info.debug_call_stack.count > 0);
+						//Set the previous frame call_instr_index so we know where we are calling from
+						last_frame := peek_pointer(exec.debug_info.debug_call_stack);
+						last_frame.call_instr_index = ad.all_register_memory[RegDef.ir].int_value;
 
-					func_start_index : int = ComputeOperandInt(last_instr.operands[0], ad.all_register_memory, ad.ram_memory);
-					//TODO Should this be returned as an error? It will be checked by the ExecMInstr anyways.
-					//Also call should only be used by the compiler so this is more of a sanity check.
-					assert(func_start_index >= 0 && func_start_index < ad.all_music_instructions.count);
-					CreateDebugCallFrame(func_start_index, exec, ad.comp_data, ad);
-				} 
-				else if last_instr.op_code == .push_all_stack_reg {
-					/*DOC : If we have a .push_all_stack_reg when we call a function, then we store the registers
-					here for the stack frame so we can use in the watch window and avoid having to copy over updated
-					sbp register and maybe anything else we add later.
-					*/
-    				for exec.debug_info.d_step.start_asm_index..exec.debug_info.d_step.end_asm_index {
-    					if ad.all_music_instructions[it].op_code == OpCode.call {
-							assert(exec.debug_info.debug_call_stack.count > 0);
-							last_frame := peek_pointer(exec.debug_info.debug_call_stack);
-		    				memcpy(last_frame.stored_frame_registers.data, ad.all_register_memory.data, ad.all_register_memory.count * size_of(MemoryValue));
-							break;
+						func_start_index : int = ComputeOperandInt(last_instr.operands[0], ad.all_register_memory, ad.ram_memory);
+						//TODO Should this be returned as an error? 
+						//REMINDER : Need to ensure this does not happen since the ExecMInstr call instruction should return a cpu error.
+						//This avoids having invalid debug call frames which we should never have anyways.
+						//Call can be used so people can make their own debug call frames but only if the call instr_index is valid.
+						assert(func_start_index >= 0 && func_start_index < ad.all_music_instructions.count);
+						CreateDebugCallFrame(func_start_index, exec, ad.comp_data, ad);
+					} 
+					else if last_instr.op_code == .push_all_stack_reg {
+						/*DOC : If we have a .push_all_stack_reg when we call a function, then we store the registers
+						here for the stack frame so we can use in the watch window and avoid having to copy over updated
+						sbp register and maybe anything else we add later.
+						*/
+	    				for exec.debug_info.d_step.start_asm_index..exec.debug_info.d_step.end_asm_index {
+	    					if ad.all_music_instructions[it].op_code == OpCode.call {
+								assert(exec.debug_info.debug_call_stack.count > 0);
+								last_frame := peek_pointer(exec.debug_info.debug_call_stack);
+			    				memcpy(last_frame.stored_frame_registers.data, ad.all_register_memory.data, ad.all_register_memory.count * size_of(MemoryValue));
+								break;
+							}
 						}
+					} 
+					else if last_instr.op_code == .ret {
+						//sanity check. The first one is main so that should be closed with exit
+						assert(exec.debug_info.debug_call_stack.count > 1);
+						//NOTE : To avoid issues we reset data when we create a new frame since we have the pool in the array.
+						//The pool is store in the array but we could have a separate array for that as well.
+						exec.debug_info.debug_call_stack.count -= 1;
+						//TODO We could reset the data here if needed
+						// pop(*exec.debug_info.debug_call_stack);
 					}
-				} 
-				else if last_instr.op_code == .ret {
-					//sanity check. The first one is main so that should be closed with exit
-					assert(exec.debug_info.debug_call_stack.count > 1);
-					//NOTE : To avoid issues we reset data when we create a new frame since we have the pool in the array.
-					//The pool is store in the array but we could have a separate array for that as well.
-					exec.debug_info.debug_call_stack.count -= 1;
-					//TODO We could reset the data here if needed
-					// pop(*exec.debug_info.debug_call_stack);
 				}
 
 				//Sanity check : should always have a value in here because of the main function
@@ -13263,31 +13273,60 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 			memcpy(v1, v2, mov_size);
 		}
 	}
-	case OpCode.clear; {
-		//TODO Can add a mov_size here so we can clear in a range as well.
-		//That would be the reason to have clear so then we can optimize a clear in range.
-		//Can also allow this for registers or memory although that can just be a mov 0.
-		//TODO Could rename to clr or cler or not
-		assert(ci.operands[0].operand_type != .NONE);
-		row_index, x_index := MusicMemRowAndXIndex(ci.operands[0], ad.all_register_memory);
-		//TODO Do this with a range
-		//TODO This can be optimized by just memcpying over the old values instead in this function
-		RemoveAllMusicPtsInMemory(row_index, x_index, *df_mspace.all_music_pts);
-		//TODO Use this with a range to delete for x and row range
-		// RemoveTanoMusicPts()
-	}
 	//TODO Could have operand 1 and/or 2 be settings to filter clear based on row/tano and also svara
 	case OpCode.tclear; {
 		if ci.operands[0].operand_type == {
+		case .MUSIC_MEMORY; {
+			//This is already validated in ValidateMusicOperand
+			row_index, x_index := MusicMemRowAndXIndex(ci.operands[0], ad.all_register_memory);
+
+			row_range : int = 0;
+			x_range : float64 = 0;
+			if ci.operands[1].operand_type == .MUSIC_MEMORY {
+				row_range, x_range = MusicMemRowAndXIndex(ci.operands[1], ad.all_register_memory);
+			}
+
+			rm_mspace : *MusicSpaceData = df_mspace;
+			set_mspace_index : bool = false;
+			mspace_index : int;
+			if ci.operands[1].operand_type != .MUSIC_MEMORY && ci.operands[1].operand_type != .NONE {
+				set_mspace_index = true;
+				mspace_index = ComputeOperandInt(ci.operands[1], ad.all_register_memory, ad.ram_memory);
+			} else if ci.operands[1].operand_type == .MUSIC_MEMORY && ci.operands[2].operand_type != .NONE {
+				set_mspace_index = true;
+				mspace_index = ComputeOperandInt(ci.operands[2], ad.all_register_memory, ad.ram_memory);
+			}
+			if set_mspace_index {
+				mspace, mspace_err := FindMSpace(mspace_index, ad.all_mspace_data, ad.all_register_memory);
+				if mspace_err.is_error return mspace_err;
+				rm_mspace = mspace;				
+			}
+
+			rx_err : CPUError = ValidateMSpaceRowAndX(row_index+row_range, x_index+x_range, rm_mspace);
+			if rx_err.is_error return rx_err;
+
+			if FloatBothEqual(x_range, 0) {
+				RemoveAllMusicPtsAtMemoryX(row_index, row_index+row_range, x_index, *rm_mspace.all_music_pts);
+			} else {
+				t : tano = MakeTanoRange(row_index, row_range, x_index, x_range);
+				RemoveAllMusicPtsInTano(t, *rm_mspace.all_music_pts);
+			}
+		}
 		case .NONE; {
 			//Clear all music_pts if there is no input
-			array_reset_keeping_memory(*df_mspace.all_music_pts);
+			for ad.all_mspace_data {
+				array_reset_keeping_memory(*it.all_music_pts);
+			}
 			array_reset_keeping_memory(*ad.tano_stack_music_pts);
 		} 
 		case .RAM_MEMORY; {
-			//TODO Make a function that removes all neumes in a tano.
-			//TODO Can pass ram_memory into assembler so we can do 
-			//"tclear t;" for a specific tano
+			mem_address : int = ComputeRAMLocation(ci.operands[0], ad.all_register_memory, ad.ram_memory);
+			rm_tano, err := GetMemValue(mem_address, tano, ad.ram_memory);
+			if err.is_error return err;
+			mspace_neumes, mspace_err := GetMSpaceNeumes(rm_tano.mspace_start, ad);
+			//TODO We could use RemoveAllMusicPtsInTano if mspace_start == mspace_end but can also use music memory for that...
+			//TECHNICALLY if x_start == x_end then nothing is in this tano since the width is 0... so i think this is correct
+			RemoveAllMusicPtsInTano(rm_tano, mspace_neumes);
 		} 
 		//TODO If we pass in integer or register that could be clearing a specific mspace_index
 		//so then we can just reset that specific array if we implements neumes with separate arrays.
