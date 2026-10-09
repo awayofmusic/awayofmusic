@@ -1,0 +1,12 @@
+#global PI : float : 3.14159;
+#global TEST_S : TestS;
+FooTest :: (x : int) -> int {
+	TEST_VAR += OTHER;
+	return TEST_VAR + 1;
+}
+#global TEST_VAR : int;
+TestS :: struct {
+	f : float;
+	x : int;
+}
+#global OTHER : int : 14;

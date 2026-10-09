@@ -2254,6 +2254,8 @@ AllTextOpRects :: struct {
 	X_GAP : float;
 	LOC_START_X : float;
 
+	R_TOP_LOC_WATCH_Y : float;
+
 	//TODO Should we rename these and put X and 
 	L_BOTTOM_LOC_ASM_Y : float;
 	L_BOTTOM_LOC_ASM_X : float; 
@@ -2435,6 +2437,8 @@ UpdateTextOpRects :: inline (
 	ator.add_file_tab_rect.min.x = ator.top_bar_rect.max.x - 1.5 * ted.code_font_1_char_width_world;
 
 
+	loc_y_offset : float = 0.5*ator.TEXT_LINE_HEIGHT - text_op.top_margin_height;
+
 	/*DOC : We need to compute this after the text bar rects so we adjust based on the
 	bottom find/replace bar and also the top file tab bar where the text
 	and cursor are started drawing.
@@ -2442,7 +2446,7 @@ UpdateTextOpRects :: inline (
 	//TODO I think these will always be the same but may change relative to font and stuff like that.
 	//Would need to test with different fonts and different window sizes.
 	// LOC_START_Y : float = 14.5 - text_op.top_margin_height;
-	ator.LOC_START_Y = ator.l_text_rect.max.y - 0.5*ator.TEXT_LINE_HEIGHT - text_op.top_margin_height;
+	ator.LOC_START_Y = ator.l_text_rect.max.y - loc_y_offset;
 	ator.DEBUG_START_Y = ator.LOC_START_Y - YAdjustCursorHeight(ator.cursor_height);
 
 
@@ -2450,7 +2454,7 @@ UpdateTextOpRects :: inline (
 	ator.l_bottom_rect.max.y = op_rect.min.y + text_op.bottom_proportion*op_world_size.y;
 
 	//DOC: We compute the position that require rects down here so we make sure to to compute the rects first
-	ator.L_BOTTOM_LOC_ASM_Y = ator.l_bottom_rect.max.y - 0.5*ator.TEXT_LINE_HEIGHT - text_op.top_margin_height;
+	ator.L_BOTTOM_LOC_ASM_Y = ator.l_bottom_rect.max.y - loc_y_offset;
 	ator.L_BOTTOM_LOC_ASM_X = ator.LOC_START_X;
 
 
@@ -2477,6 +2481,13 @@ UpdateTextOpRects :: inline (
 	ator.r_top_rect.min.y = op_rect.min.y + text_op.r_bottom_height_proportion*op_world_size.y;
 	// }
 
+	//BUG FIX : this fixed a bug where the watch row was getting moved down since we were using loc start y
+	//this does not lower it when the tab is lowered.
+	ator.R_TOP_LOC_WATCH_Y = ator.r_top_rect.max.y - loc_y_offset;
+	//We added above for watch row top bug with text file tabs going down as well to double check
+	// print("l_text_rect.max=%\n", ator.l_text_rect.max);
+	// print("r_top_rect.max=%\n", ator.r_top_rect.max);
+
 
 	//TODO Would need to use l_bottom_left_proportion here if we wanted to 
 	//allow adjusting on the horizontal instead of the vertical for the bottom
@@ -2487,7 +2498,7 @@ UpdateTextOpRects :: inline (
 	ator.r_bottom_split_rect = RectRenderTopOutline(ator.r_bottom_rect, rect_outline_r, pixels_per_square);
 
 	//Compute these her since it requires r_bottom_rect
-	ator.R_BOTTOM_LOC_CALL_STACK_Y = ator.r_bottom_rect.max.y - 0.5*ator.TEXT_LINE_HEIGHT - text_op.top_margin_height;
+	ator.R_BOTTOM_LOC_CALL_STACK_Y = ator.r_bottom_rect.max.y - loc_y_offset;
 	ator.R_BOTTOM_LOC_CALL_STACK_X = ator.r_bottom_rect.min.x + ator.X_GAP;
 
 
@@ -3191,7 +3202,8 @@ SelectHighlightedCallFrame :: inline (
 	text_op : *TextOpSpaceData,
 	all_data : *AllData,
 	op_space : OperationSpace,
-	ted : TextEditorData) 
+	ted : TextEditorData,
+	reset_watch_data : bool = false) 
 {
 	//sanity check should not happen since highlighted call stack index is checked on input
 	if !InRange(0, text_op.highlighted_call_stack_index, text_op.exec_info.debug_info.debug_call_stack.count-1) {
@@ -3213,15 +3225,18 @@ SelectHighlightedCallFrame :: inline (
 		instr_index = c_frame.call_instr_index;
 	}
 
+	//Reevaluate since we updated the registers for the current frame
+	ReevaluateAllWatchData(text_op, all_data, reset_data=reset_watch_data);
+
+	//TODO This could be a separate function MoveTextOpToAsmIndex if we need to reuse it
 	d_line, found_d_line := GetDebugLineAsm(instr_index, text_op.text_comp_data);
 	//sanity check should not happen since debug call frames are only created with valid instructions in the debugger
 	assert(found_d_line, "REPORT : debug line asm not found in text op %.\n", text_op.*);
-
-	ReevaluateAllWatchData(text_op, all_data, reset_data=false);
 	text_file, found_text_file := OpenFileTab(d_line.absolute_path_name, text_op, *all_data.all_text_files, op_space, ted);
 	if found_text_file {
 		MoveToLine(d_line.line_number, text_file.file_string, *text_op.file_tabs[text_op.ftab_i].tab_cursor);
 	}
+	MoveToAsmIndex(instr_index, text_op);
 }
 
 TerminalOpSpaceData :: struct {

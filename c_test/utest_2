@@ -1,0 +1,9 @@
+V3 :: struct {
+  x : float;
+  y : float;
+  z : float;
+}
+Foo2 :: (x : int) -> int {
+  y := x + 1;
+  return y;
+}

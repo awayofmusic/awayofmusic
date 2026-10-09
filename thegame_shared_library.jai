@@ -742,7 +742,7 @@ MUSIC_ROW_UNITS_PER_SECOND_DEFAULT :: 1.0;
 MUSIC_ROW_UNIT_WIDTH_DEFAULT :: 1.75;
 OP_SPACE_DEFAULT_SIZE :: Vector2F.{40,30};
 DEFAULT_TEXT_OP_SIZE : Vector2F : #run 1.115*OP_SPACE_DEFAULT_SIZE;
-DEFAULT_MAX_ASM_INSTRUCTIONS :: 500000;
+DEFAULT_MAX_ASM_INSTRUCTIONS :: 200000;
 DEFAULT_ASM_INSTRUCTIONS_PER_FRAME :: 200;
 RuntimeSettingsData :: struct {
 	//TODO Add these to ParsedRuntimeSettings
@@ -751,7 +751,7 @@ RuntimeSettingsData :: struct {
 	default_music_row_unit_width : float64 = MUSIC_ROW_UNIT_WIDTH_DEFAULT;
 
 	asm_instructions_per_frame : int = DEFAULT_ASM_INSTRUCTIONS_PER_FRAME;
-	//This is to prevent infinite loops for new programmers
+	//This is to prevent infinite loops/recursions for new programmers
 	use_max_asm_instructions : bool = true;
 	max_asm_instructions : int = DEFAULT_MAX_ASM_INSTRUCTIONS;
 

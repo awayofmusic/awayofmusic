@@ -1,5 +1,5 @@
-#load "c_load/Basic";
+#import "c_test/tab_test_2";
 main :: () {
-	a := int.[5,4,1,2,3];
-	BubbleSort(cast(*void) a.data, a.count, size_of(int), CompareInts);
+	i : int = 5;
+	n : int = TestFoo(i);
 }

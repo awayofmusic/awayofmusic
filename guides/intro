@@ -1,4 +1,5 @@
 #load "c_load/Library";
+
 /*This is a text op space.
 The terminal op space is behind this text op space.
 The top bar can be used to move it around.
@@ -123,9 +124,14 @@ Feelings should also be recognized and acknowledged.
 Music is played/paused with "ctrl+p".
 Music is stopped with "ctrl+shift+p".
 
-Text status bar is toggled with "ctrl+F7".
-Text file tabs are toggled with "ctrl+F8".
-New tabs can be opened with "ctrl+o".
+"ctrl+F7" toggles the text status bar.
+"ctrl+F8" toggles text file tabs.
+"ctrl+o" opens the file explorer.
+A valid selected file will open in a new tab.
+
+To learn about import and tabs
+load_op iat guides/programming/import_and_tabs
+
 
 If there are any issues, "ctrl+alt+F12" will refresh the text op space.
 Issues from the system terminal can be reported on discord.

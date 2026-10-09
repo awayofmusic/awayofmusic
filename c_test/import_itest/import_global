@@ -1,0 +1,8 @@
+#global PI :: 3.14159;
+#global EULER_N :: 2.71828;
+#global TEST_VAR : int;
+#global TEST_STRUCT : TestStruct;
+#global TEST_NEUME : neume;
+TestStruct :: struct {
+	x : int;
+}

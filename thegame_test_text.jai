@@ -16579,6 +16579,9 @@ DONE;
 		AssertEquals(TextTopBarType.NONE, text_op.text_top_bar_type);
 		AssertTabCursor(tt_data, ftab_cursor);
 		AssertEquals(tt_op.ftab_i, text_op.ftab_i);
+		//Added this check here to fix bug that top watch pos was moving down rendering with the text tabs but it should not be moving down
+		AssertEquals(true, FloatBothEqual(text_op.ator.r_top_rect.max.y, text_op.ator.l_text_rect.max.y));
+		AssertEquals(true, FloatBothEqual(text_op.ator.R_TOP_LOC_WATCH_Y, text_op.ator.LOC_START_Y));
 
 		DownUpInputMap(.TEXT_FILE_TAB_BAR, game_input);
 		tt_data.test_end_line_index -= 1;
@@ -16589,6 +16592,9 @@ DONE;
 		AssertEquals(TextTopBarType.TEXT_FILE_TABS, text_op.text_top_bar_type);
 		AssertTabCursor(tt_data, ftab_cursor);
 		AssertEquals(tt_op.ftab_i, text_op.ftab_i);
+		//Added this check here to fix bug that top watch pos was moving down rendering with the text tabs but it should not be moving down
+		AssertEquals(true, text_op.ator.r_top_rect.max.y > text_op.ator.l_text_rect.max.y);
+		AssertEquals(true, text_op.ator.R_TOP_LOC_WATCH_Y > text_op.ator.LOC_START_Y);
 
 		DownUpInputMap(.TEXT_FILE_TAB_RIGHT, game_input);
 		tt_data.test_char_point = 0;

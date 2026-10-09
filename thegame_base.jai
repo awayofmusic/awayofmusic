@@ -2294,7 +2294,7 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 			mouse_float_y_diff_from_row_center : float = ((text_op.ator.LOC_START_Y - op_mouse.y) / text_op.ator.TEXT_LINE_HEIGHT);
 			mouse_int_y_diff : int = round_to_int(mouse_float_y_diff_from_row_center);
 			mouse_watch_index : int = mouse_int_y_diff + text_op.start_watch_index;
-			watch_data : WatchData = text_op.watch_data_rows[text_op.highlighted_name_index];
+			// watch_data : WatchData = text_op.watch_data_rows[text_op.highlighted_name_index];
 			//TODO Could use an else if for mouse_wheel so we avoid moving and then clicking on the wrong thing on same frame
 			// if game_input.mouse_wheel != 0 {
 			if IsMouseWheelWithoutModifiers(game_input) {
@@ -2877,7 +2877,7 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 				IsInputMapPress(.DEBUG_CODE_GOTO_ASM, .DOWN_THIS_FRAME, game_input)
 			{
 				d_line, found_d_line := GetDebugLineNumber(text_op.file_tabs[text_op.ftab_i].tab_cursor.cursor_line_number, 
-					text_op.text_comp_data, text_file.absolute_path_name);
+					text_file.absolute_path_name, text_op.text_comp_data);
 				if found_d_line {
 					MoveToAsmIndex(d_line.start_asm_index, text_op);
 					ChangeTextPane(SelectedTextPane.DISASSEMBLY, text_op, perm.all_data);
@@ -3034,6 +3034,9 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 				}
 				}
 			}
+			//TODO Could pull this out so we can press it anywhere but it is text file specific
+			//so i will leave here for now to allow the shortcut to be used in other panes
+			//but I think pulling it out would be fine in general if that seems more convenient.
 			else if IsInputMapPress(.TEXT_FILE_TAB_BAR, .DOWN_THIS_FRAME, game_input) {
 				//TODO this is overkill since we just want to unselect the bottom bar but in case we pull it out
 				//or something later this is likely more resilient overall.
@@ -5759,150 +5762,24 @@ if perm.all_data.all_music_instructions.count > 0 {
 		}
 		array_reset_keeping_memory(*perm.all_data.print_text_to_console);
 		if exec_info.exec_state == .IS_DEBUG_STOP {
+			assert(text_op.exec_info.exec_mode == .DEBUG);//sanity check
 			/*DOC : Reset the call stack whenever we run some instructions in case we selected another call frame.
 			  We need to set this before evaluating the watch row nodes so we have the right registers.
-			  
-			  TODO Could make this into a function if we reuse it somewhere else.
+			  Done select highlighted call frame below now.
 			*/
-			exec_info.debug_info.chose_other_call_frame = false;
-			exec_info.debug_info.selected_call_frame_index = 0;
-			exec_info.debug_info.debug_all_registers = perm.all_data.all_register_memory;
+			op_space, found_op_space := ArrayFindFirstByNameId(perm.all_data.all_open_op_spaces, 
+				text_op.op_space_id, "id");
+			assert(found_op_space); //sanity check
+			assert(op_space.op_space_external_type == OpSpaceExternalType.txt); //sanity check
+
 			call_stack_line_diff : int = text_op.end_call_stack_index - text_op.start_call_stack_index;
 			text_op.start_call_stack_index = 0;
 			text_op.end_call_stack_index = call_stack_line_diff;
 			text_op.highlighted_call_stack_index = 0;
-
-			//TODO We could set this in the if but is_debug_stop should only be set while in DEBUG_MODE
-			//otherwise it should always be false.
-			//ACTUALLY maybe technically you don't need to but you would not be able to see anything.
-			//We could lock the text editor into debug mode while is_debug_stop.
-			assert(text_op.exec_info.exec_mode == .DEBUG);//sanity check
-			#if 1 {
-			//NOTE : We only want to reset_data here if we just started executing since we have note
-			//created the expression tree yet. Otherwise we only want to visit/evaluate the nodes.
-			ReevaluateAllWatchData(text_op, perm.all_data, reset_watch_data);
-			} else {
-			if text_op.watch_data_rows.count > 1 {
-				//We don't want to process the last row since it is always empty.
-				//We could also check if that watch_data.name.count == 0 if there are issues with this.
-				//NOTE : this is also asserted in EvaluateWatchData for an extra resilience check.
-				//DOC : Had to change this inc ase we remove rows when evaluating if we have an error or different types.
-				// for 0..text_op.watch_data_rows.count-2 {
-				e_index : int = 0;
-				while e_index <= text_op.watch_data_rows.count-2 {
-					//NOTE : We only want to reset_data here if we just started executing since we have note
-					//created the expression tree yet. Otherwise we only want to visit/evaluate the nodes.
-					//TODO I think we should pass in text_file_id or text_op in here.
-					//Then we can grab the proper compilation data associated with that text_file.
-					//So only 1 compilation per text file. If we allow more than one, then you'd
-					//have to allow a different creation path (like in the terminal) to compile a text_file
-					//with a separate compilation that can be run separately
-
-					//TODO We could remove watch sub rows here and redrop each row in case 
-					//something like the size of an of an array changed. 
-					//Right now you have to undrop and redrop the row.
-
-
-					EvaluateWatchData(e_index, text_op, perm.all_data, reset_watch_data);
-					e_index += 1;
-				}
-			}
-			}
-
-			op_space, found_op_space := ArrayFindFirstByNameId(perm.all_data.all_open_op_spaces, 
-				text_op.op_space_id, "id");
-			assert(found_op_space);
-			assert(op_space.op_space_external_type == OpSpaceExternalType.txt);
-
-			//If we moved the stop_line while executing, then we want to adjust where we are in the editor here.
-			//TODO Technically we can get this stop_line from .ip reg as well like disasm below.
-			//That might be better for consistency overall
-			stop_d_line, found_d_line := GetDebugLineAsm(perm.all_data.all_register_memory[RegDef.pc].int_value, text_op.text_comp_data);
-			//We used to have an assertion in GetDebugLineAsm here and it would not get hit so if it does then we should look into it
-			//This should always be valid since pc register should be valid
-			assert(found_d_line); 
-	    	edit_text_file, found_edit_text_file := ArrayFindFirstConstByNameId(perm.all_data.all_text_files,
-    			text_op.file_tabs[text_op.ftab_i].text_file_id, "id");
-	    	assert(found_edit_text_file);
-	    	//DOC : I prefer checking the path here first so if we are in the same file then we don't change anything
-	    	//and just move to the new debug line below.
-			if stop_d_line.absolute_path_name != edit_text_file.absolute_path_name {
-				//TODO FROM HERE This seems to be working with Test_DirectiveLoad BUT should likely test this
-				//more extensively later.
-				//IF ITS WORKING then we can remove the compiled out part below to keep the open file tab functionality consistent
-				#if 1 {
-				edit_text_file, found_edit_text_file = 
-					OpenFileTab(stop_d_line.absolute_path_name, text_op, *perm.all_data.all_text_files, op_space, perm.text_editor_data);
-				} else {
-				/*DOC : If the new line is in a new a file, then we have to switch files.
-				*/
-				//TODO Should probably rename text_file.file_name -> text_file.absolute_path_name
-
-		    	d_line_text_file, found_d_line_text_file := ArrayFindFirstConstByNameId(perm.all_data.all_text_files,
-	    			stop_d_line.absolute_path_name, "absolute_path_name");
-	    		if !found_d_line_text_file {
-					loaded_text_file, d_line_text_loaded := LoadTextFile(stop_d_line.absolute_path_name, *perm.all_data.all_text_files);
-					if d_line_text_loaded {
-						//TODO We could put this add in LoadTextFile if that makes more sense.
-						// array_add(*perm.all_data.all_text_files, loaded_text_file);
-						found_d_line_text_file = true;
-						d_line_text_file = loaded_text_file;
-					} else {
-						//TODO Should probably display an error in the text editor console here once we can
-		    			// print_to_builder(*sb, "Text file : % not found.\n", file_name);
-		    			print("Cannot load file : % on line : %.\n", stop_d_line.absolute_path_name, stop_d_line.line_number);
-					}
-	    		}
-	    		//TODO FROM HERE add a hotkey to cycle between open text files and then make sure we jump back
-	    		//to the d_line when we move around here. Then can write test for current and also moving around
-	    		//with simple cycling
-	    		if found_d_line_text_file {
-					found_edit_text_file = true;
-					// text_op.file_tabs[text_op.ftab_i].text_file_id = d_line_text_file.id;
-					edit_text_file = d_line_text_file;
-
-					found_tab : bool = false;
-					for text_op.file_tabs if it.text_file_id == edit_text_file.id {
-						found_tab = true;
-						text_op.ftab_i = it_index;
-						break;
-					}
-					if !found_tab {
-						new_tab : *TextTab = array_add(*text_op.file_tabs);
-						new_tab.text_file_id = edit_text_file.id;
-
-						text_op.ftab_i = text_op.file_tabs.count-1;
-
-
-						// text_op.file_tabs[text_op.ftab_i].tab_cursor = text_op.file_tabs[text_op.ftab_i].file_tabs[text_op.ftab_i].tab_cursor;
-						// ResetTextCursor(*text_op.file_tabs[text_op.ftab_i].tab_cursor);
-						//NOTE : Resizing here since this reset the start and end line_index and also the text cursor right char bounds
-						//TODO Technically we can just update text line bounds and char bounds but this may be more resilient and consistent.
-						ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
-							perm.text_editor_data);
-						//TODO Should this be in ResizeTextOpSpace						
-						// if text_op.file_tabs[text_op.ftab_i].tab_cursor.cursor_line_number > text_op.file_tabs[text_op.ftab_i].tab_cursor.end_file_line_index {
-						// 	MoveToLine(text_op.file_tabs[text_op.ftab_i].tab_cursor.cursor_line_number, text_file.file_string, *text_op.file_tabs[text_op.ftab_i].tab_cursor);
-						// }
-
-					}
-	    		}
-	    		}
-	    	}
-			if found_edit_text_file &&
-			  (stop_d_line.line_number < text_op.file_tabs[text_op.ftab_i].tab_cursor.start_file_line_index ||
-				stop_d_line.line_number > text_op.file_tabs[text_op.ftab_i].tab_cursor.end_file_line_index)
-			{
-				MoveToLine(stop_d_line.line_number, edit_text_file.file_string, *text_op.file_tabs[text_op.ftab_i].tab_cursor);
-			}
-
-			//DOCU : This moves the disassembly so we are in the right place in the disasm pane.
-			//TODO Should we put this in the input so that is adjusts itself no matter what?
-			//Maybe not since there are no other cases unless we want to specifically jump which would be a separate action.
-			pc_reg : int = perm.all_data.all_register_memory[RegDef.pc].int_value;
-			if pc_reg < text_op.start_disasm_index || pc_reg > text_op.end_disasm_index {
-				MoveToAsmIndex(pc_reg, text_op);
-			}
+			//All the resetting is done in here now consistently with other call frame movements.
+			//If we have issues / differences then we could move and put it in here separately again.
+			//(Put it in deadcode with SelectHighlightedCallFrame as a note if needed)
+			SelectHighlightedCallFrame(text_op, perm.all_data, op_space, perm.text_editor_data, reset_watch_data);			
 
 			if cpu_err.is_error {
 				SetTextOpConsoleMessage(tprint("CPU Error asm_index % : %.", cpu_err.error_index, cpu_err.msg), text_op, add_text=true);
@@ -8359,7 +8236,12 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 			//and put text and debug window and console and stuff wherever they want.
 			top_watch_pos : Vector2F;
 			top_watch_pos.x = right_min.x;
-			top_watch_pos.y = LOC_START_Y;
+			//REMINDER this is what it used to be but there was a bug where the watch would go down when
+			//we move thed text tabs down so we updated that to have a different y
+			// top_watch_pos.y = LOC_START_Y;
+			top_watch_pos.y = text_op.ator.R_TOP_LOC_WATCH_Y;
+			// print("LOC_START_Y=%\n", LOC_START_Y);
+			// print("R_TOP_LOC_WATCH_Y=%\n", text_op.ator.R_TOP_LOC_WATCH_Y);
 			watch_rect_dim : Vector2F;
 			watch_rect_dim.x = right_proportion * op_space.world_size.x;
 			//TODO Put TEXT_LINE_HEIGHT and other vars in TextOpSpaceData
@@ -8389,7 +8271,8 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 			}
 			top_value_pos : Vector2F;
 			top_value_pos.x = value_rect_min.x;
-			top_value_pos.y = LOC_START_Y;
+			// top_value_pos.y = LOC_START_Y;
+			top_value_pos.y = text_op.ator.R_TOP_LOC_WATCH_Y;
 
 			#if NEW_TEXT_OP_RECTS {
 			value_split_rect := text_op.ator.name_value_split_rect;
@@ -8406,7 +8289,8 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 			// type_rect : Rectangle2 = RectMinDim(type_rect_min, type_rect_dim);
 			top_type_pos : Vector2F;
 			top_type_pos.x = type_rect_min.x;
-			top_type_pos.y = LOC_START_Y;
+			// top_type_pos.y = LOC_START_Y;
+			top_type_pos.y = text_op.ator.R_TOP_LOC_WATCH_Y;
 
 
 

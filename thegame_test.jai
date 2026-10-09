@@ -5802,7 +5802,7 @@ DONE);
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
 			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
 	
-		array_resize(*perm.test_data.all_sub_tests, 16);
+		array_resize(*perm.test_data.all_sub_tests, 14+1);
 	} 
 
 	wait_test := WaitTest(*perm.test_data);
@@ -5913,18 +5913,19 @@ DONE);
 
 		DownUpInputMap(.TEXT_BOTTOM_LEFT_PANE, game_input);
 	}
+	//Removed this since the highlighted asm index gets moved automatically now on debug setup
+	// case 12; {
+	// 	//Move arrow down 4 times
+	// 	if perm.test_data.all_sub_tests[perm.test_data.sub_test_index].run_index == 0 {
+	// 		perm.test_data.all_sub_tests[perm.test_data.sub_test_index] = SubT(4);
+	// 	}
+	// 	DownUpThisFrame(.ARROW_DOWN, game_input);
+	// }
 	case 12; {
-		//Move arrow down 4 times
-		if perm.test_data.all_sub_tests[perm.test_data.sub_test_index].run_index == 0 {
-			perm.test_data.all_sub_tests[perm.test_data.sub_test_index] = SubT(4);
-		}
-		DownUpThisFrame(.ARROW_DOWN, game_input);
-	}
-	case 13; {
 		//Remove the asm breakpoint
 		DownUpInputMap(.DEBUG_SET_BREAKPOINT, game_input);
 	}
-	case 14; {
+	case 13; {
 		//Remove a breakpoint in code window
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(text_op.exec_info.exec_state, .IS_DEBUG_STOP);
@@ -5932,7 +5933,7 @@ DONE);
 
 		DownUpInputMap(.TEXT_STOP, game_input);
 	}
-	case 15; {
+	case 14; {
 		text_op : *TextOpSpaceData = *perm.all_data.all_text_op_space_data[0];
 		AssertEquals(ExecutionState.NOT_RUNNING, text_op.exec_info.exec_state);
 	}
@@ -8178,7 +8179,7 @@ Test_FuncRecurse :: (
 		d_line := GetDebugLineForTest(1, text_op.text_comp_data);
 		AssertEquals(d_line.start_asm_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		AssertEquals(false, text_op.exec_info.debug_info.chose_other_call_frame);
-		AssertEquals(0, text_op.exec_info.debug_info.selected_call_frame_index);
+		AssertEquals(1, text_op.exec_info.debug_info.selected_call_frame_index);
 		AssertEquals(0, text_op.highlighted_call_stack_index);
 		AssertEquals(0, text_op.start_call_stack_index);
 		AssertEquals(8, text_op.end_call_stack_index);
@@ -8376,7 +8377,7 @@ Test_FuncRecurse :: (
 		AssertEquals(after_call_index, perm.all_data.all_register_memory[RegDef.pc].int_value);
 		//Selected call frame is array index BUT highlighted is rendering from the top so they should be inversed
 		AssertEquals(false, text_op.exec_info.debug_info.chose_other_call_frame);
-		AssertEquals(0, text_op.exec_info.debug_info.selected_call_frame_index);
+		AssertEquals(9, text_op.exec_info.debug_info.selected_call_frame_index);
 		AssertEquals(0, text_op.highlighted_call_stack_index);
 		AssertEquals(0, text_op.start_call_stack_index);
 		AssertEquals(8, text_op.end_call_stack_index);

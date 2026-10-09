@@ -904,6 +904,7 @@ DirectiveLoadFile :: struct {
 	//TODO Could use this if needed to differntiate between starting file and loaded files
 	// is_starting_file : bool;
 	lex_tokens : [] LCodeToken;
+	last_load_line_number : int;
 }
 
 
@@ -2220,8 +2221,8 @@ GetDebugLineAsm :: inline (
 //This should be used in game and the other ones for tests
 GetDebugLineNumber :: inline (
 	line_number : int, 
-	comp_data : *CompilationData,
-	abs_path_name : string) 
+	abs_path_name : string,
+	comp_data : *CompilationData)
 -> DebugLine, found_debug_line : bool
 {
 	if comp_data == null || comp_data.all_debug_lines.data == null || comp_data.all_debug_lines.count <= 0 {
@@ -2229,15 +2230,26 @@ GetDebugLineNumber :: inline (
 		return INVALID_DEBUG_LINE, false;
 	}
 
-	for comp_data.all_debug_lines if line_number == it.line_number && it.absolute_path_name == abs_path_name {
-		return it, true;
-	}
+	d_line, found_d_line := FindDebugLinePointerNoError(line_number, abs_path_name, comp_data); 
+	if found_d_line return d_line.*, found_d_line;
 
 	//TODO Maybe we coudl just return if it was found or not but this
 	//should have been created in any case
 	log("No debug line found for line_number %.\n", line_number);
 	return INVALID_DEBUG_LINE, false;
 }
+FindDebugLinePointerNoError :: inline (
+	line_number : int,
+	abs_path_name : string,
+	comp_data : *CompilationData) 
+-> *DebugLine, found_debug_line : bool
+{
+	for * comp_data.all_debug_lines if line_number == it.line_number && it.absolute_path_name == abs_path_name {
+		return it, true;
+	}	
+	return null, false;
+}
+
 //WE have this for tests since the default abs path is empty so if we change that later we don't have to change it everywhere.
 GetDebugLineForTest :: inline (
 	line_number : int, 
@@ -2245,7 +2257,7 @@ GetDebugLineForTest :: inline (
 	abs_path_name : string = "") 
 -> DebugLine, found_debug_line : bool
 {
-	d_line, found_d_line := GetDebugLineNumber(line_number, comp_data, abs_path_name);
+	d_line, found_d_line := GetDebugLineNumber(line_number, abs_path_name, comp_data);
 	return d_line, found_d_line;
 }
 //NOTE : Likely just use these for tests since in-game we have other considerations for finding lines
@@ -6891,9 +6903,10 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 					return false;
 				}
 
-		   	total_heap_offset : int = GlobalVarMaxHeapOffset(cd.all_variables);
+				//REMINDER : we don't necessarily have data like struct size yet so we need to set this after the second pass anyways
+		   	// total_heap_offset : int = GlobalVarMaxHeapOffset(cd.all_variables);
 				global_var := CreateVarData(cd, node.left.value.token_string, node.right.code_ir.t_info, 
-					RamMem(.hsp, total_heap_offset));
+					RamMem(.hsp, 0));
 
 				//Don't actually need this since this is a directive so it won't be accessed anywhere up the tree.
 				// node.code_ir.op = global_var.op;
@@ -8158,11 +8171,13 @@ EvaluateAssignment :: inline (node : *BinaryNode, cd : *CompilationData) {
 			CreateCompErr(cd, .EVALUATION, node.right, "Right assignment not l_value or r_value.");
 			return;
 		} else if IsDeclarationAssignment(node) {
+			//TODO If
 			var_node : *BinaryNode = GetDeclarationVarNode(node);
 			if var_node.code_ir.node_var_type == .NOT_DECLARABLE {
 				CreateCompErr(cd, .EVALUATION, var_node, "Not a declarable variable.");
 				return;
 			} else if var_node.code_ir.ir_type != .UNKNOWN_IDENT {
+				//TODO Need to only allow unknown if the ident is in the same scope 
 				CreateCompErr(cd, .EVALUATION, var_node, 
 				//TODO Maybe we can make this more explicit by fetching exactly what is already being used.
 				sprint("Variable already in use : %.", var_node.code_ir.t_info.*));
@@ -9050,6 +9065,10 @@ CompileCode :: inline (cs : CompileSettings, code : string) -> *CompilationData 
 					break load_pass;
 				}
 
+				if current_token.line_number > loaded_file.last_load_line_number {
+					loaded_file.last_load_line_number = current_token.line_number;
+				}
+
 				/*Right now #import does not load again and #load just returns an error for duplicate loads.
 				TODO We could have some cyclical dependency checking for #import
 				*/
@@ -9251,6 +9270,9 @@ CompileCode :: inline (cs : CompileSettings, code : string) -> *CompilationData 
 					break second_pass;
 				} 
 
+				//REMINDER global variables memory set AFTER second pass since we don't necessarily have struct type member info yet
+				//as we can have a global variable before struct info
+				//ALSO we could use a different level here if we want to allow constants not in global scope
 				cd.comp_level.type = .STATEMENT_LEVEL;
 				DFSPost(node.right, cd, VisitStatementNode);
 				if cd.comp_errors.all_compiler_errors.count > 0 break second_pass;
@@ -9748,6 +9770,16 @@ CompileCode :: inline (cs : CompileSettings, code : string) -> *CompilationData 
 	cd.byte_offset_from_sbp = 0;
 	array_reset_keeping_memory(*cd.variable_data_stack);
 
+	//We need to set the global variable heap offsets here because we did not have struct runtime size on second pass
+	//if we parsed struct after global struct variable.
+	global_vars : [] VariableData = GetAllGlobalVars(cd.all_variables);
+	for * var, var_index : global_vars {
+		prev_global_vars : [] VariableData = array_view(global_vars, 0, var_index);
+		for < prev_var : prev_global_vars if IsGlobalVariable(prev_var) {
+			var.op.values[1].int_value = NextHeapOffset(prev_var);
+			break;
+		}
+	}
 
 	//TODO Need to set .sbp to whatever it should be past the constants and null starting value
 	// stack_start_value : int = 8;
@@ -9819,9 +9851,14 @@ CompileCode :: inline (cs : CompileSettings, code : string) -> *CompilationData 
 				//TODO Can make this for #asm {} once we remove arrays from assembler
 				if cast(CodeDirective) s_node.value.int_value == {
 				//IMPORTANT NOTE : we just skip over global, import, load and type directives here by doing nothing
-				case CodeDirective.global; #through;
 				case CodeDirective.load; #through;
-				case CodeDirective.import; {
+				case CodeDirective.import;
+					if s_node.value.line_number > loaded_file.last_load_line_number {
+						CreateCompErr(cd, .EVALUATION, s_node, "#import and #load must be at the beginning of the file.");
+						break third_pass;
+					}
+					#through; //through here so we also check for global scope for load and import although we already check above anyways
+				case CodeDirective.global; {
 					//We do nothing here since these are evaluated in the passes before here.
 					//These directive are only allowed in global scope for clarity.
 					if !IsInGlobalScope(cd) {
@@ -10206,16 +10243,14 @@ CompileCode :: inline (cs : CompileSettings, code : string) -> *CompilationData 
 			*/
 			added_instructions : bool = cd.all_music_instructions.count > start_asm_instr_index;
 			//We don't want to add debug_line if this is #asm since we already added it in the assembler for each instruction.
-			//TODO Could make this a function if needed
-			is_asm : bool = s_node.value.token_type == #char "#"	&&
-				cast(CodeDirective) s_node.value.int_value == CodeDirective.asm;
+			is_asm : bool = IsCodeDirectives(s_node.value, .[.asm]);
 			if added_instructions && !is_asm {
 				//TODO I think we need to update the start and end in assembly. So maybe make a function to be consistent.
 				//TODO Should be a function if we use similar logic elsewhere.
 				//TODO We do something similar in the assembler. Should we make a function if they are mostly the same?
 				//Only the start_asm_index is different so maybe we could just pass that in the function.
-				debug_line, already_have_instr_on_line := ArrayFindFirstByNameId(cd.all_debug_lines, 
-					s_node.value.line_number, "line_number");
+				debug_line, already_have_instr_on_line := 
+					FindDebugLinePointerNoError(s_node.value.line_number, loaded_file.absolute_path_name, cd); 
 				if already_have_instr_on_line {
 					debug_line.end_asm_index = cd.all_music_instructions.count-1;
 				} else {
@@ -10386,15 +10421,19 @@ GlobalVarNameAlreadyExists :: inline (node : *BinaryNode, cd : *CompilationData)
 //Variables are added on sequentially so the last one is the current max heap offset
 //If we don't find any then we start at 0 and add the variable.
 GlobalVarMaxHeapOffset :: inline (all_variables : [] VariableData) -> int {
-	max_heap_offset : int = 0;
 	global_vars : [] VariableData = GetAllGlobalVars(all_variables);
-	for var : global_vars if IsGlobalVariable(var) {
-		heap_offset : int = var.op.values[1].int_value + var.t_info.runtime_size;
+	max_heap_offset : int = 0;
+	for var : all_variables if IsGlobalVariable(var) {
+		heap_offset : int = NextHeapOffset(var);
 		if heap_offset > max_heap_offset {
 			max_heap_offset = heap_offset;
 		}
 	}
 	return max_heap_offset;
+}
+NextHeapOffset :: inline (v : VariableData) -> int {
+	heap_offset : int = v.op.values[1].int_value + v.t_info.runtime_size;
+	return heap_offset;
 }
 
 
@@ -11642,7 +11681,7 @@ ValidateMusicOperand :: inline (
 	//Or can just check that on the call itself.
 
 	if op.operand_type == {
-	case .RAM_MEMORY;
+	case .RAM_MEMORY; {
 		ram_address : int = ComputeRAMLocation(op, all_register_memory, ram);
 		//TODO Can check here if ram_address == 
 		bounds_err : CPUError = MemoryInBounds(ram, ram_address);
@@ -11654,7 +11693,8 @@ ValidateMusicOperand :: inline (
 			err.is_error = true;
 			err.msg = sprint("Null pointer exception on operand %.\n", op_index,, context.allocator);
 		}
-	case .MUSIC_MEMORY;
+	}
+	case .MUSIC_MEMORY; {
 		#if 1 {
 		row_index, x_index := MusicMemRowAndXIndex(op, all_register_memory);
 		rx_err : CPUError = ValidateMSpaceRowAndX(row_index, x_index, mspace);
@@ -11684,6 +11724,7 @@ ValidateMusicOperand :: inline (
 			}
 		// }
 		}
+	}
 	}
 	return err;
 }
@@ -12905,6 +12946,8 @@ ExecuteManyInstructions :: inline (exec : *ExecutionInfo, ad : *AllData) -> CPUE
 				already_checked_breakpoints : bool = false;
 				if exec.debug_info.d_step.step_control != .CONTINUE {
 					//NOTE : STEP_INTO gets dealth with automatically by this range.
+					//We get put a separate case for STEP_INTO with call stack > d_step if needed
+					//but a function will always be outside of the scope of the function call so it's fine for now.
 					out_of_step_bounds : bool = 
 						ad.all_register_memory[RegDef.pc].int_value < exec.debug_info.d_step.start_asm_index || 
  		   			ad.all_register_memory[RegDef.pc].int_value > exec.debug_info.d_step.end_asm_index;
@@ -12912,6 +12955,10 @@ ExecuteManyInstructions :: inline (exec : *ExecutionInfo, ad : *AllData) -> CPUE
 	   			hit_step_break : bool = out_of_step_bounds;
 
 					if exec.debug_info.d_step.step_control == {
+					case .STEP_OUT; {
+						//Strictly less call stack frames means we have stepped out of the function that we were d_step in
+						hit_step_break = exec.debug_info.debug_call_stack.count < exec.debug_info.d_step.call_stack_count;
+					}
 					case .ASM_STEP_OVER; #through;
 					case .STEP_OVER; {
 						#if 1 {
@@ -16491,6 +16538,10 @@ FreeHeapMem :: (input_address : int, ad : *AllData) -> CPUError {
 	for * ad.ram_alloc_list if it.alloc_type == .ALLOCATED && it.heap_address == input_address {
 		found_allocated_data = true;
 		it.alloc_type = .FREE;
+		//We zero memory on free to ensure its always zeroed for later allocation
+		mem_ptr, mem_err := GetMemory(it.heap_address, it.size_in_bytes, ad.ram_memory);
+		if mem_err.is_error return mem_err; //freed memory is already valid memory but why not double check here for resilience
+		memset(mem_ptr, 0, it.size_in_bytes);
 		break;
 	}
 	if !found_allocated_data return CPUErr(tprint(FREE_ERROR_MSG, heap_base, heap_current, input_address));

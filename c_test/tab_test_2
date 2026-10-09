@@ -1,0 +1,5 @@
+#import "c_test/tab_test_3";
+TestFoo :: (x : int) -> int {
+	y : int = OtherFoo(3);
+	return y - x;
+}

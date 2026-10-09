@@ -1,0 +1,7 @@
+#import "c_test/import_itest/import_global_func";
+main :: () {
+	x : int = 3;
+	y : int = FooTest(TEST_VAR+1);
+	TEST_S.x = y;
+	TEST_S.f = PI;
+}

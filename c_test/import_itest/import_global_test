@@ -1,0 +1,9 @@
+#import "c_test/import_global";
+main :: () {
+	TEST_VAR = 1;
+	TEST_STRUCT.x = 5;
+	TEST_NEUME.svara = 10.5;
+	f : float = EULER_N + 1.;
+	tsp : *TestStruct = *TEST_STRUCT;
+	tsp.*.x -= 2;
+}

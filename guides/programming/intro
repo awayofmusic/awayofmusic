@@ -3,7 +3,7 @@
 - ctrl+alt+d to toggle debug mode
 - Set a breakpoint on line "mov ax, 5"
 Either click the left column next to that line
-or put your cursor on that line and press f9 
+or put the text cursor on that line and press f9 
 - ctrl+alt+c to compile
 - Always compile before executing
 - f5 to execute and stop on the breakpoint

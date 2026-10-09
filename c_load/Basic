@@ -1,0 +1,76 @@
+#import "c_load/Library";
+
+#global PI :: 3.141592653589793238;
+#global EULER_N :: 2.718281828459045235;
+#global GOLDEN_R :: 1.618033988749894;
+
+/*
+base: Pointer to the array to be sorted. 
+nmemb: Number of elements in the array.
+size: Size of each element in bytes.
+Compare: A function returning negative, zero, or positive if the first argument is less than, equal to, or greater than the second.
+*/
+BubbleSort :: (base : *void, nmemb : int, size : int, Compare : (*void, *void) -> int) {
+	last_j : int = nmemb-2;
+	s : int = size / size_of(void);
+	while true {
+		latest_swap : int = -1;
+		for j : 0..last_j {
+			base_j : *void = base + s*j;
+			base_1 : *void = base + s*(j+1);
+			if Compare(base_j, base_1) > 0 {
+				#asm { swap base_j, base_1, size; }
+				latest_swap = j;
+			}
+		}
+
+		if latest_swap == -1 { return; }
+		last_j = latest_swap - 1;
+	}
+}
+QSort :: (base : *void, nmemb : int, size : int, Compare : (*void, *void) -> int) {
+	p : *void;
+	#asm { alloc size, p; }
+	QSortHelper(base, nmemb, size, Compare, p);
+	#asm { free p; }
+}
+QSortHelper :: (base : *void, nmemb : int, size : int, Compare : (*void, *void) -> int, p : *void) {
+	if nmemb < 2 { return; }
+
+	s : int = size / size_of(void);
+
+	bm : *void = base + s*(nmemb/2);
+	#asm { movp p, bm, size; }
+
+	i : int = 0;
+	j : int = s * (nmemb-1);
+	while true {
+		while Compare(base+i, p) < 0 { i += s; }
+		while Compare(p, base+j) < 0 { j -= s; }
+		if i >= j { break; }
+
+		base_i : *void = base + i;
+		base_j : *void = base + j;
+		#asm { swap base_i, base_j, size; }
+
+		i += s;
+		j -= s;
+	}
+
+	QSortHelper(base, i/s, size, Compare, p);
+	QSortHelper(base + i, nmemb - (i/s), size, Compare, p);
+}
+CompareInts :: (a : *void, b : *void) -> int {
+	ai := cast(*int) a;
+	bi := cast(*int) b;
+	d : int = ai.* - bi.*;
+	return d;
+}
+CompareFloats :: (a : *void, b : *void) -> int {
+	af := cast(*float) a;
+	bf := cast(*float) b;
+	d : float = af.* - bf.*;
+	if d < 0. { return -1; }
+	if d > 0. { return 1; }
+	return 0;
+}

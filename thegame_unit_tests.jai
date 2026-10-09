@@ -13985,6 +13985,25 @@ DONE,,unit_test_alloc);
 
 	AssertEquals(instr_index, cd.all_music_instructions.count);
 
+	//TEST cannot have directive import after beginning of file
+cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {}
+#import "./c_test/utest";
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+#import "./c_test/utest";
+#import "./c_test/utest_2";
+main :: () {
+	
+}
+#import "./c_test/empty_test";
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+
 } @UnitTest
 
 Test_ParseDirectiveLoad :: () {
@@ -14121,14 +14140,33 @@ DONE,,unit_test_alloc);
 	AssertEquals(instr_index, cd.all_music_instructions.count);
 
 
-//TEST 2 same loads should error.
+	//TEST 2 same loads should error.
 	cd = CompileCode(.{print_errors_to_console=false},
 #string DONE
-#load "c_load/utest";
-#load "./c_load/utest";
+#load "c_test/utest";
+#load "./c_test/utest";
 main :: () {}
 DONE,,unit_test_alloc);
-	AssertEquals(true, cd.comp_errors.all_compiler_errors.count > 0);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST cannot have directive import after beginning of file
+cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {}
+#load "./c_test/utest";
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+#load "./c_test/utest";
+#load "./c_test/utest_2";
+main :: () {
+
+}
+#load "./c_test/empty_test";
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
 
 } @UnitTest
 
@@ -19778,13 +19816,20 @@ Test_Alloc :: () {
 	AssertEquals(start_heap+size, ad.all_register_memory[RegDef.hcp].int_value);
 } @UnitTest
 
-AssertAllocData :: inline (address : int, size : int, type : RAMAllocType, free_list : [] RAMAllocData) {
+AssertAllocData :: inline (address : int, size : int, type : RAMAllocType, free_list : [] RAMAllocData, ram : RAMMemory) {
 	fd, found_fd := FindAllocData(address, size, type, free_list);
 	count_equals := AssertEquals(true, found_fd);
 	if count_equals {
 		AssertEquals(address, fd.heap_address);
 		AssertEquals(size, fd.size_in_bytes);
 		AssertEquals(type, fd.alloc_type);
+	}
+	//If its freed, check that every byte is 0
+	//Not very efficient but its a test and this is clear and concise code that works in all cases
+	if type == RAMAllocType.FREE {
+		for 0..size-1 {
+			AssertEquals(0, ram.bytes[address+it]);
+		}
 	}
 }
 Test_Free :: () {
@@ -19800,15 +19845,22 @@ Test_Free :: () {
 	AssertEquals(h_base, ad.all_register_memory[RegDef.hcp].int_value);
 	AssertEquals(0, ad.ram_alloc_list.count);
 
-	AllocHeapMem(8, ad);
-	AllocHeapMem(64, ad);
+
+	heap_address := AllocHeapMem(8, ad);
+	//Set some memory so that we make sure it gets zeroed when freed
+	SetRAMValue(heap_address, 20000, *ad.ram_memory);
+	heap_address = AllocHeapMem(64, ad);
+	SetRAMValue(heap_address+8, 25.2, *ad.ram_memory);
+	SetRAMValue(heap_address+16, 20, *ad.ram_memory);
+	SetRAMValue(heap_address+32, 212.231, *ad.ram_memory);
 	AllocHeapMem(16, ad);
-	AllocHeapMem(16, ad);
+	heap_address = AllocHeapMem(16, ad);
+	SetRAMValue(heap_address+8, 25.2, *ad.ram_memory);
 	AssertEquals(4, ad.ram_alloc_list.count);
-	AssertAllocData(h_base, 8, .ALLOCATED, ad.ram_alloc_list);
-	AssertAllocData(h_base+8, 64, .ALLOCATED, ad.ram_alloc_list);
-	AssertAllocData(h_base+8+64, 16, .ALLOCATED, ad.ram_alloc_list);
-	AssertAllocData(h_base+8+64+16, 16, .ALLOCATED, ad.ram_alloc_list);
+	AssertAllocData(h_base, 8, .ALLOCATED, ad.ram_alloc_list, ad.ram_memory);
+	AssertAllocData(h_base+8, 64, .ALLOCATED, ad.ram_alloc_list, ad.ram_memory);
+	AssertAllocData(h_base+8+64, 16, .ALLOCATED, ad.ram_alloc_list, ad.ram_memory);
+	AssertAllocData(h_base+8+64+16, 16, .ALLOCATED, ad.ram_alloc_list, ad.ram_memory);
 
 	//TEST invalid out of bounds
 	err0 := FreeHeapMem(128, ad);
@@ -19821,65 +19873,71 @@ Test_Free :: () {
 	//TEST Free value in middle
 	FreeHeapMem(h_base+8, ad);
 	AssertEquals(4, ad.ram_alloc_list.count);
-	AssertAllocData(h_base, 8, .ALLOCATED, ad.ram_alloc_list);
-	AssertAllocData(h_base+8, 64, .FREE, ad.ram_alloc_list);
-	AssertAllocData(h_base+8+64, 16, .ALLOCATED, ad.ram_alloc_list);
-	AssertAllocData(h_base+8+64+16, 16, .ALLOCATED, ad.ram_alloc_list);
+	AssertAllocData(h_base, 8, .ALLOCATED, ad.ram_alloc_list, ad.ram_memory);
+	AssertAllocData(h_base+8, 64, .FREE, ad.ram_alloc_list, ad.ram_memory);
+	AssertAllocData(h_base+8+64, 16, .ALLOCATED, ad.ram_alloc_list, ad.ram_memory);
+	AssertAllocData(h_base+8+64+16, 16, .ALLOCATED, ad.ram_alloc_list, ad.ram_memory);
 
 	//TEST allocate value that's smaller than freed
-	AllocHeapMem(32, ad);
+	heap_address = AllocHeapMem(32, ad);
+	//Set some memory so that we make sure it gets zerod
+	SetRAMValue(heap_address, 20000, *ad.ram_memory);
+	SetRAMValue(heap_address+8, 25.2, *ad.ram_memory);
+	SetRAMValue(heap_address+16, 20, *ad.ram_memory);
 	AssertEquals(5, ad.ram_alloc_list.count);
-	AssertAllocData(h_base, 8, .ALLOCATED, ad.ram_alloc_list);
-	AssertAllocData(h_base+8, 32, .ALLOCATED, ad.ram_alloc_list);
-	AssertAllocData(h_base+8+32, 32, .FREE, ad.ram_alloc_list);
-	AssertAllocData(h_base+8+64, 16, .ALLOCATED, ad.ram_alloc_list);
-	AssertAllocData(h_base+8+64+16, 16, .ALLOCATED, ad.ram_alloc_list);
+	AssertAllocData(h_base, 8, .ALLOCATED, ad.ram_alloc_list, ad.ram_memory);
+	AssertAllocData(h_base+8, 32, .ALLOCATED, ad.ram_alloc_list, ad.ram_memory);
+	AssertAllocData(h_base+8+32, 32, .FREE, ad.ram_alloc_list, ad.ram_memory);
+	AssertAllocData(h_base+8+64, 16, .ALLOCATED, ad.ram_alloc_list, ad.ram_memory);
+	AssertAllocData(h_base+8+64+16, 16, .ALLOCATED, ad.ram_alloc_list, ad.ram_memory);
 
 	//TEST free value before free should combine them
 	FreeHeapMem(h_base+8, ad);
 	AssertEquals(4, ad.ram_alloc_list.count);
-	AssertAllocData(h_base, 8, .ALLOCATED, ad.ram_alloc_list);
-	AssertAllocData(h_base+8, 64, .FREE, ad.ram_alloc_list);
-	AssertAllocData(h_base+8+64, 16, .ALLOCATED, ad.ram_alloc_list);
-	AssertAllocData(h_base+8+64+16, 16, .ALLOCATED, ad.ram_alloc_list);
+	AssertAllocData(h_base, 8, .ALLOCATED, ad.ram_alloc_list, ad.ram_memory);
+	AssertAllocData(h_base+8, 64, .FREE, ad.ram_alloc_list, ad.ram_memory);
+	AssertAllocData(h_base+8+64, 16, .ALLOCATED, ad.ram_alloc_list, ad.ram_memory);
+	AssertAllocData(h_base+8+64+16, 16, .ALLOCATED, ad.ram_alloc_list, ad.ram_memory);
 
 	//TEST free value after free should combine them
 	FreeHeapMem(h_base+8+64, ad);
 	AssertEquals(3, ad.ram_alloc_list.count);
-	AssertAllocData(h_base, 8, .ALLOCATED, ad.ram_alloc_list);
-	AssertAllocData(h_base+8, 80, .FREE, ad.ram_alloc_list);
-	AssertAllocData(h_base+8+64+16, 16, .ALLOCATED, ad.ram_alloc_list);
+	AssertAllocData(h_base, 8, .ALLOCATED, ad.ram_alloc_list, ad.ram_memory);
+	AssertAllocData(h_base+8, 80, .FREE, ad.ram_alloc_list, ad.ram_memory);
+	AssertAllocData(h_base+8+64+16, 16, .ALLOCATED, ad.ram_alloc_list, ad.ram_memory);
 
 	//TEST allocate 2 in a row smaller
-	AllocHeapMem(8, ad);
-	AllocHeapMem(16, ad);
+	heap_address = AllocHeapMem(8, ad);
+	SetRAMValue(heap_address, 20000, *ad.ram_memory);
+	heap_address = AllocHeapMem(16, ad);
+	SetRAMValue(heap_address, 25.2, *ad.ram_memory);
 	AssertEquals(5, ad.ram_alloc_list.count);
-	AssertAllocData(h_base, 8, .ALLOCATED, ad.ram_alloc_list);
-	AssertAllocData(h_base+8, 8, .ALLOCATED, ad.ram_alloc_list);
-	AssertAllocData(h_base+8+8, 16, .ALLOCATED, ad.ram_alloc_list);
-	AssertAllocData(h_base+8+8+16, 56, .FREE, ad.ram_alloc_list);
-	AssertAllocData(h_base+8+64+16, 16, .ALLOCATED, ad.ram_alloc_list);
+	AssertAllocData(h_base, 8, .ALLOCATED, ad.ram_alloc_list, ad.ram_memory);
+	AssertAllocData(h_base+8, 8, .ALLOCATED, ad.ram_alloc_list, ad.ram_memory);
+	AssertAllocData(h_base+8+8, 16, .ALLOCATED, ad.ram_alloc_list, ad.ram_memory);
+	AssertAllocData(h_base+8+8+16, 56, .FREE, ad.ram_alloc_list, ad.ram_memory);
+	AssertAllocData(h_base+8+64+16, 16, .ALLOCATED, ad.ram_alloc_list, ad.ram_memory);
 
 	//TEST free on the end should free up both on the end
 	FreeHeapMem(h_base+8+64+16, ad);
 	AssertEquals(3, ad.ram_alloc_list.count);
-	AssertAllocData(h_base, 8, .ALLOCATED, ad.ram_alloc_list);
-	AssertAllocData(h_base+8, 8, .ALLOCATED, ad.ram_alloc_list);
-	AssertAllocData(h_base+8+8, 16, .ALLOCATED, ad.ram_alloc_list);
+	AssertAllocData(h_base, 8, .ALLOCATED, ad.ram_alloc_list, ad.ram_memory);
+	AssertAllocData(h_base+8, 8, .ALLOCATED, ad.ram_alloc_list, ad.ram_memory);
+	AssertAllocData(h_base+8+8, 16, .ALLOCATED, ad.ram_alloc_list, ad.ram_memory);
 	AssertEquals(h_base+8+8+16,ad.all_register_memory[RegDef.hcp].int_value);
 
 	//TEST free from beginning
 	FreeHeapMem(h_base, ad);
 	AssertEquals(3, ad.ram_alloc_list.count);
-	AssertAllocData(h_base, 8, .FREE, ad.ram_alloc_list);
-	AssertAllocData(h_base+8, 8, .ALLOCATED, ad.ram_alloc_list);
-	AssertAllocData(h_base+8+8, 16, .ALLOCATED, ad.ram_alloc_list);
+	AssertAllocData(h_base, 8, .FREE, ad.ram_alloc_list, ad.ram_memory);
+	AssertAllocData(h_base+8, 8, .ALLOCATED, ad.ram_alloc_list, ad.ram_memory);
+	AssertAllocData(h_base+8+8, 16, .ALLOCATED, ad.ram_alloc_list, ad.ram_memory);
 
 	//TEST free last should reset hcp and remove all ram alloc datas
 	FreeHeapMem(h_base+8, ad);
 	AssertEquals(2, ad.ram_alloc_list.count);
-	AssertAllocData(h_base, 16, .FREE, ad.ram_alloc_list);
-	AssertAllocData(h_base+16, 16, .ALLOCATED, ad.ram_alloc_list);
+	AssertAllocData(h_base, 16, .FREE, ad.ram_alloc_list, ad.ram_memory);
+	AssertAllocData(h_base+16, 16, .ALLOCATED, ad.ram_alloc_list, ad.ram_memory);
 	AssertEquals(h_base+16+16,ad.all_register_memory[RegDef.hcp].int_value);
 
 	//TEST free last should reset hcp and remove all ram alloc datas
