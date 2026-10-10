@@ -19,6 +19,15 @@ DSOUND_AUDIO :: false;
 } else {
 //TODO Could just import this or the other depending on some compile-time to allow switching back to DirectSound
 //but maybe we remove the entirely once this is working since it will be very different.
+/*
+Current miniaudio-jai - https://github.com/asmvik/miniaudio-jai commit 8e8e78e4b481d9f237c667f655326f8f873afe08
+miniaudio version: v0.11.22
+jai version: beta 0.2.021
+
+Old miniaudio-jai - https://github.com/kooparse/miniaudio-jai commit ae583218563edacd3cc149de4303dbaae12f35eb
+miniaudio's version : v0.11.18
+Jai's version : 0.1.090
+*/
 #import,dir "../miniaudio-jai";
 }
 #import "Thread";
@@ -40,7 +49,9 @@ Input :: #import "Input";
 
 //TODO Should this be here or in thgame_mode? The ports are created per platform
 //TODO Can remove the ,dir here because we import the current directory anyways.
+//https://github.com/arjenwitteveen/jai-midi commit f206ab8a74449c860878579d76acf15d6a35676a
 #import,dir "jai-midi";
+//https://github.com/rluba/jaison commit 9a407e903d64437ee34d0b0ee6fe7a06095a44d6
 #import,dir "jaison";
 
 //TODO these should be moved into thegame_renderer?
