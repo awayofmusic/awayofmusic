@@ -1035,6 +1035,12 @@ VisitWatchData :: struct {
 adding structs and arrays then can add tests for that as well.
 This function is based on ParseExpression so we should be testing them together. But ParseExpression
 is based on lexing so we should just be testing EvaluateWatchData I think makes the most sense.
+
+REMINDER : Tokens in compilation data are using strings from the text file. This is a huge memory save. 
+So we should only be using compilation data that does not involve the original compilation nodes.
+Things like type names and variables names are copied over for general use here.
+If there are significant issues with this then we can copy the string for the tokens over but this would
+be copying over all the files in the code which is not memory efficient.
 */
 //TODO Should we call this EvaluateWatchNodes?
 //TODO Should we make this a pointer so we keep pointers going into DFSPost for simplicity and a reminder?

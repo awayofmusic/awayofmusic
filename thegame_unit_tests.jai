@@ -11195,6 +11195,189 @@ DONE,,unit_test_alloc);
 
 } @UnitTest
 
+Test_SameVarName :: () {
+	cs : CompileSettings;
+	cd : *CompilationData;
+
+	//TEST Invalid name already in use in while scope
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () { 
+	x : int = 5;
+	while x < 10 {
+		x += 1;
+		x : float = 1.1;
+	}
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST Invalid name already in use in while scope
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () { 
+	x : int = 5;
+	for x..x+10 {
+		x = 1;
+		x : float = 1.1;
+	}
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST Invalid name already in use in while scope
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () { 
+	x : int = 5;
+	if x > 0 {
+		x = x - 10;
+		x : float = 1.1;
+	}
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST Invalid name already in use in while scope
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () { 
+	x : int = 5;
+	if x > 0 {
+		x += 1;
+	} else if x < 0 {
+		x += 1;
+		x : float = 1.1;
+	}
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST Declaring same var in same scope
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () { 
+	x : int = 5;
+	x : float = 1.1;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST Declaring same var in same scope
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () { 
+	for 0..10 {
+		test := 5;
+		test : neume;
+	}
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST "it" in for loop should also fail
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () { 
+	for 0..10 {
+		it : int = 5;
+	}
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST "it" in for loop should also fail
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () { 
+	a : [] int;
+	for a {
+		it_index : float;
+	}
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST for loop cannot use
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () { 
+	for x : 0..10 {
+		x : float;
+	}
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST "it" in for loop should also fail
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () { 
+	a : [] int;
+	for y,x : a {
+		x : float;
+	}
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST cannot have same for loop index and value names
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () { 
+	a : [] int;
+	for x,x : a {}
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST cannot have it_index be the for loop value name
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () { 
+	a : [] int;
+	for it_index : a {}
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST cannot have same name as function arg names
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {}
+foo :: (x : int) {
+	x : int;
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+	//TEST cannot have same name as function arg names
+	reset(*unit_test_alloc_pool, true);
+	cd = CompileCode(.{print_errors_to_console=false},
+#string DONE
+main :: () {}
+foo :: (x : int) {
+	while x > 0 {
+		x -= 1;
+		x : float;
+	}
+}
+DONE,,unit_test_alloc);
+	AssertEquals(true, IsCompilationFail(cd));
+
+
+
+} @UnitTest
+
 Test_UntestedParse :: () {
 	cd := MakeCompilationData(,,unit_test_alloc);
 	bin : *BinaryNode;

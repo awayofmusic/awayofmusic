@@ -1,0 +1,48 @@
+//#import and #load must be at the beginning of the file.
+#import "c_load/Basic";
+
+/*Try this out :
+- ctrl+f8 toggles the text file tabs
+- ctrl+o opens the file explorer to open a file
+This file will open in a new tab
+- ctrl+alt+l is go to file tab right
+- ctrl+alt+j is go to file tab left
+- ctrl+f7 toggles the status bar below for general info
+- ctrl+alt+d to toggle debug mode
+- Set a breakpoint on line "BubbleSort("
+Either click the left column next to that line
+or put the text cursor on that line and press f9 
+- ctrl+alt+c to compile
+Always compile before executing
+- f5 to execute and stop on the breakpoint
+- Add watch variable "a" in the top-right pane
+Click the top-right watch pane with the mouse or press ctrl+alt+2.
+Type in "a" and press enter to watch data.
+- Press enter or the second column to drop the array values
+- f10 to step over the bubble sort
+This will sort array "a"
+- ctrl+shift+f5 to restart execution
+- f11 to step into BubbleSort
+This will open a new tab automatically if not opened yet.
+- shift+f11 to step out of BubbleSort
+*/
+main :: () {
+	a := int.[5,4,1,2,3,-12,-4,100,-6,-6000,239];
+	BubbleSort(cast(*void) a.data, a.count, size_of(int), CompareInts);
+}
+
+/*
+ctrl+w to close the currently selected tab.
+ctrl+alt+shift+l to move/swap the file tab to the right.
+ctrl+alt+shift+j to move/swap the file tab to the right.
+
+#import and #load must be at the beginning of the file.
+#load will load the file directly without any checks.
+#import will load the file and only load the file once,
+so the same file can be imported multiples in a project.
+Cyclical dependencies are not checked for by the compiler.
+#load can be used to avoid cyclical dependencies.
+
+If there are any issues, "ctrl+alt+F12" will refresh the text op space.
+Issues from the system terminal can be reported on discord.
+*/

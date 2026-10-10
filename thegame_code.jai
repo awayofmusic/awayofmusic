@@ -240,6 +240,12 @@ and possibly constants later.
 
 TODO Likely best to make multiple versions of this and then pass in CompilationData in 1 and then can grab
 the files directly from there and so then we can leave this function for tests with an empty file name.
+
+REMINDER : Tokens in compilation data are using strings from the text file. This is a huge memory save.
+So we should only be using compilation data that does not involve the original compilation nodes.
+Things like type names and variables names are copied over for general use in something like the debugger.
+If there are significant issues with this then we can copy the string for the tokens over but this would
+be copying over all the files in the code which is not memory efficient.
 */
 //TODO Need to write tests for all the different CodeTokenType cases
 LexCodeTokens :: inline (lexer : *CodeLexer, input : string) {
@@ -1648,23 +1654,27 @@ ParseLeaf :: (cd : *CompilationData, pl : ParserLevel = .STATEMENT) -> *BinaryNo
 		next_token := cd.lexer.lexer_tokens[cd.lexer.next_index];
 		next_next_token := cd.lexer.lexer_tokens[cd.lexer.next_index+1];
 		if next_token.token_type == .IDENT && next_next_token.token_type == #char ":" {
-	   	for_loop_data.value_name = next_token.token_string;
+	   	for_loop_data.value_name = copy_string(next_token.token_string);
 	   	EatNextToken(*cd.lexer);
 	   	EatNextToken(*cd.lexer);
 	   } else if next_token.token_type == .IDENT && next_next_token.token_type == #char "," {
-	   	for_loop_data.value_name = next_token.token_string;
+	   	for_loop_data.value_name = copy_string(next_token.token_string);
    		EatNextToken(*cd.lexer);
    		EatNextToken(*cd.lexer);
    		next_token = cd.lexer.lexer_tokens[cd.lexer.next_index];
 			next_next_token = cd.lexer.lexer_tokens[cd.lexer.next_index+1];
    		if next_token.token_type == .IDENT && next_next_token.token_type == #char ":" {
-		   	for_loop_data.index_name = next_token.token_string;
+		   	for_loop_data.index_name = copy_string(next_token.token_string);
 		   	EatNextToken(*cd.lexer);
 		   	EatNextToken(*cd.lexer);
 		   } else {
-		   	CreateCompErr(cd, .PARSER, node, "Invalid for loop.");
+		   	CreateCompErr(cd, .PARSER, next, "Invalid for loop.");
 				return null, false;
 		   }
+   	}
+   	if for_loop_data.value_name == for_loop_data.index_name {
+	   	CreateCompErr(cd, .PARSER, next, "For loop value and index names cannot be the same.");
+			return null, false;
    	}
 		next_expr := ParseExpression(cd,S64_MIN,pl); //"{" == S64_MIN
 		node = MakeBinaryNode(null,next,next_expr,*cd.binary_tree,.UNARY_OP);
@@ -3563,6 +3573,7 @@ ScopeData :: struct {
 	function_id : int;
 }
 
+
 //TODO Could do this with 1 stack IfElseData if that makes more sense on implementation. In my head\
 //grabbing the if AND THEN going through else makes more sense in case we have 0 else then we just would
 //not do anything on the loop and only remove the IfData and continue
@@ -3616,10 +3627,10 @@ keep the data in 1 place and can easily get the current scope and close them lik
 how scopes are naturally.
 */
 //TODO Should we return a pointer here. It seems like we don't need it for now.
-GetCurrentScope :: inline (cd : *CompilationData) -> ScopeData {
+GetCurrentScope :: inline (cd : *CompilationData) -> *ScopeData {
 	assert(cd.open_scope_stack.count > 0);
 	last_scope_id : int = peek(cd.open_scope_stack);
-	last_scope : ScopeData = GetScopeData(last_scope_id, cd);
+	last_scope : *ScopeData = GetScopeData(last_scope_id, cd);
 	return last_scope;
 }
 
@@ -3822,6 +3833,7 @@ AddByteOffsetFromSbp :: inline (size : int, cd : *CompilationData) {
 	}
 }
 
+
 //TODO Should we put a push or an add scp in here. Maybe we can have an option
 //and call PushStack or CreateAddSCPInstr in here with an option for consistency.
 //Likely can think about this and add it when we update everything to work with structs on the stack.
@@ -3829,12 +3841,8 @@ CreateStackVarData :: inline (cd : *CompilationData, name : string, t_info : *Ty
 	var_type : VariableType = .DEFAULT)
 -> *VariableData, is_error : bool
 {
-	//TODO Need to check this on the return depending on how were creating. 
-	//OR we just pass in a node and create the same error here
-	// current_scope : ScopeData = GetCurrentScope(cd);
-	// for cd.variable_data_stack if it.name == name && current_scope.id == it.scope_id {
-	// 	return null, true;
-	// }
+	// name_already_in_current_scope : bool = VarNameAlreadyExistsInCurrentScope(name, cd);
+	// if name_already_in_current_scope return null, false;
 
 	stack_var_op : MusicOperand = RamMem(.sbp, cd.byte_offset_from_sbp);
 	var : *VariableData = CreateVarData(cd, name, t_info, stack_var_op, var_type);
@@ -3863,7 +3871,12 @@ CreateVarData :: inline (
 	var.id = cd.next_var_declaration_id;
 	cd.next_var_declaration_id += 1;
 	//TODO We should probably be copying this name with an allocator that stays after compilation
-	var.name = name;
+	//This is now using a different allocator for each text op so it is safest to copy it which then
+	//gets cleared on every new compilation anyways.
+	//I think copying this name makes sense otherwise we use the string from the original file
+	//and if the file gets updated then we could have weird var name deletions in the debugger or something like that.
+	var.name = copy_string(name);
+	// var.name = name;
 	var.t_info = t_info;
 	var.op = operand;	
 
@@ -3882,9 +3895,9 @@ CreateVarData :: inline (
 	return var;
 }
 
-FindVariableInNearestScope :: inline (name : string, var_stack : [] VariableData) -> VariableData, bool {
+FindVariableInFuncNearestScope :: inline (name : string, var_stack : [] VariableData) -> VariableData, bool {
 	//We search backwards since the variables are ordered in a stack by when they were declared.
-	//This stack is assumed to only contain variables within the currently available scope.
+	//This stack only contains variables within the currently available scope in the current function being compiled.
 	for < var_stack if it.name == name {
 		return it, true;
 	}
@@ -6920,6 +6933,13 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 				with one mov instruction with mov_size.
 				We can store default struct values in global scope like any global value and then copy it over with 1 .mov.
 				*/
+
+				var_data, var_already_used := FindVariableInFuncNearestScope(node.left.value.token_string, cd.variable_data_stack);
+				if var_already_used {
+					CreateCompErr(cd, .EVALUATION, node.left, "Variable name already used in this function.");
+					return false;
+				}
+
 				//We only have a declaration and so we want to set default values here.
 				//TODO Can put default here and then just mov the default values for structs and things from
 				//the constant part in memory at the beggining. Also pointers should default to whatever 
@@ -6944,7 +6964,7 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 
 				cd.already_reset_stack = true;
 			} else {
-				CreateCompErr(cd, .EVALUATION, node, "Invalid parnent node.");
+				CreateCompErr(cd, .EVALUATION, node, "Invalid parent node.");
 				return false;
 			}
 		} 
@@ -7334,7 +7354,8 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 			} else {
 				node.code_ir.t_info = member_info.t_info;
 			}
-		} else if is_enum_dot_value {
+		} 
+		else if is_enum_dot_value {
 			enum_node : *BinaryNode = l_node.parent.left;
 			enum_info := cast(*TypeInfoEnum) enum_node.code_ir.t_info;
 
@@ -7363,18 +7384,9 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 		// } else if node.code_ir.ir_type == .UNKNOWN_IDENT {
 		// 	CreateCompErr(cd, .EVALUATION, node, "Unknown identifier.");
 		// 	return false;
-		} else {
-			//We can check in here if we either have a stack var or heap memory or a function name.
-			//TODO If we did a reverse array search here then we would find the correct variable right away
-			// var, found_var := ArrayFindFirstByNameId(cd.variable_data_stack, node.value.token_string, "name");
-			//This grabs the last variable on the stack of that name which will be in the closest in scope.
-			var : VariableData;
-			found_var : bool = false;
-			for < cd.variable_data_stack if it.name == node.value.token_string {
-				var = it;
-				found_var = true;
-				break;
-			}
+		} 
+		else {
+			var, found_var := FindVariableInFuncNearestScope(node.value.token_string, cd.variable_data_stack);
 
 			found_global_var : bool = false;
 			global_var : VariableData;
@@ -8170,19 +8182,62 @@ EvaluateAssignment :: inline (node : *BinaryNode, cd : *CompilationData) {
 		} else if node.right.code_ir.code_value_type != .R_VALUE && node.right.code_ir.code_value_type != .L_VALUE {
 			CreateCompErr(cd, .EVALUATION, node.right, "Right assignment not l_value or r_value.");
 			return;
-		} else if IsDeclarationAssignment(node) {
-			//TODO If
+		} 
+		//TODO If we add multiple return values then we would have to check for a "," and maybe we check
+		//those later when we actually process the multiple return values and memory
+		else if IsDeclarationAssignment(node) {
 			var_node : *BinaryNode = GetDeclarationVarNode(node);
 			if var_node.code_ir.node_var_type == .NOT_DECLARABLE {
 				CreateCompErr(cd, .EVALUATION, var_node, "Not a declarable variable.");
 				return;
-			} else if var_node.code_ir.ir_type != .UNKNOWN_IDENT {
-				//TODO Need to only allow unknown if the ident is in the same scope 
-				CreateCompErr(cd, .EVALUATION, var_node, 
-				//TODO Maybe we can make this more explicit by fetching exactly what is already being used.
-				sprint("Variable already in use : %.", var_node.code_ir.t_info.*));
+			} 
+			else if var_node.value.token_type != .IDENT {
+				CreateCompErr(cd, .EVALUATION, var_node, "Invalid variable name."); 
 				return;
 			}
+			else if var_node.value.token_type == .IDENT {
+				/*Right now we don't allow variable shadowing.
+				So only 1 variable name per function scope.
+				Most languages allow it but I have never liked it and find it confusing to think about.
+				ALSO preventing this prevents the bug that we could accidentally declare a variable on 
+				inner scope with the same name that we wanted from outer scope. 
+				This actually happened to me while I was implementing shadow variables so I took it as a sign to not do it. 
+				var_data : *VariableData;
+				if IsDeclarationAssignment(node) {
+					var_node : *BinaryNode = GetDeclarationVarNode(node);
+					//This line should not be declared
+					var_data : *VariableData = CreateStackVarData(cd, var_node.value.token_string, left_t_info);
+				}
+				This does happen to me sometimes and is annoying and frustrating to debug.
+
+				THE UPSIDE argument to shadow variables is that allowing new var name declaration on inner scope can be used
+				to prevents from assigning vars on inner scope with same name of outer scope
+				but I feel like the first bug is sneakier and more annoying.
+				x : int = 5;
+				while i < 10 {
+					x : int; //this prevents us from assigning "x : int = 5;" from outer scope
+				}
+
+				THEREFORE we cannot have different variables with the same name in the same function.
+				*/
+				var_data, found_var := FindVariableInFuncNearestScope(var_node.value.token_string, cd.variable_data_stack);
+				if found_var {
+					CreateCompErr(cd, .EVALUATION, node, "Variable name already used in this function.");
+					return;
+				}
+			}
+			else {
+				CreateCompErr(cd, .EVALUATION, node, "Invalid variable name.");
+				return;
+			}
+			//Technically we could have something which is known but not a valid variable
+			//TODO Not sure if this case is useful anymore with the above check
+			// else if var_node.code_ir.ir_type != .UNKNOWN_IDENT {
+			// 	CreateCompErr(cd, .EVALUATION, var_node, "Variable name already in use.");
+			// 	return;
+			// 	//TODO Maybe we can make this more explicit by fetching exactly what is already being used.
+			// 	// sprint("Variable already in use : %.", var_node.code_ir.t_info.*));
+			// }
 		}
 		/*IMPORTANT TODO REMINDER
 		I think we should update this to check both sides now that everything is updated
@@ -8359,11 +8414,13 @@ EvaluateAssignment :: inline (node : *BinaryNode, cd : *CompilationData) {
 					assert(it.function_bracket_node == node.right);
 					return_type : *TypeInfo = cd.multi_return_type_info_proc.return_types[it_index];
 					if node.value.token_type == .COLON_EQUALS {
+						//TODO IF we implement multiple return values we would have to check for variable names already
+						//existing in the same scope on the stack here
 						//TODO I don't think we need this push since the return values were already put on the stack.
 						//This is because we reset the stack first and then push BUT if we have ":=" then we already
 						//have the values on the stack so no need. Only need to make sure scp is in the right place.
 						CreateMInstr(.push, it.return_mem_op, Imm(return_type.runtime_size), d=cd);
-						CreateStackVarData(cd, it.var_node.value.token_string, return_type);
+						var_data : *VariableData = CreateStackVarData(cd, it.var_node.value.token_string, return_type);
 					} else {
 						CreateMInstr(.mov, it.var_node.code_ir.op, it.return_mem_op, Imm(return_type.runtime_size), d=cd);
 					}
@@ -9211,7 +9268,7 @@ CompileCode :: inline (cs : CompileSettings, code : string) -> *CompilationData 
 					struct_info : *TypeInfoStruct = New(TypeInfoStruct,,context.allocator);
 					array_add(*cd.all_type_info_struct, struct_info);
 					struct_info.type_enum = TypeInfoTag.STRUCT;
-					struct_info.name = node.left.value.token_string;
+					struct_info.name = copy_string(node.left.value.token_string);
 
 					//We create the struct pointer type here as well while we're at it.
 					CreateTypeInfoPointer(cast(*TypeInfo) struct_info, cd);
@@ -9224,7 +9281,7 @@ CompileCode :: inline (cs : CompileSettings, code : string) -> *CompilationData 
 					array_add(*cd.all_type_info_enum, enum_info);
 					enum_info.info.type_enum = TypeInfoTag.ENUM;
 					enum_info.info.runtime_size = 8;
-					enum_info.name = node.left.value.token_string;
+					enum_info.name = copy_string(node.left.value.token_string);
 
 					//We create the struct pointer type here as well while we're at it.
 					CreateTypeInfoPointer(cast(*TypeInfo) enum_info, cd);
@@ -11039,7 +11096,7 @@ Assembler :: (asm_tokens : [] LCodeToken, total_asm_start_index : int, cd : *Com
 						CreateAsmIR(.INT, label_symbol.instr_index, *current_asm_irs);
 					} else {
 						//Check for variable outside of the asm scope (may allow var declaration in asm scope later)
-						var, found_var := FindVariableInNearestScope(l_string, cd.variable_data_stack);
+						var, found_var := FindVariableInFuncNearestScope(l_string, cd.variable_data_stack);
 						if found_var {
 							//TODO IF the .op is RamMEm then we could also always make it valid
 							//Let's try this if we found the var then it is valid and we just use the memory.
