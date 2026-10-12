@@ -3797,7 +3797,7 @@ TextFile :: struct {
 	//Extension is more robust since then we can add any 
 	//extension we want. Could still have enum for specific
 	//types that we support by default.
-	file_extension : string;
+	file_extension : string; //I think we don't use this but maybe we will?
 	//TODO file_short_name should be file_name by default
 	//TODO I think we can remove this now since we have absolute_path_name and 
 	//file_name (which is relative or absolute depending on how the user inputs it)
@@ -3806,7 +3806,7 @@ TextFile :: struct {
 	//and see if that works at all with some copy_pasting.
 	using file_string : FileString;
 
-	was_internal_saved : bool;
+	was_internal_saved : bool; //TODO can remove this i don't think we use it anymore
 
 	//TODO This should also be separated out since it is op_space specific
 	//since we can have the same file in multiple op_spaces.
@@ -3834,6 +3834,8 @@ TextFile :: struct {
 		or if we add more text file types. 
 		Let's see what we do after we have the 
 		jai files working.
+
+		TODO Pretty sure we don't use this anymore so we can remove it
 	*/
 	file_type : TextFileType;
 	is_external_file : bool;

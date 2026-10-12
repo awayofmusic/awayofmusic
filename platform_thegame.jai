@@ -118,7 +118,13 @@ screen_height : s32;
 	//helps people to have more customization over resolution.
 	screen_width  = cast(s32) round_to_int(fb.size.width);
 	screen_height = cast(s32) round_to_int(fb.size.height);
+} else #if OS == .LINUX {
+	init_global_display();
+	screen := DefaultScreenOfDisplay(x_global_display);
+	screen_width = screen.width;
+	screen_height = screen.height;
 }
+
 if GLOBAL_STARTUP_SETTINGS.use_startup_screen_dim {
 	screen_width = cast(s32) GLOBAL_STARTUP_SETTINGS.startup_screen_width;
 	screen_height = cast(s32) GLOBAL_STARTUP_SETTINGS.startup_screen_height;
@@ -1076,6 +1082,12 @@ Win32InitDirectSound :: (Window : HWND, SamplingRate : s32, BufferSize : s32) {
 }
 //TODO Could pass a struct in here to reuse with macos
 //if we need more data.
+/*
+TODO FROM HERE try this for file dialog on linux
+char filename[1024];
+FILE *f = popen("zenity --file-selection", "r");
+fgets(filename, 1024, f);
+*/
 OpenFileWithExplorer :: inline (
 	fei := FileExplorerInput.{})
 -> FileExplorerResult
@@ -1155,14 +1167,8 @@ SaveFileWithExplorer :: inline (
    return fe_result;
 }
 } 
-else #if OS == .MACOS {
+else #if OS == .MACOS || OS == .LINUX {
 Posix :: #import "POSIX";
-#import "Objective_C";
-#import "Objective_C/AppKit";
-//Technically I can rename this to jai but Ill leave it like
-//this since that's the default although will likely need this to be input
-//if the user decides to change the name of their compiler executable.
-jai_cmd : string : "jai-macos";
 GetDeviceFPS :: (window : Window_Type) -> float64 {
 	//TODO Implement this on mac once we have it, just assume 60fps for now since that is my current screen framerate.
 	//OR we could just have this be user set with a default to 60 since I can't seem to programatically get the refresh rate on macos.
@@ -1238,6 +1244,15 @@ CloseDynamicLibrary :: inline (dl : *DynamicLibrary) -> bool, string {
 		return false, tprint("Could not close \"%\": %", dl.input_path_name, to_string(error));
 	}
 }
+
+#if OS == .MACOS {
+#import "Objective_C";
+#import "Objective_C/AppKit";
+//Technically I can rename this to jai but Ill leave it like
+//this since that's the default although will likely need this to be input
+//if the user decides to change the name of their compiler executable.
+jai_cmd : string : "jai-macos";
+
 /*TODO Ask on jai discord how to set color to theme when opening an NSSavePanel on macos.
 Also when returning back to program the input_application_has_focus is true and we read input
 but the app is not actually in focus and cannot get mouse readings until we click it with the mouse.
@@ -1307,6 +1322,82 @@ SaveFileWithExplorer :: inline (
 	}
 
 	return ofe_result;
+}
+}
+#if OS == .LINUX {
+#import "X11";
+jai_cmd : string : "jai-linux";
+OpenFileWithExplorer :: inline (
+	fei := FileExplorerInput.{}) 
+-> FileExplorerResult
+{
+	f : *Posix.FILE = Posix.popen(
+		"zenity --file-selection --title=\"Select File\"", 
+		"r");
+
+   buffer: [1024] u8;
+	ret : int = -1;
+	if f != null {
+		s_ret : *u8 = Posix.fgets(buffer.data, buffer.count, f);
+		//Check to make sure we actually got something otherwise it segfaults on pclose
+		//TODO Could also add buffer null char check here if needed
+		// if s_ret {
+		if s_ret && buffer[0] {
+			ret = Posix.pclose(f);
+		}
+	}
+	// print("ret=%\n", ret);
+	ofe_result : FileExplorerResult;
+	if ret == 0 {
+	   ofe_result.file_name = copy_string(to_string(buffer));
+	   if String.ends_with(ofe_result.file_name, "\n") {
+	   	ofe_result.file_name.count -= 1; //remove the \n
+	   }
+	   ofe_result.file_success = true;
+	} else { // if(ret<0) perror("file_name_dialog()");
+	   ofe_result.file_success = false;
+		ofe_result.error_msg = "No file opened.\n";
+		//Techincally this is not necessarily an error since we could have just closed or cancelled the explorer
+		//TODO We could check the other NSModalResponse for more specific checking like if we cancelled or closed the pane
+		//I think this is not available in windows since windows just returns a bool
+		log(ofe_result.error_msg);
+	}
+
+	return ofe_result;
+}
+SaveFileWithExplorer :: inline (
+	fei := FileExplorerInput.{}) 
+-> FileExplorerResult 
+{
+	f : *Posix.FILE = Posix.popen(
+		"zenity --file-selection --save --title=\"Save File\"", 
+		"r");
+
+   buffer: [1024] u8;
+	ret : int = -1;
+	if f != null {
+		s_ret : *u8 = Posix.fgets(buffer.data, buffer.count, f);
+		// if s_ret != null {
+		if s_ret && buffer[0] {
+			ret = Posix.pclose(f);
+		}
+	}
+
+   ofe_result : FileExplorerResult;
+	if ret == 0 {
+	   ofe_result.file_name = copy_string(to_string(buffer));
+	   if String.ends_with(ofe_result.file_name, "\n") {
+	   	ofe_result.file_name.count -= 1; //remove the \n
+	   }
+	   ofe_result.file_success = true;
+	} else {
+	   ofe_result.file_success = false;
+		ofe_result.error_msg = "No file saved.\n";
+		log_error(ofe_result.error_msg);
+	}
+
+	return ofe_result;
+}
 }
 }
 
@@ -1668,11 +1759,7 @@ JaiProcessWindowInput :: (new_input : *GameInput) {
 				}
 			}
 			case .MOUSE_WHEEL; {
-				//TODO Could round to account for non-typical wheel deltas
-				// new_input.mouse_wheel = round_to_s32(event.wheel_delta / cast(float) event.typical_wheel_delta);
-				#if OS == .WINDOWS {
-				new_input.mouse_wheel = event.wheel_delta / event.typical_wheel_delta;
-				} else #if OS == .MACOS {
+				#if OS == .MACOS {
 				//TODO Test to see if we can make this smoother on mac. It's wierd though because if people
 				//adjusting the scroll wheel themselves, then we would have to change it as well.
 				//Could just set it to be +/- 1 or 2 (test out later) depending on if wheel delta is 1 or > 1 or something.
@@ -1694,6 +1781,12 @@ JaiProcessWindowInput :: (new_input : *GameInput) {
 					new_input.mouse_wheel = -1;
 				}
 				// print("mouse_wheel=%\n", new_input.mouse_wheel);
+				} 
+				else {
+				//TODO Can likely test this more thoroughly on linux once I can use non-vm linux with normal framerates and mouse input
+				//TODO Could round to account for non-typical wheel deltas
+				// new_input.mouse_wheel = round_to_s32(event.wheel_delta / cast(float) event.typical_wheel_delta);
+				new_input.mouse_wheel = event.wheel_delta / event.typical_wheel_delta;
 				}
 			}
 			case .QUIT; {
@@ -1894,7 +1987,9 @@ DynamicLibrary :: struct {
 	//so that this is just platform specific later for dynamic libraries
 	#if OS == .WINDOWS {
 	module_handle : HMODULE; //HMODULE == *void
-	} else #if OS == .MACOS {
+	} 
+	//TODO Maybe we can just put an else here as default? I don't know if we will have any other OSes...
+	else #if OS == .MACOS || OS == .LINUX {
 	//TODO I think this would be the same with linux since that is what is done in bindings generator.
 	module_handle : *void;
 	}
@@ -2021,15 +2116,15 @@ LoadTextFile :: inline (
 	//file that is pulled in at the beginning with a bunch of info that then we don't need
 	//to pull in from disk all the time.
 	#if 1 {
-	if short_name.count == 0 {
-		//TODO Need to make this OS dependent probably "/" for unix
-		found, left, right := String.split_from_right(text_file.file_name, #char "\\");
-		text_file.file_short_name = right;
-		found_f, left_f, right_f := String.split_from_right(text_file.file_name, #char "/");
-		if right_f.count < right.count text_file.file_short_name = right_f;
-	} else {
+	if short_name.count > 0 {
 		text_file.file_short_name = copy_string(short_name);
 	}
+	// 	//TODO Need to make this OS dependent probably "/" for unix
+	// 	found, left, right := String.split_from_right(text_file.file_name, #char "\\");
+	// 	text_file.file_short_name = right;
+	// 	found_f, left_f, right_f := String.split_from_right(text_file.file_name, #char "/");
+	// 	if right_f.count < right.count text_file.file_short_name = right_f;
+	// } else {
 	}
 
 	text_file.file_string = file_string;
@@ -2136,6 +2231,30 @@ UpdateTextFileName :: inline (new_name : string, text_file : *TextFile) {
 
 	text_file.absolute_path_name = copy_string(get_absolute_path(new_name));
 	text_file.file_name = copy_string(new_name);
+
+	#if 1 {
+	found_f, left_f, right_f := String.split_from_right_by_any(text_file.file_name, "/\\");
+	if found_f text_file.file_short_name = right_f;
+	else text_file.file_short_name = text_file.file_name;
+	} else {
+	found_f : bool = false;
+	cursor := text_file.file_name.count - 1;
+	while cursor >= 0 {
+		if AllOrEquals(text_file.file_name[cursor], .[#char "/", #char "\\"]) {
+			found_f = true;
+			text_file.file_short_name = String.slice(text_file.file_name, cursor+1, text_file.file_name.count-(cursor+1));
+			break;
+		}
+		cursor -= 1;
+	}
+	if !found_f text_file.file_short_name = text_file.file_name;
+	}
+	//TODO Need to make this OS dependent probably "/" for unix
+	//This is the old cod I'll leave here in case we have an issue. New code is clearer and more efficient.
+	// found, left, right := String.split_from_right(text_file.file_name, #char "\\");
+	// text_file.file_short_name = right;
+	// found_f, left_f, right_f := String.split_from_right(text_file.file_name, #char "/");
+	// if right_f.count < right.count text_file.file_short_name = right_f;
 }
 
 //TODO Could also pass back error message if easier to specify error from caller.

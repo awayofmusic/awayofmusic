@@ -9,6 +9,9 @@ dl_suffix : string : "dll";
 } else #if OS == .MACOS {
 EXE_NAME :: "macos_thegame";
 dl_suffix : string : "dylib";
+} else #if OS == .LINUX {
+EXE_NAME :: "linux_thegame";
+dl_suffix : string : "so";	
 }
 BUILD_DL_NAME :: "build_dl_thegame.jai";
 FILES_DIR_NAME :: "guides";

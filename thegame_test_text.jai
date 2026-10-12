@@ -17118,7 +17118,7 @@ DONE;
 		AssertEquals(-1, text_op.mouse_hovering_tab_i);
 		AssertEquals(7, text_op.file_tabs[6].text_file_id);
 		#if OS == .WINDOWS AssertEquals(103, text_op.file_tabs[6].tab_cursor.char_point);
-		else #if OS == .MACOS AssertEquals(101, text_op.file_tabs[6].tab_cursor.char_point);
+		else #if OS == .MACOS || OS == .LINUX AssertEquals(101, text_op.file_tabs[6].tab_cursor.char_point);
 		AssertEquals(0, text_op.file_tabs[7].text_file_id);
 		AssertTabCursor(tt_data, text_op.file_tabs[7].tab_cursor);
 		AssertEquals(8, file_tab_op_rects.count);
@@ -17283,7 +17283,7 @@ DONE;
 		AddPressKeyboard(.MOUSE_BUTTON_LEFT, .DOWN_THIS_FRAME, game_input);
 		#if OS == .WINDOWS {
 		tt_data.test_char_point = 103;
-		} else #if OS == .MACOS {
+		} else #if OS == .MACOS || OS == .LINUX {
 		tt_data.test_char_point = 101;
 		}
 		tt_data.test_line_char = 80;
@@ -17744,7 +17744,7 @@ Test_TextSave :: (
 		tt_data.test_line_number = 5;
 		tt_data.test_left_char_bound += 2;
 		tt_data.test_right_char_bound += 2;
-		} else #if OS == .MACOS {
+		} else #if OS == .MACOS || OS == .LINUX {
 		tt_data.test_char_point = 120;
 		tt_data.test_line_char = 64;
 		tt_data.test_line_number = 5;
