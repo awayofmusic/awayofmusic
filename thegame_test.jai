@@ -9921,29 +9921,37 @@ DONE);
 
 	if perm.test_data.sub_test_index == {
 	case 0; {
-		//TODO ADD these tests once we update the pixels per square for resizing
-		// //TEST adding tab when op space is closed should work
-		// open_test := MakeTerminalEvent(.text_tab, TEST_TEXT_NAME, TAB_T1_NAME);
-		// array_add(*perm.all_data.all_terminal_events, open_test);
+		count_equals := AssertEquals(1, perm.all_data.all_closed_op_spaces.count);
+		if count_equals {
+			op_space := perm.all_data.all_closed_op_spaces[0];
+			AssertEquals(TEST_TEXT_NAME, op_space.op_space_name);
+			AssertEquals(OpSpaceExternalType.txt, op_space.op_space_external_type);
+
+			count_equals = AssertEquals(1, text_op.file_tabs.count);
+		}
+
+		//TEST adding tab when op space is closed should work
+		open_test := MakeTerminalEvent(.text_tab, TEST_TEXT_NAME, TAB_T1_NAME);
+		array_add(*perm.all_data.all_terminal_events, open_test);
 	}
 	case 1; {
-		// count_equals := AssertEquals(1, perm.all_data.all_closed_op_spaces.count);
-		// if count_equals {
-		// 	op_space := perm.all_data.all_closed_op_spaces[0];
-		// 	AssertEquals(OP_SPACE_NAME, op_space.op_space_name);
-		// 	AssertEquals(OpSpaceExternalType.txt, op_space.op_space_external_type);
+		count_equals := AssertEquals(1, perm.all_data.all_closed_op_spaces.count);
+		if count_equals {
+			op_space := perm.all_data.all_closed_op_spaces[0];
+			AssertEquals(TEST_TEXT_NAME, op_space.op_space_name);
+			AssertEquals(OpSpaceExternalType.txt, op_space.op_space_external_type);
 
-		// 	count_equals = AssertEquals(2, text_op.file_tabs.count);
-		// 	if count_equals {
-		// 	 	AssertEquals(1, text_op.ftab_i);
-		//  		text_file, found_text_file := ArrayFindFirstByNameId(perm.all_data.all_text_files,
-		//  			text_op.file_tabs[1].text_file_id, "id");
-		//  		AssertEquals(true, found_text_file);
-		//  		if found_text_file {
-		// 	 		AssertEquals(get_absolute_path(TAB_T1_NAME), text_file.absolute_path_name);
-		// 	 	}
-		//  	}
-		// }
+			count_equals = AssertEquals(2, text_op.file_tabs.count);
+			if count_equals {
+			 	AssertEquals(1, text_op.ftab_i);
+		 		text_file, found_text_file := ArrayFindFirstByNameId(perm.all_data.all_text_files,
+		 			text_op.file_tabs[1].text_file_id, "id");
+		 		AssertEquals(true, found_text_file);
+		 		if found_text_file {
+			 		AssertEquals(get_absolute_path(TAB_T1_NAME), text_file.absolute_path_name);
+			 	}
+		 	}
+		}
 
 		//Test opening a tab when the text op is open
 		text_tab_test := MakeTerminalEvent(.open_op, TEST_TEXT_NAME);
@@ -9960,24 +9968,24 @@ DONE);
 			AssertEquals(TEST_TEXT_NAME, op_space.op_space_name);
 			AssertEquals(OpSpaceExternalType.txt, op_space.op_space_external_type);
 
-			count_equals = AssertEquals(2, text_op.file_tabs.count);
+			count_equals = AssertEquals(3, text_op.file_tabs.count);
 			if count_equals {
 			 	//Test that we changed tabs and that the new tab exists
-			 	AssertEquals(1, text_op.ftab_i);
+			 	AssertEquals(2, text_op.ftab_i);
 
 		 		text_file, found_text_file := ArrayFindFirstByNameId(perm.all_data.all_text_files,
 		 			text_op.file_tabs[1].text_file_id, "id");
 		 		AssertEquals(true, found_text_file);
 		 		if found_text_file {
-			 		AssertEquals(get_absolute_path(TAB_T2_NAME), text_file.absolute_path_name);
+			 		AssertEquals(get_absolute_path(TAB_T1_NAME), text_file.absolute_path_name);
 			 	}
 
-		 		// text_file, found_text_file = ArrayFindFirstByNameId(perm.all_data.all_text_files,
-		 		// 	text_op.file_tabs[2].text_file_id, "id");
-		 		// AssertEquals(true, found_text_file);
-		 		// if found_text_file {
-			 	// 	AssertEquals(get_absolute_path(TAB_T2_NAME), text_file.absolute_path_name);
-			 	// }
+		 		text_file, found_text_file = ArrayFindFirstByNameId(perm.all_data.all_text_files,
+		 			text_op.file_tabs[2].text_file_id, "id");
+		 		AssertEquals(true, found_text_file);
+		 		if found_text_file {
+			 		AssertEquals(get_absolute_path(TAB_T2_NAME), text_file.absolute_path_name);
+			 	}
 		 	}
 		}
 
@@ -9992,7 +10000,8 @@ DONE);
 			AssertEquals(TEST_TEXT_NAME, op_space.op_space_name);
 			AssertEquals(OpSpaceExternalType.txt, op_space.op_space_external_type);
 
-			count_equals = AssertEquals(2, text_op.file_tabs.count);
+			count_equals = AssertEquals(3, text_op.file_tabs.count);
+		 	AssertEquals(2, text_op.ftab_i);
 		}
 
 		//TEST that nothing happens if the text op does not exist
@@ -10006,12 +10015,10 @@ DONE);
 			AssertEquals(TEST_TEXT_NAME, op_space.op_space_name);
 			AssertEquals(OpSpaceExternalType.txt, op_space.op_space_external_type);
 
-			count_equals = AssertEquals(2, text_op.file_tabs.count);
+			count_equals = AssertEquals(3, text_op.file_tabs.count);
+		 	AssertEquals(2, text_op.ftab_i);
 		}
 
-		//TEST that nothing happens if the text op does not exist
-		// no_file_test := MakeTerminalEvent(.text_tab, "NON_EXISTANT_FILE123l1kj23lkjlkj", TAB_T3_NAME);
-		// array_add(*perm.all_data.all_terminal_events, no_file_test);
 	}
 	}
 

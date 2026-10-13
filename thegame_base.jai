@@ -5009,12 +5009,11 @@ DONE;
 				if IsTerminalCmdHelp(cmd_switches) {
 					print_to_builder(*sb, help_msg);
 				} else if command_tokens.count == 3 {
-					//TODO once we update pixels per square then we can also add tabs when the op space is closed
-					op_space, found_op_space := ArrayFindFirstByNameId(perm.all_data.all_open_op_spaces,
-						command_tokens[1].token, "op_space_name");
+					op_space, found_op_space := FindOpSpacePointerOpenOrClosed(command_tokens[1].token, 
+						perm.all_data.all_open_op_spaces, perm.all_data.all_closed_op_spaces);
 					file_does_exist : bool = file_exists(command_tokens[2].token);
 					if !found_op_space {
-						print_to_builder(*sb, "% text op space not open\n", command_tokens[1].token);
+						print_to_builder(*sb, "% op space not found\n", command_tokens[1].token);
 					} else if op_space.op_space_external_type != OpSpaceExternalType.txt {
 						print_to_builder(*sb, "% is not a text op space\n", command_tokens[1].token);
 					} 
