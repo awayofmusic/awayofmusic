@@ -41,6 +41,7 @@ MakeRendererData :: inline (
 	// renderer_data.default_pixels_per_square = 20.0 * 1.5 * (window_width / 3840.0);
 	// renderer_data.default_pixels_per_square = 20.0 * (window_width / renderer_data.original_width);
 	// renderer_data.default_pixels_per_square = 20.0;
+	renderer_data.current_pixels_per_square = renderer_data.default_pixels_per_square;
 
 	//TODO eventually we can allow change in font size. possibly even per render_group
 	//TODO Should we remove first font since we won't use it? I guess we can leave in case we want to use
@@ -76,8 +77,8 @@ MakeRendererData :: inline (
 	renderer_data.overlay_render_group = MakeBaseRenderGroup(window_width, window_height, 1, *renderer_data);
 
 	//TODO Maybe we can just use the viewport width here now.
-	terminal_width : s32 = round_to_s32(0.25*window_width);
-	renderer_data.terminal_render_group = MakeBaseRenderGroup(terminal_width, window_height, 1, *renderer_data);
+	// terminal_width : s32 = round_to_s32(0.25*window_width);
+	// renderer_data.terminal_render_group = MakeBaseRenderGroup(terminal_width, window_height, 1, *renderer_data);
 
 	renderer_data.initial_memory_used_size = renderer_data.memory.used;
 
@@ -136,8 +137,8 @@ ResizeRendererData :: inline (new_window_pixel_width : s32, new_window_pixel_hei
 	//and store it in renderer data near the terminal render group.
 	//Could have a command that sets that until we allow terminal to be an op space so it's just 1 way to adjust.
 	//TODO If terminal is an op space, then we can also remove the terminal render group altogether
-	terminal_width : s32 = round_to_s32(0.25*new_window_pixel_width);
-	ResizeRenderGroup(terminal_width, new_window_pixel_height, renderer_data.terminal_render_group, renderer_data);
+	// terminal_width : s32 = round_to_s32(0.25*new_window_pixel_width);
+	// ResizeRenderGroup(terminal_width, new_window_pixel_height, renderer_data.terminal_render_group, renderer_data);
 	//TODO Should we set an option here to reset this in ResizeRenderGroup?
 	//This is because we change we scissor the text based on this, so for now I will just update
 	//but it is unnecessary if we do wrap around text AND if we make it a fixed op space later then it is also unnecessary.
@@ -212,7 +213,7 @@ MakeBaseRenderGroup :: inline (
 	/*TODO could update these in thegame if needed since we have a pointer to RenderGroup
 	*/
 	render_group.zoom_factor = 1.0;
-	render_group.pixels_per_square = renderer_data.default_pixels_per_square;
+	render_group.pixels_per_square = renderer_data.current_pixels_per_square;
 	render_group.focal_squares = 24.0; //1 xy unit in 2D plane at this z square value from camera
 	//TODO this should be adjusted in renderer to be resolution independent
 	//TODO could adjust this relative to camera movement adjustment
@@ -305,7 +306,7 @@ RenderDataToOutput :: inline (renderer_data : *RendererData, type : RendererType
 		//and then it would be in order so we could have things on top of the terminal then.
 		//Right now that does not seem necessary and separating the terminal out
 		//simplifies having to deal with passing over the OpSpace and RenderGroups on level loads.
-		RenderGroupSimpOpenGL(renderer_data.terminal_render_group, renderer_data);
+		// RenderGroupSimpOpenGL(renderer_data.terminal_render_group, renderer_data);
 		RenderGroupSimpOpenGL(renderer_data.overlay_render_group, renderer_data);
 	}
 	else if RendererType.CPU_RENDERING == type

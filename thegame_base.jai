@@ -134,7 +134,7 @@ PushClear(Vector4F.{}, renderer_data.base_render_group, S64_MIN);
 PushShaderEntries(renderer_data.base_render_group, 0, 2, S64_MAX);
 PushSetShaderColor(renderer_data.base_render_group, 4);
 PushTextAndCursorShaderOrder(renderer_data.base_render_group);
-PushTextAndCursorShaderOrder(renderer_data.terminal_render_group);
+// PushTextAndCursorShaderOrder(renderer_data.terminal_render_group);
 PushTextAndCursorShaderOrder(renderer_data.overlay_render_group);
 
 //TODO Probably only need to do this if audio is playing
@@ -215,13 +215,13 @@ if IsInputMapPress(.GLOBAL_ZOOM_OUT, .IS_DOWN_WITH_PAUSE, game_input) {
 	// is_global_zooming = true;
 	global_zoom_scale = 0;
 	UpdatePixelsPerSquareEverywhere(renderer_data.default_pixels_per_square, renderer_data, perm);
-	// print("zoom=%\n", renderer_data.base_render_group.pixels_per_square);
+	// print("zoom=%\n", renderer_data.current_pixels_per_square);
 }
 if global_zoom_scale != 0 {
-	new_pixels_per_square : float = renderer_data.base_render_group.pixels_per_square + global_zoom_speed * global_zoom_scale;
+	new_pixels_per_square : float = renderer_data.current_pixels_per_square + global_zoom_speed * global_zoom_scale;
 	new_pixels_per_square = Clamp(global_zoom_pixel_min, new_pixels_per_square, global_zoom_pixel_max);
 	UpdatePixelsPerSquareEverywhere(new_pixels_per_square, renderer_data, perm);
-	// print("zoom=%\n", renderer_data.base_render_group.pixels_per_square);
+	// print("zoom=%\n", renderer_data.current_pixels_per_square);
 }
 
 /*DOC : Updating the mspace here first ensures that we only have 1 mspace selected for the whole frame.
@@ -293,7 +293,7 @@ HAVING THE MOVEMENTS closer together here makes it clearer that we only will mov
 WE HAVE TO DO THIS BEFOREHAND THE HOVERING CHECK OTHERWISE THE HOVERING IS OFF for the op space hovering highlighting
 */
 else if perm.all_data.all_chosen_entities.count == 0 {
-	move_vec, moved_this_frame := DefaultInputMove2D(game_input, renderer_data.base_render_group.pixels_per_square);
+	move_vec, moved_this_frame := DefaultInputMove2D(game_input, renderer_data.current_pixels_per_square);
 	if moved_this_frame {
 		new_cam_pos : Vector2F = mspace_for_input.mspace_cam.world_pos + move_vec;
 		MoveFixedCameraOpSpaces(new_cam_pos, mspace_for_input.mspace_cam.world_pos, perm.all_data);
@@ -399,7 +399,7 @@ if IsInputMapPress(.TERMINAL_TOGGLE, .DOWN_THIS_FRAME, game_input) {
 
 			term_op : *TerminalOpSpaceData = array_add(*perm.all_data.all_terminal_op_space_data);
 			term_op.op_space_id = closed_op_space.id;
-			ResizeTerminalOpSpace(term_op, closed_op_space.world_size, renderer_data.base_render_group.pixels_per_square, 
+			ResizeTerminalOpSpace(term_op, closed_op_space.world_size, renderer_data.current_pixels_per_square, 
 				perm.text_editor_data, perm.terminal_data);
 			//REMINDER Need to add the first split string here so we always have a terminal cmd split line
 			//We do this in resizing now since we have to recompute the line char count
@@ -500,10 +500,10 @@ if active_cam != null {
 	}
 
  	if move_this_frame.x != 0 && move_this_frame.y != 0 {
-    	move_this_frame *= 2.0*(1.0 / renderer_data.base_render_group.pixels_per_square);
+    	move_this_frame *= 2.0*(1.0 / renderer_data.current_pixels_per_square);
     	// move_this_frame *= 1.0*(1.0 / pixels_per_square);
  	} else {
-    	move_this_frame *= 2.0*(1.5 / renderer_data.base_render_group.pixels_per_square);
+    	move_this_frame *= 2.0*(1.5 / renderer_data.current_pixels_per_square);
     	// move_this_frame *= 1.0*(1.5 / pixels_per_square);
 	}
 	active_cam.move_this_frame = move_this_frame;
@@ -898,7 +898,7 @@ if frame_hover_entities.count > 0 {
 					// pitches : [2] float = FunRegionPosToPitchSet(audio_fun_region_pos.component, chord_s2.music_pt_count);
 					// text : string = tprint("%,%", pitches[0], pitches[1]);
 					text_pos := hover_point_world_pos;
-					text_pos.x -= perm.text_editor_data.code_font_1_char_width_pixel / renderer_data.base_render_group.pixels_per_square;
+					text_pos.x -= perm.text_editor_data.code_font_1_char_width_pixel / renderer_data.current_pixels_per_square;
 					cam_pos : Vector2F = OpSpaceToCameraSpace(text_pos, top_op_space, top_op_space.op_2D_cam.world_pos, default_base_cam);
 					PushText(cam_pos, hover_rect.shape_text, WHITE_V, top_op_space.render_groups.scissor_group, 10003);
 				}
@@ -995,8 +995,8 @@ if frame_hover_entities.count > 0 {
 						PushRectangle(cam_rect, LBLUE_V, top_op_space.render_groups.scissor_group, order = 10);
 
 						shifted_pos := GetCenter(cam_rect);
-						shifted_pos.x -= perm.text_editor_data.code_font_1_char_width_pixel / renderer_data.base_render_group.pixels_per_square;
-						shifted_pos.y -= 0.5 * perm.text_editor_data.char_height / renderer_data.base_render_group.pixels_per_square;
+						shifted_pos.x -= perm.text_editor_data.code_font_1_char_width_pixel / renderer_data.current_pixels_per_square;
+						shifted_pos.y -= 0.5 * perm.text_editor_data.char_height / renderer_data.current_pixels_per_square;
 						text : string = tprint("%,%", point.fun_region_float[0], point.fun_region_float[1]);
 						PushText(shifted_pos, text, WHITE_V, top_op_space.render_groups.scissor_group, 10003);
 
@@ -1307,7 +1307,7 @@ if frame_hover_entities.count > 0 {
 					if hover_rect.shape_text.count > 0 {
 						text_pos : Vector2F = GetCenter(hover_cam_rect);
 						text_pos.x -= 0.5 * hover_rect.shape_text.count * perm.text_editor_data.code_font_1_char_width_world; 
-						text_pos.y += perm.text_editor_data.char_height / top_op_space.render_groups.scissor_group.pixels_per_square; 
+						text_pos.y += perm.text_editor_data.char_height / renderer_data.current_pixels_per_square; 
 						PushText(text_pos, hover_rect.shape_text, WHITE_V, top_op_space.render_groups.scissor_group, 10003);
 					}
 					/*DOC 2 methods
@@ -1694,7 +1694,7 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 	//TODO We could do resizing above but we do here instead so we don't have to fetch data again.
 	if is_resizing_op_space {
 		//TODO Should we just us base_render_group? We update pixels_per_square everywhere on zoom anyways...
-		ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
+		ResizeTextOpSpace(text_op, op_space.world_size, renderer_data.current_pixels_per_square,
 			perm.text_editor_data);
 		// text_file.file_string.file_loc.count, text_op.text_comp_data.disassembly_loc.count);
 		is_text_op_mouse_input = true;
@@ -1744,7 +1744,7 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 				// text_op.left_proportion = left_proportion;
 				text_op.set_left_proportion = left_proportion;
 				// text_op.l_bottom_left_proportion = left_proportion;
-				ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
+				ResizeTextOpSpace(text_op, op_space.world_size, renderer_data.current_pixels_per_square,
 					perm.text_editor_data);
 			// }
 		}
@@ -1771,7 +1771,7 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 			bottom_proportion = Clamp(TEXT_SPLIT_MIN, bottom_proportion, TEXT_SPLIT_MAX);
 			// if bottom_proportion >= TEXT_SPLIT_MIN && bottom_proportion <= TEXT_SPLIT_MAX {
 				text_op.set_bottom_proportion = bottom_proportion;
-				ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
+				ResizeTextOpSpace(text_op, op_space.world_size, renderer_data.current_pixels_per_square,
 					perm.text_editor_data);
 			// }
 		}
@@ -1798,7 +1798,7 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 			r_bottom_height_proportion = Clamp(TEXT_SPLIT_MIN, r_bottom_height_proportion, TEXT_SPLIT_MAX);
 			// if r_bottom_height_proportion >= TEXT_SPLIT_MIN && r_bottom_height_proportion <= TEXT_SPLIT_MAX {
 				text_op.set_r_bottom_height_proportion = r_bottom_height_proportion;
-				ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
+				ResizeTextOpSpace(text_op, op_space.world_size, renderer_data.current_pixels_per_square,
 					perm.text_editor_data);
 			// }
 		}
@@ -1826,7 +1826,7 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 			new_proportion = Clamp(TEXT_SPLIT_MIN, new_proportion, 1.0 - text_op.type_proportion - TEXT_SPLIT_MIN);
 			// if new_proportion >= TEXT_SPLIT_MIN && new_proportion <= 1.0 - text_op.type_proportion - TEXT_SPLIT_MIN {
 				text_op.name_proportion = new_proportion;
-				ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
+				ResizeTextOpSpace(text_op, op_space.world_size, renderer_data.current_pixels_per_square,
 					perm.text_editor_data);
 			// }
 		}
@@ -1854,7 +1854,7 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 			new_proportion = Clamp(TEXT_SPLIT_MIN, new_proportion, 1.0 - text_op.name_proportion - TEXT_SPLIT_MIN);
 			// if new_proportion >= TEXT_SPLIT_MIN && new_proportion <= 1.0 - text_op.name_proportion - TEXT_SPLIT_MIN {
 				text_op.type_proportion = 1.0 - text_op.name_proportion - new_proportion;
-				ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
+				ResizeTextOpSpace(text_op, op_space.world_size, renderer_data.current_pixels_per_square,
 					perm.text_editor_data);
 			// }
 		}
@@ -2092,7 +2092,8 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 				if IsKeyboardPress(.MOUSE_BUTTON_LEFT, .DOWN_THIS_FRAME, game_input) {
 					ChangeTextPane(SelectedTextPane.TEXT, text_op, perm.all_data);
 					open_text_file, found_open_file := 
-						OpenFileTabWithExplorer(text_op, *perm.all_data.all_text_files, op_space, perm.text_editor_data);
+						OpenFileTabWithExplorer(text_op, *perm.all_data.all_text_files, op_space, perm.text_editor_data,
+							renderer_data.current_pixels_per_square);
 					if found_open_file {
 						//We set the text file here since we opened a new text_file and that could have changed the array memory pointer
 						text_file = open_text_file;
@@ -2381,7 +2382,8 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 						ChangeTextPane(SelectedTextPane.CALL_STACK, text_op, perm.all_data);
 					}
 					text_op.highlighted_call_stack_index = Clamp(0, mouse_call_stack_index, text_op.exec_info.debug_info.debug_call_stack.count-1);
-					SelectHighlightedCallFrame(text_op, perm.all_data, op_space, perm.text_editor_data);
+					SelectHighlightedCallFrame(text_op, perm.all_data, op_space, perm.text_editor_data, 
+						renderer_data.current_pixels_per_square);
 				}
 				//TODO Can add a double click here to choose that call stack OR set it when we move up there
 				//and see if they overlap. ALSO need to adjust code pointer so we can see where we are in the code
@@ -2653,7 +2655,7 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 			}
 
 			//TODO I think we should just call this whenever we do a keyboard action and not just here.
-			ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
+			ResizeTextOpSpace(text_op, op_space.world_size, renderer_data.current_pixels_per_square,
 				perm.text_editor_data);
 			//TODO SETTINGS DEFINETELY Make this a setting although I think false should be the default
 			//TODO We can just remove this if everything works fine. Having this does not work now
@@ -2744,7 +2746,7 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 	   }
 	   else if IsInputMapPress(.TEXT_SHOW_STATUS_BAR, .DOWN_THIS_FRAME, game_input) {
 	   	text_op.show_text_status_bar = !text_op.show_text_status_bar;
-			ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
+			ResizeTextOpSpace(text_op, op_space.world_size, renderer_data.current_pixels_per_square,
 				perm.text_editor_data);
 	   }
 	   else if text_op.exec_info.exec_mode == .DEBUG && 
@@ -2772,7 +2774,7 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 			ResetTextCursor(*text_op.second_bar_cursor);
 			//DOC : We do this after resetting the cursor so that if the end line and right char bounds change
 			//then we will start from the reset to 0 cursor.
-			ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
+			ResizeTextOpSpace(text_op, op_space.world_size, renderer_data.current_pixels_per_square,
 				perm.text_editor_data);
 			//TODO We coudl reset the cursor and update the line char bounds again here for good measure if needed
 	   }
@@ -2798,7 +2800,7 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 				//TODO We could highlight the text if we go back to it if that is more convenient
 			}
 			text_op.text_second_bar_type = TextSecondBarType.NONE;
-			ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
+			ResizeTextOpSpace(text_op, op_space.world_size, renderer_data.current_pixels_per_square,
 				perm.text_editor_data);
 		}
 	   /*TODO We could prevent this from happening if we hit any of the above hotkeys to avoid unknown overlapping
@@ -3020,7 +3022,7 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 				//TODO Should store a text cursor for each text file tab
 				// ResetTextCursor(*text_op.file_tabs[text_op.ftab_i].tab_cursor);
 				//NOTE : Resizing here since this reset the start and end line_index and also the text cursor right char bounds
-				ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
+				ResizeTextOpSpace(text_op, op_space.world_size, renderer_data.current_pixels_per_square,
 					perm.text_editor_data);
 
 				MoveToLine(text_op.file_tabs[text_op.ftab_i].tab_cursor.cursor_line_number, text_file.file_string, *text_op.file_tabs[text_op.ftab_i].tab_cursor);
@@ -3046,7 +3048,7 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 				} else {
 					text_op.text_top_bar_type = TextTopBarType.TEXT_FILE_TABS;
 				}
-				ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
+				ResizeTextOpSpace(text_op, op_space.world_size, renderer_data.current_pixels_per_square,
 					perm.text_editor_data);
 			}
 			else if IsInputMapPress(.TEXT_FILE_TAB_CLOSE, .DOWN_THIS_FRAME, game_input) {
@@ -3070,7 +3072,8 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 
 				ChangeTextPane(SelectedTextPane.TEXT, text_op, perm.all_data);
 				open_text_file, found_open_file := 
-					OpenFileTabWithExplorer(text_op, *perm.all_data.all_text_files, op_space, perm.text_editor_data);
+					OpenFileTabWithExplorer(text_op, *perm.all_data.all_text_files, op_space, perm.text_editor_data,
+						renderer_data.current_pixels_per_square);
 				if found_open_file {
 					//We set the text file here since we opened a new text_file and that could have changed the array memory pointer
 					text_file = open_text_file;
@@ -3111,7 +3114,7 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 					}
 				}
 				text_op.text_second_bar_type = TextSecondBarType.NONE;
-				ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
+				ResizeTextOpSpace(text_op, op_space.world_size, renderer_data.current_pixels_per_square,
 					perm.text_editor_data);
 			}
 			else if IsInputMapPress(.TEXT_FILE_REPLACE_TEXT_BAR, .DOWN_THIS_FRAME, game_input) {
@@ -3131,7 +3134,7 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 						CopySelectedTextToFindBar(text_op, tab_cursor.*, text_file.file_string, perm.text_editor_data, game_input);
 					}
 				}
-				ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
+				ResizeTextOpSpace(text_op, op_space.world_size, renderer_data.current_pixels_per_square,
 					perm.text_editor_data);
 			}
 			/*DOC : We need to put the bar input text after the goto line and find text and replace shortcuts
@@ -3139,7 +3142,7 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 			*/
 			else if text_op.selected_text_bar != SelectedTextBarType.NONE {
 				if IsKeyboardPress(.ESCAPE, .DOWN_THIS_FRAME, game_input) {
-					CloseTextBars(text_op, op_space, perm.text_editor_data);
+					CloseTextBars(text_op, op_space, perm.text_editor_data, renderer_data.current_pixels_per_square);
 				}
 				else if IsKeyboardPress(.TAB, .DOWN_THIS_FRAME, game_input) &&
 					text_op.text_second_bar_type != TextSecondBarType.NONE
@@ -3162,7 +3165,7 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 						*/
 						// ResetTextCursor(tab_cursor);
 						MoveToLine(line_number, text_file.file_string, tab_cursor);
-						CloseTextBars(text_op, op_space, perm.text_editor_data);
+						CloseTextBars(text_op, op_space, perm.text_editor_data, renderer_data.current_pixels_per_square);
 					} 
 					else if text_op.exec_info.exec_mode == .DEBUG &&
 						//TODO Maybe pull out the start string here for tests. 
@@ -3174,7 +3177,7 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 						asm_index_int, asm_is_int := string_to_int(asm_index_string);
 						if asm_is_int {
 							MoveToAsmIndex(asm_index_int, text_op);
-							CloseTextBars(text_op, op_space, perm.text_editor_data);
+							CloseTextBars(text_op, op_space, perm.text_editor_data, renderer_data.current_pixels_per_square);
 							ChangeTextPane(SelectedTextPane.DISASSEMBLY, text_op, perm.all_data);
 						} else {
 							SetTextStatus("Invalid asm index", text_op);
@@ -3691,7 +3694,8 @@ if op_space.op_space_external_type == OpSpaceExternalType.txt {
 					*text_op.start_call_stack_index, *text_op.end_call_stack_index);
 			} 
 			else if IsKeyboardPress(.ENTER, .DOWN_THIS_FRAME, game_input) {
-				SelectHighlightedCallFrame(text_op, perm.all_data, op_space, perm.text_editor_data);
+				SelectHighlightedCallFrame(text_op, perm.all_data, op_space, perm.text_editor_data, 
+					renderer_data.current_pixels_per_square);
 			}
 
 			//TODO If we store the rectangle then we can move the camera if we are outside the rectangle
@@ -3727,7 +3731,7 @@ else if op_space.op_space_external_type == OpSpaceExternalType.terminal {
 	is_terminal_mouse_input : bool = false;
 	if is_resizing_op_space {
 		//TODO Should we just us base_render_group? We update pixels_per_square everywhere on zoom anyways...
-		ResizeTerminalOpSpace(term_op, op_space.world_size, renderer_data.base_render_group.pixels_per_square, 
+		ResizeTerminalOpSpace(term_op, op_space.world_size, renderer_data.current_pixels_per_square, 
 			perm.text_editor_data, perm.terminal_data);
 		is_terminal_mouse_input = true;
 	}
@@ -4230,7 +4234,7 @@ else if op_space.op_space_external_type == OpSpaceExternalType.space_2d {
 			// print("zoom_factor=%\n", op_space.render_groups.scissor_group.zoom_factor);
 			//REMINDER : This does not work I think because then it is inconsistent with everything else
 			//TODO MAYBE WE SHOULD JUST HAVE 1 pixels_per_square then instead of having 1 for each render group
-			// op_space.render_groups.scissor_group.pixels_per_square += zoom_scale * zoom_speed;
+			// renderer_data.current_pixels_per_square += zoom_scale * zoom_speed;
 		}
 	}
 
@@ -4239,7 +4243,7 @@ else if op_space.op_space_external_type == OpSpaceExternalType.space_2d {
 	*/
 	//TODO We could prevent this while zooming if that causes issues.
 	// if !is_zooming {
-	move_vec, moved_this_frame := DefaultInputMove2D(game_input, op_space.render_groups.scissor_group.pixels_per_square);
+	move_vec, moved_this_frame := DefaultInputMove2D(game_input, renderer_data.current_pixels_per_square);
 	if moved_this_frame {
 		op_space.op_2D_cam.world_pos += move_vec;
 	// } else if mouse_in_op_space &&  {
@@ -4417,7 +4421,7 @@ for * text_file : perm.all_data.all_text_files {
 				assert(op_space.op_space_external_type == OpSpaceExternalType.txt);
 				assert(found_op_space);
 
-				ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
+				ResizeTextOpSpace(text_op, op_space.world_size, renderer_data.current_pixels_per_square,
 					perm.text_editor_data);
 
 				//NOTE : Need to always move the line here in case we added text before the current line which
@@ -4578,7 +4582,7 @@ DONE);
 								print_to_builder(*sb, "File % created\n", new_text_file.file_name);
 
 								text_op := CreateTextOpSpace(.[new_text_file.id], perm.text_editor_data,
-									renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data, op_space_name);
+									renderer_data.current_pixels_per_square, perm.all_data, renderer_data, op_space_name);
 								OpenOpSpace(op_space_name, renderer_data, perm.all_data);
 								print_to_builder(*sb, "% created\n", op_space_name);
 							}
@@ -4654,7 +4658,7 @@ DONE;
 						}
 						if found_text_file {
 							text_op := CreateTextOpSpace(.[text_file.id], perm.text_editor_data,
-								renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data, op_space_name);
+								renderer_data.current_pixels_per_square, perm.all_data, renderer_data, op_space_name);
 							//TODO Could make opening optional on creation but I think opening by default makes sense
 							OpenOpSpace(op_space_name, renderer_data, perm.all_data);
 							print_to_builder(*sb, "% created\n", op_space_name);
@@ -4693,7 +4697,7 @@ DONE;
 							}
 							if found_text_file {
 								text_op := CreateTextOpSpace(.[text_file.id], perm.text_editor_data,
-									renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data, op_space_name);
+									renderer_data.current_pixels_per_square, perm.all_data, renderer_data, op_space_name);
 								//TODO Could make opening optional on creation but I think opening by default makes sense
 								OpenOpSpace(op_space_name, renderer_data, perm.all_data);
 								print_to_builder(*sb, "% created\n", op_space_name);
@@ -5027,7 +5031,8 @@ DONE;
 
 						abs_path : string = get_absolute_path(command_tokens[2].token);
 						text_file, found_text_file := 
-							OpenFileTab(abs_path, text_op, *perm.all_data.all_text_files, op_space.*, perm.text_editor_data);
+							OpenFileTab(abs_path, text_op, *perm.all_data.all_text_files, op_space.*, perm.text_editor_data,
+								renderer_data.current_pixels_per_square);
 						if !found_text_file {
 							//We already check above that file exists to get the absolute path but we check here for resilience.
 							print_to_builder(*sb, "% file not found\n", command_tokens[2].token);
@@ -5823,7 +5828,8 @@ if perm.all_data.all_music_instructions.count > 0 {
 			//All the resetting is done in here now consistently with other call frame movements.
 			//If we have issues / differences then we could move and put it in here separately again.
 			//(Put it in deadcode with SelectHighlightedCallFrame as a note if needed)
-			SelectHighlightedCallFrame(text_op, perm.all_data, op_space, perm.text_editor_data, reset_watch_data);			
+			SelectHighlightedCallFrame(text_op, perm.all_data, op_space, perm.text_editor_data, 
+				renderer_data.current_pixels_per_square, reset_watch_data);
 
 			if cpu_err.is_error {
 				SetTextOpConsoleMessage(tprint("CPU Error asm_index % : %.", cpu_err.error_index, cpu_err.msg), text_op, add_text=true);
@@ -6555,7 +6561,7 @@ for row, row_index : render_mspace.all_music_lane_rows {
 	// assert(found_row);
 	coll_rect := ComputeRowCollRect(row, perm.all_data.global_rules.memory_unit_width);
 	coll_cam_rect := WorldRectToCamRect(coll_rect, default_base_cam);
-	pixel_rect := CamRectToPixelRect(coll_cam_rect, renderer_data.base_render_group);
+	pixel_rect := CamRectToPixelRect(coll_cam_rect, renderer_data.base_render_group, renderer_data.current_pixels_per_square);
 	if !RectanglesIntersect(renderer_data.base_render_group.render_viewport, pixel_rect) &&
 		!ContainsRectangle(renderer_data.base_render_group.render_viewport, pixel_rect) 
 	{
@@ -6794,7 +6800,7 @@ if is_row_hovering {
 			//TODO PULL THIS OUT TO HAVE TextBackgroundRect2D be reusable for all hovering text
 			//and then reuse in startup_dl
 			rect_dim := Vector2F.{text.count*perm.text_editor_data.code_font_1_char_width_world,
-				1.1*perm.text_editor_data.char_height / renderer_data.base_render_group.pixels_per_square};
+				1.1*perm.text_editor_data.char_height / renderer_data.current_pixels_per_square};
 			hover_rect : Rectangle2 = RectMinDim(hover_cam - Vector2F.{0,0.65*rect_dim.y}, rect_dim);
 			PushRectangle(hover_rect, GREY_BLACKER_V, renderer_data.base_render_group, order = next_order+9);
 			PushText(hover_cam, text, GREY_DARK_V, renderer_data.base_render_group, order = next_order+10);
@@ -6803,13 +6809,17 @@ if is_row_hovering {
 }
 
 for * op_space : perm.all_data.all_open_op_spaces {
+//TODO We can put this in IsFixedViewableOpSpace and since it's only viewable if the screen intersectes or contains the op space rectangle
+// if !RectanglesIntersect(renderer_data.base_render_group.render_viewport, pixel_rect) &&
+// !ContainsRectangle(renderer_data.base_render_group.render_viewport, pixel_rect) 
 if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 	//Draw Window Rect
 	op_rect_world : Rectangle2 = RectCenterDim(op_space.world_offset, op_space.world_size);
 	// op_rect_cam : Rectangle2 = WorldRectToCamRect(op_rect_world, default_base_cam);
 	op_rect_cam : Rectangle2 = WorldRectToCamRect(op_rect_world, default_base_cam);
 	pixel_rect : Rectangle2 = CamRectToPixelRect(op_rect_cam, 
-		renderer_data.base_render_group.screen_half_dim, renderer_data.base_render_group.pixels_per_square);
+		renderer_data.base_render_group.screen_half_dim, renderer_data.current_pixels_per_square);
+
 
 	//TODO Should we not only update this when we move the window?
 	op_space.render_groups.pre_scissor_group.render_viewport = pixel_rect;
@@ -7222,7 +7232,7 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 					EntityType.OP_LINEAR_ROW, "entity_type",
 					row.id, "entity_id");
 				cam_rect := OpRectToCamRect(coll.rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
-				pixel_rect := CamRectToPixelRect(cam_rect, op_space.render_groups.scissor_group);
+				pixel_rect := CamRectToPixelRect(cam_rect, op_space.render_groups.scissor_group, renderer_data.current_pixels_per_square);
 				if RectanglesIntersect(pixel_rect, op_space.render_groups.scissor_group.render_viewport) {
 					inter : Rectangle2 = ComputeRectIntersect(pixel_rect, op_space.render_groups.scissor_group.render_viewport);
 					PushSetScissor(inter, op_space.render_groups.scissor_group, order = op_linear_order);
@@ -7666,7 +7676,7 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 		left_rect.max.x = op_rect.min.x + left_proportion*op_space.world_size.x;
 		}
 		cam_left_rect := OpRectToCamRect(left_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
-		left_pixel_rect := CamRectToPixelRect(cam_left_rect, op_space.render_groups.scissor_group);
+		left_pixel_rect := CamRectToPixelRect(cam_left_rect, op_space.render_groups.scissor_group, renderer_data.current_pixels_per_square);
 		PushSetScissor(left_pixel_rect, op_space.render_groups.scissor_group, left_order);
 		//tODO Why dont we have color ahd text for left rect text? It seems to be working though hmmm...
 
@@ -7715,9 +7725,9 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 		} else {
 		//TODO Make this a function so we can reuse.
 		//TODO Likely will pull these all out as functions OR store them and then recompute on resize later for efficiency.
-		// TEXT_LINE_HEIGHT : float = text_op.text_line_height_factor*perm.text_editor_data.char_height / op_space.render_groups.scissor_group.pixels_per_square;
+		// TEXT_LINE_HEIGHT : float = text_op.text_line_height_factor*perm.text_editor_data.char_height / renderer_data.current_pixels_per_square;
 		TEXT_LINE_HEIGHT : float = ComputeTextLineHeight(text_op.text_line_height_factor,
-			perm.text_editor_data.char_height, op_space.render_groups.scissor_group.pixels_per_square);
+			perm.text_editor_data.char_height, renderer_data.current_pixels_per_square);
 		//TODO I think these will always be the same but may change relative to font and stuff like that.
 		//Would need to test with different fonts and different window sizes.
 		// LOC_START_Y : float = 14.5 - text_op.top_margin_height;
@@ -7729,7 +7739,7 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 		DEBUG_START_X : float = op_rect.min.x + 0.5*(MARGIN_END-op_rect.min.x);
 
 		//We adjust start_y for debugging so it is in line with the cursor and chars.
-		cursor_height : float = ComputeCursorHeight(perm.text_editor_data.char_height, op_space.render_groups.scissor_group.pixels_per_square);
+		cursor_height : float = ComputeCursorHeight(perm.text_editor_data.char_height, renderer_data.current_pixels_per_square);
 		y_cursor_adjust : float = YAdjustCursorHeight(cursor_height);
 		DEBUG_START_Y : float = LOC_START_Y - y_cursor_adjust;
 
@@ -7844,7 +7854,6 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 		// cam_pos : Vector2F = OpSpaceToCameraSpace(op_pos, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
 		// cursor_rect : Rectangle2;
 		if is_chosen_op_space && text_op.selected_pane == SelectedTextPane.TEXT {
-			// PushTypeCursor(cursor_cam_pos, tab_cursor.cursor_line_char * perm.text_editor_data.code_font_1_char_width_world, perm.text_editor_data.char_height,
 			//TODO Should text cursor here should be underneath the text so we can always see the text?
 			//its over the text in sublime but under the text in notepad
 			cursor_op_pos : Vector2F = MakeV2F(LOC_START_X, LOC_START_Y - (TEXT_LINE_HEIGHT*(tab_cursor.cursor_line_number-tab_cursor.start_file_line_index)));
@@ -7856,9 +7865,10 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 			cursor_line_op_x_diff : float = char_count_until_cursor_with_tab * perm.text_editor_data.code_font_1_char_width_world;
 			//TODO Use this to push cursor and remove PushTypeCursor if we don't use it anymore
 			// cursor_rect = TypeCursorRect(cursor_cam_pos, cursor_line_op_x_diff, perm.text_editor_data.char_height, 
-			// 	op_space.render_groups.scissor_group.pixels_per_square, cursor_width=CURSOR_WIDTH);
+			// 	renderer_data.current_pixels_per_square, cursor_width=CURSOR_WIDTH);
 			PushTypeCursor(cursor_cam_pos, cursor_line_op_x_diff, perm.text_editor_data.char_height,
-				op_space.render_groups.scissor_group, order=left_order+10, color=ORANGE_V, cursor_width=CURSOR_WIDTH);
+				op_space.render_groups.scissor_group, renderer_data.current_pixels_per_square, 
+				order=left_order+10, color=ORANGE_V, cursor_width=CURSOR_WIDTH);
 				// line_height_factor=TEXT_LINE_HEIGHT);
 				// op_space.render_groups.scissor_group, order=left_margin_order+10, color=ORANGE_V);
 			//TODO I think we can remove this once we have highlighting working and then move the fixed select pos down there
@@ -7873,7 +7883,8 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 					tab_cursor.fixed_select_line_number, text_file.file_string);
 				fixed_select_line_op_x_diff : float = char_count_until_fixed_select_with_tab * perm.text_editor_data.code_font_1_char_width_world;
 				PushTypeCursor(fixed_select_cam_pos, fixed_select_line_op_x_diff, perm.text_editor_data.char_height,
-					op_space.render_groups.scissor_group, order=left_order+10, color=FGREEN_V, cursor_width=CURSOR_WIDTH);
+					op_space.render_groups.scissor_group, renderer_data.current_pixels_per_square,
+					order=left_order+10, color=FGREEN_V, cursor_width=CURSOR_WIDTH);
 					// line_height_factor=TEXT_LINE_HEIGHT);		
 			}
 			}
@@ -7911,7 +7922,7 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 			start_select_line = min(start_select_line, text_file.file_string.file_loc.count-1);
 			end_select_line = min(end_select_line, text_file.file_string.file_loc.count-1);
 			//TODO can replace these with ator since we have them in ator already
-			// cursor_height : float = ComputeCursorHeight(perm.text_editor_data.char_height, op_space.render_groups.scissor_group.pixels_per_square);
+			// cursor_height : float = ComputeCursorHeight(perm.text_editor_data.char_height, renderer_data.current_pixels_per_square);
 			// y_adjust : float = YAdjustCursorHeight(cursor_height);
 			if InRange(start_render_line, start_select_line, end_render_line) || 
 				InRange(start_render_line, end_select_line, end_render_line) 
@@ -8028,7 +8039,7 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 				//Let's try this way for now and see if it's ok longer term since it's not a terribly expensive function for a few tabs open
 				//TODO Can just push the right outline rect maybe only if tabs.count > 0
 				// PushRectangleOutline(cam_tab_rect, LIGHT_BROWN, op_space.render_groups.scissor_group, order=left_top_bar_order+1);
-				// dividor_tab_rect := RectRenderLeftOutline(cam_tab_rect, 2.0, op_space.render_groups.scissor_group.pixels_per_square);
+				// dividor_tab_rect := RectRenderLeftOutline(cam_tab_rect, 2.0, renderer_data.current_pixels_per_square);
 				//TODO We could put this in between each tab or just next to on the left of the currently selected tab
 				// PushRectangle(dividor_tab_rect, text_color, op_space.render_groups.scissor_group, left_top_bar_order+1);
 
@@ -8098,7 +8109,8 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 			//TODO We could remove the cursor and highlighting here if needed by just putting this condition as an if
 			bar_cursor_settings.draw_cursor = text_op.selected_text_bar == SelectedTextBarType.SELECTED_FIRST_BAR;
 			DrawSingleLineCursor(text_op.first_bar_cursor, text_cam_pos, cam_first_bar_text_rect.min.x,
-				left_bottom_bar_order+2, op_space.render_groups.scissor_group, perm.text_editor_data, bar_cursor_settings);
+				left_bottom_bar_order+2, op_space.render_groups.scissor_group, renderer_data.current_pixels_per_square,
+				perm.text_editor_data, bar_cursor_settings);
 
 			//DOC : replace bar can only show if we are showing the find bar
 			if text_op.text_second_bar_type != TextSecondBarType.NONE {
@@ -8117,7 +8129,8 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 				//TODO We could remove the cursor and highlighting here if needed by just putting this condition as an if
 				bar_cursor_settings.draw_cursor = text_op.selected_text_bar == SelectedTextBarType.SELECTED_SECOND_BAR;
 				DrawSingleLineCursor(text_op.second_bar_cursor, second_text_cam_pos, cam_second_bar_text_rect.min.x,
-					left_bottom_bar_order+2, op_space.render_groups.scissor_group, perm.text_editor_data, bar_cursor_settings);
+					left_bottom_bar_order+2, op_space.render_groups.scissor_group, renderer_data.current_pixels_per_square,
+					perm.text_editor_data, bar_cursor_settings);
 			}
 		}
 
@@ -8184,7 +8197,7 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 					//TODO Can use this code for line highlighting or also cursor highlighting.
 					#if 0 {
 					//TODO This is taken from PushTypeCursor so we should either recompute it somewhere or make a function.
-					font_height_squares : float = ComputeFontHeightSquares(perm.text_editor_data.char_height, op_space.render_groups.scissor_group);
+					font_height_squares : float = ComputeFontHeightSquares(perm.text_editor_data.char_height, op_space.render_groups.scissor_group, renderer_data.current_pixels_per_square);
 					//TODO Need to put x here as the size of the text + debug 
 					rect := RectMinDim(cam_pos-Vector2F.{0,0.6*font_height_squares}, Vector2F.{15,font_height_squares});
 					PushRectangle(rect, DBLUE_V, op_space.render_groups.scissor_group, 10001);
@@ -8262,7 +8275,7 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 				Vector2F.{right_proportion*op_space.world_size.x, op_space.world_size.y});
 			}
 			cam_right_rect := OpRectToCamRect(right_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
-			right_pixel_rect := CamRectToPixelRect(cam_right_rect, op_space.render_groups.scissor_group);
+			right_pixel_rect := CamRectToPixelRect(cam_right_rect, op_space.render_groups.scissor_group, renderer_data.current_pixels_per_square);
 			PushSetScissor(right_pixel_rect, op_space.render_groups.scissor_group, order=right_order);
 
 
@@ -8343,7 +8356,7 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 			*/
 			cam_top_watch_pos := OpSpaceToCameraSpace(top_watch_pos, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
 			cam_name_rect := OpRectToCamRect(name_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
-			name_pixel_rect := CamRectToPixelRect(cam_name_rect, op_space.render_groups.scissor_group);
+			name_pixel_rect := CamRectToPixelRect(cam_name_rect, op_space.render_groups.scissor_group, renderer_data.current_pixels_per_square);
 			name_order : int = 20100;
 			PushSetScissor(name_pixel_rect, op_space.render_groups.scissor_group, name_order);
 			//Name text shader for scissoring
@@ -8352,7 +8365,7 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 
 			cam_top_value_pos := OpSpaceToCameraSpace(top_value_pos, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
 			cam_value_rect := OpRectToCamRect(value_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
-			value_pixel_rect := CamRectToPixelRect(cam_value_rect, op_space.render_groups.scissor_group);
+			value_pixel_rect := CamRectToPixelRect(cam_value_rect, op_space.render_groups.scissor_group, renderer_data.current_pixels_per_square);
 			value_order : int = 20200;
 			value_text_order : int = value_order+1;
 			PushSetScissor(value_pixel_rect, op_space.render_groups.scissor_group, value_order);
@@ -8388,7 +8401,7 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 			watch_margin := Vector2F.{GetDim(split_rect).x,
 				//TODO We slightly raise this somewhere else but this is used for text now so we just do this
 				//to slightly center the text. Not sure if it works if we change the font size. Will need to test that eventually.
-				0.1*perm.text_editor_data.char_height/op_space.render_groups.scissor_group.pixels_per_square};
+				0.1*perm.text_editor_data.char_height/renderer_data.current_pixels_per_square};
 			// for text_op.watch_data_rows {
 			//NOTE : This should never be 0 so we can input text on for the first watch name.
 			assert(text_op.watch_data_rows.count > 0, "watch_data rows count should not be 0 because we need an empty first row.");
@@ -8496,12 +8509,14 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 						watch_cursor_settings.input_cursor_width = CURSOR_WIDTH;
 						watch_cursor_settings.cursor_height_factor = 0.8;
 						DrawSingleLineCursor(text_op.watch_cursor, text_pos+watch_margin, cam_rect.min.x,
-							edit_watch_cursor_order+1, op_space.render_groups.scissor_group, perm.text_editor_data, watch_cursor_settings);
+							edit_watch_cursor_order+1, op_space.render_groups.scissor_group, renderer_data.current_pixels_per_square,
+							perm.text_editor_data, watch_cursor_settings);
 						} else {
 						PushTypeCursor(text_pos+watch_margin, line_char_delta * perm.text_editor_data.code_font_1_char_width_world, 
 							//TODO Maybe the height here should not be multiplied by TEXT_LINE_HEIGHT by default...
 							cast(int)(0.8*perm.text_editor_data.char_height), 
-							op_space.render_groups.scissor_group, edit_watch_cursor_order+1, BLACK_V);
+							op_space.render_groups.scissor_group, renderer_data.current_pixels_per_square,
+							edit_watch_cursor_order+1, BLACK_V);
 						}
 					}
 
@@ -8515,7 +8530,8 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 						PushTypeCursor(text_pos+watch_margin, fixed_line_char_delta * perm.text_editor_data.code_font_1_char_width_world, 
 							//TODO Maybe the height here should not be multiplied by TEXT_LINE_HEIGHT by default...
 							cast(int)(0.8*perm.text_editor_data.char_height), 
-							op_space.render_groups.scissor_group, edit_watch_cursor_order+1, LBLUE_V);
+							op_space.render_groups.scissor_group, renderer_data.current_pixels_per_square,
+							edit_watch_cursor_order+1, LBLUE_V);
 					}
 					}
 				} else {
@@ -8528,12 +8544,12 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 			UpdateFileStringAtCursor(*perm.text_command_string, *perm.text_command_cursor, <<keyboard,
 				perm.text_editor_data, single_line = true); 
 			// DrawTextInputBox(perm.text_command_type, perm.text_command_string.text_string, perm.text_command_cursor.cursor_line_char * perm.text_editor_data.code_font_1_char_width_world, 
-			// 	perm.text_editor_data.char_height, renderer_data.overlay_render_group);
+			// 	perm.text_editor_data.char_height, renderer_data.overlay_render_group, renderer_data.current_pixels_per_square);
 
 			text_cursor_start : Vector2F = world_rect.min;
 			text_cursor_start.y += 0.5*rect_height;
 			PushText(text_cursor_start, text_string, GREY_DARK_V, render_group, order = 10003);
-			PushTypeCursor(text_cursor_start, cursor_diff_x, font_height, render_group);
+			PushTypeCursor(text_cursor_start, cursor_diff_x, font_height, render_group, renderer_data.current_pixels_per_square);
 			}
 
 			// PushSetShaderColor(op_space.render_groups.scissor_group, reset_scissor_order+1);
@@ -8572,7 +8588,7 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 			cam_l_bottom_rect := OpRectToCamRect(l_bottom_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
 			PushRectangle(cam_l_bottom_rect, BLACK_V, op_space.render_groups.scissor_group, l_bottom_order+2);
 
-			// l_bottom_split_cam_rect := RectRenderTopOutline(cam_l_bottom_rect, 4.0, op_space.render_groups.scissor_group.pixels_per_square);
+			// l_bottom_split_cam_rect := RectRenderTopOutline(cam_l_bottom_rect, 4.0, renderer_data.current_pixels_per_square);
 			l_bottom_split_cam_rect := OpRectToCamRect(text_op.ator.l_bottom_split_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
 			if text_op.mouse_hovering_l_bottom_split_rect || text_op.mouse_pressing_l_bottom_split_rect {
 				PushRectangle(l_bottom_split_cam_rect, LBLUE_V, op_space.render_groups.scissor_group, l_bottom_order+10);
@@ -8582,7 +8598,7 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 
 			//TODO This should just be a rect on top instead of an outline
 			// PushRectangleOutline(cam_l_bottom_rect, LIGHT_BROWN, op_space.render_groups.scissor_group, 4.0, l_bottom_order+10);
-			l_bottom_pixel_rect := CamRectToPixelRect(cam_l_bottom_rect, op_space.render_groups.scissor_group);
+			l_bottom_pixel_rect := CamRectToPixelRect(cam_l_bottom_rect, op_space.render_groups.scissor_group, renderer_data.current_pixels_per_square);
 			PushSetScissor(l_bottom_pixel_rect, op_space.render_groups.scissor_group, order=l_bottom_order);
 
 
@@ -8796,7 +8812,7 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 						//Can highlight all the disasm associated to the current line here as well.
 						#if 0 {
 						//TODO This is taken from PushTypeCursor so we should either recompute it somewhere or make a function.
-						font_height_squares : float = ComputeFontHeightSquares(perm.text_editor_data.char_height, op_space.render_groups.scissor_group);
+						font_height_squares : float = ComputeFontHeightSquares(perm.text_editor_data.char_height, op_space.render_groups.scissor_group, renderer_data.current_pixels_per_square);
 						//TODO Need to put x here as the size of the text + debug 
 						rect := RectMinDim(cam_pos-Vector2F.{0,0.6*font_height_squares}, Vector2F.{15,font_height_squares});
 						PushRectangle(rect, DBLUE_V, op_space.render_groups.scissor_group, 10001);
@@ -8862,7 +8878,7 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 			}
 			// PushRectangleOutline(cam_r_bottom_rect, LIGHT_BROWN, op_space.render_groups.scissor_group, 4.0, r_bottom_order+10);
 
-			r_bottom_pixel_rect := CamRectToPixelRect(cam_r_bottom_rect, op_space.render_groups.scissor_group);
+			r_bottom_pixel_rect := CamRectToPixelRect(cam_r_bottom_rect, op_space.render_groups.scissor_group, renderer_data.current_pixels_per_square);
 			PushSetScissor(r_bottom_pixel_rect, op_space.render_groups.scissor_group, order=r_bottom_order);
 
 			if text_op.r_bottom_pane_type == {
@@ -9001,7 +9017,7 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 						//Can highlight all the disasm associated to the current line here as well.
 						#if 0 {
 						//TODO This is taken from PushTypeCursor so we should either recompute it somewhere or make a function.
-						font_height_squares : float = ComputeFontHeightSquares(perm.text_editor_data.char_height, op_space.render_groups.scissor_group);
+						font_height_squares : float = ComputeFontHeightSquares(perm.text_editor_data.char_height, op_space.render_groups.scissor_group, renderer_data.current_pixels_per_square);
 						//TODO Need to put x here as the size of the text + debug 
 						rect := RectMinDim(cam_pos-Vector2F.{0,0.6*font_height_squares}, Vector2F.{15,font_height_squares});
 						PushRectangle(rect, DBLUE_V, op_space.render_groups.scissor_group, 10001);
@@ -9032,8 +9048,8 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 		//TODO Leaving like this for now and not hardcoding in TextEditorData in case we use pixels_per_square
 		//for zooming on the memory later.
 		#if 0 {
-		square_1_char_width : float = PixelSpaceToWorldSpace(perm.text_editor_data.code_font_1_char_width_pixel, op_space.render_groups.scissor_group.pixels_per_square);
-		world_char_height : float = PixelSpaceToWorldSpace(perm.text_editor_data.char_height, op_space.render_groups.scissor_group.pixels_per_square);
+		square_1_char_width : float = PixelSpaceToWorldSpace(perm.text_editor_data.code_font_1_char_width_pixel, renderer_data.current_pixels_per_square);
+		world_char_height : float = PixelSpaceToWorldSpace(perm.text_editor_data.char_height, renderer_data.current_pixels_per_square);
 		for error : perm.all_data.all_parse_errors
 		{
 			y_pos : float = 5 - (TEXT_LINE_HEIGHT * error.line_number) - (0.8 * world_char_height);
@@ -9142,7 +9158,7 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 			min_line_diff : int = TerminalCmdLineDiff(min_char_point, term_op.terminal_tsl.line_char_count);
 			max_line_diff : int = TerminalCmdLineDiff(max_char_point, term_op.terminal_tsl.line_char_count);
 
-			// cursor_height : float = ComputeCursorHeight(perm.text_editor_data.char_height, op_space.render_groups.scissor_group.pixels_per_square);
+			// cursor_height : float = ComputeCursorHeight(perm.text_editor_data.char_height, renderer_data.current_pixels_per_square);
 			// y_adjust : float = YAdjustCursorHeight(cursor_height);
 			current_char_point : int = min_char_point;
 			first_line_size : int = TerminalCmdFirstLineSize(term_op, perm.terminal_data);
@@ -9204,7 +9220,8 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 			//NOTE : x_diff is 0 since we add it to the op_pos above
 			//TODO Maybe we can do it this way in other places and remove the x_diff or set the default for it to 0? Maybe it does not matter
 			PushTypeCursor(cam_pos, 0, perm.text_editor_data.char_height,
-				op_space.render_groups.scissor_group, cursor_width=term_op.TERMINAL_CURSOR_WIDTH, order=terminal_shader_order+2);
+				op_space.render_groups.scissor_group, renderer_data.current_pixels_per_square,
+				cursor_width=term_op.TERMINAL_CURSOR_WIDTH, order=terminal_shader_order+2);
 		}
 	}
 	/*DOC : This is the new 3d space that allows us to add arbitrary 3d rects and text right now.
@@ -9259,7 +9276,7 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 			if in_view_frustum {
 				PushText(text_formatted_pos, space_text.text, WHITE_V, op_space.render_groups.scissor_group, 10003);
 				rect_formatted : Rectangle2 = Text3DBackgroundRect(space_text.text, text_formatted_pos, 
-					op_space.render_groups.scissor_group.pixels_per_square, perm.text_editor_data);
+					renderer_data.current_pixels_per_square, perm.text_editor_data);
 				PushRectangle(rect_formatted, BLACK_V, op_space.render_groups.scissor_group, order = 10001);
 			}
 		}
@@ -9284,7 +9301,7 @@ if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
 					PushText(text_formatted_pos, sp_3d.shape_text, WHITE_V, op_space.render_groups.scissor_group, 10003);
 
 					rect_formatted : Rectangle2 = Text3DBackgroundRect(sp_3d.shape_text, text_formatted_pos, 
-						op_space.render_groups.scissor_group.pixels_per_square, perm.text_editor_data);
+						renderer_data.current_pixels_per_square, perm.text_editor_data);
 					PushRectangle(rect_formatted, BLACK_V, op_space.render_groups.scissor_group, order = 10001);
 				}
 			}

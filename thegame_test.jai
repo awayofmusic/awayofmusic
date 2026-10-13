@@ -436,7 +436,7 @@ UpdateAndRenderTest :: (game_memory : *GameMemory,
 
 		DrawTextInputBox(perm.text_command_type, perm.text_command_string.text_string, 
 			perm.text_command_cursor.cursor_line_char * perm.text_editor_data.code_font_1_char_width_pixel / renderer_data.overlay_render_group.pixels_per_square,
-			perm.text_editor_data.char_height, renderer_data.overlay_render_group);
+			perm.text_editor_data.char_height, renderer_data.overlay_render_group, renderer_data.overlay_render_group.pixels_per_square);
 
 		// if keyboard.return_enter.down_this_frame {
 		if IsKeyboardPress(.ENTER, .DOWN_THIS_FRAME, game_input) {
@@ -3657,7 +3657,7 @@ DONE);
 }
 
 	CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-		renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+		renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 	/*TODO CAN WRITE SOME TEST HERE.
 	ULTIMATELY We would want to check render objects before resetting
@@ -3736,7 +3736,7 @@ DONE);
 // }}
 }
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 9);
 
@@ -3821,7 +3821,7 @@ main :: () {
 DONE,,test_alloc);	
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 20);
 		// perm.test_data.default_frame_wait = 20;
@@ -4005,7 +4005,7 @@ main :: () {
 DONE,,test_alloc);	
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 21);
 	} 
@@ -4321,7 +4321,7 @@ T2 :: enum {
 DONE,,test_alloc);	
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 24);
 	} 
@@ -4565,7 +4565,7 @@ main :: () {
 DONE,,test_alloc);	
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 25);
 	} 
@@ -4914,7 +4914,7 @@ main :: () {
 DONE,,test_alloc);	
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 22);
 	} 
@@ -5224,7 +5224,7 @@ main :: () {
 DONE,,test_alloc);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 7+1);
 	} 
@@ -5414,7 +5414,7 @@ main :: () {
 DONE,,test_alloc);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 14+1);
 	} 
@@ -5590,7 +5590,7 @@ main :: () {
 DONE,,test_alloc);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 14+1);
 	} 
@@ -5800,7 +5800,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 14+1);
 	} 
@@ -5973,7 +5973,7 @@ Test_FullCode :: (
 		// }
 
 		text_op := CreateTextOpSpace(.[main_file.id], perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 6);
 	} 
@@ -6360,7 +6360,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 10);
 	} 
@@ -6611,7 +6611,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 9);
 	} 
@@ -6790,7 +6790,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 8);
 	} 
@@ -6939,7 +6939,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 22);
 	} 
@@ -7124,10 +7124,10 @@ main :: () {
 }
 DONE);
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		CreateTextOpSpace(.[text_file.id], perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data,
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data,
 			op_space_name = TEXT_2_NAME);
 	
 		array_resize(*perm.test_data.all_sub_tests, 17+1);
@@ -7268,7 +7268,7 @@ DONE);
 
 		// if load_success array_add(*perm.all_data.all_text_files, empty_file);
 		text_op := CreateTextOpSpace(.[text_file.id, empty_file.id], perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 11+1);
 	} 
@@ -7412,7 +7412,7 @@ foo2 :: (x : int) -> int {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 20);
 	} 
@@ -7900,7 +7900,7 @@ f2 :: (xpp : **int) {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 11);
 	} 
@@ -8141,7 +8141,7 @@ Test_FuncRecurse :: (
 		WriteFileString(text_file, TEST_RECURSE_STRING);
 		
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 32);
 		//10 recursions in foo since each recursion is 2 step into because we hit the if and then the return foo
@@ -8586,7 +8586,7 @@ Apply :: (i : int, fp : (int) -> int) -> int {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 12);
 	} 
@@ -8784,7 +8784,7 @@ operator - :: (n : neume) -> int {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 12);
 	} 
@@ -9004,7 +9004,7 @@ f2 :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 32);
 	} 
@@ -9334,7 +9334,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 10);
 	} 
@@ -9736,7 +9736,7 @@ Test_MiniGame :: (
 		}
 
 		text_op := CreateTextOpSpace(.[main_file.id, library_file.id], perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 6);
 	} 
@@ -9859,7 +9859,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 3);
 	} 
@@ -9906,7 +9906,7 @@ TEST TEXT FILE
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 5);
 	} 
@@ -10154,9 +10154,9 @@ DONE);
 		load_file, load_success := LoadTextFile("c_load/Library", *perm.all_data.all_text_files);
 		// if load_success array_add(*perm.all_data.all_text_files, load_file);
 		text_op := CreateTextOpSpace(.[text_file.id, load_file.id], perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 		// text_op := CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-		// 	renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+		// 	renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 5);
 	} 
@@ -10906,7 +10906,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 9+1);
 	} 
@@ -11152,12 +11152,12 @@ DONE);
 		array_add(*perm.all_data.all_terminal_events, open_test);
 	}
 	case 2; {
-		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.current_pixels_per_square);
 
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		if count_equals {
 			op_2D := perm.all_data.all_open_op_spaces[1];
-			AssertEquals(renderer_data.base_render_group.pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
+			AssertEquals(renderer_data.current_pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
 			AssertEquals(1.0, op_2D.render_groups.scissor_group.zoom_factor);
 		}
 
@@ -11167,12 +11167,12 @@ DONE);
 		game_input.mouse_cam = Vector2F.{0,0};
 	}
 	case 3; {
-		AssertEquals(true, renderer_data.default_pixels_per_square < renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(true, renderer_data.default_pixels_per_square < renderer_data.current_pixels_per_square);
 
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		if count_equals {
 			op_2D := perm.all_data.all_open_op_spaces[1];
-			AssertEquals(renderer_data.base_render_group.pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
+			AssertEquals(renderer_data.current_pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
 			AssertEquals(1.0, op_2D.render_groups.scissor_group.zoom_factor);
 		}
 
@@ -11181,12 +11181,12 @@ DONE);
 		game_input.mouse_cam = Vector2F.{0,0};
 	}
 	case 4; {
-		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.current_pixels_per_square);
 
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		if count_equals {
 			op_2D := perm.all_data.all_open_op_spaces[1];
-			AssertEquals(renderer_data.base_render_group.pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
+			AssertEquals(renderer_data.current_pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
 			AssertEquals(1.0, op_2D.render_groups.scissor_group.zoom_factor);
 		}
 
@@ -11195,12 +11195,12 @@ DONE);
 		game_input.mouse_cam = Vector2F.{0,0};
 	}
 	case 5; {
-		AssertEquals(true, renderer_data.default_pixels_per_square > renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(true, renderer_data.default_pixels_per_square > renderer_data.current_pixels_per_square);
 
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		if count_equals {
 			op_2D := perm.all_data.all_open_op_spaces[1];
-			AssertEquals(renderer_data.base_render_group.pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
+			AssertEquals(renderer_data.current_pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
 			AssertEquals(1.0, op_2D.render_groups.scissor_group.zoom_factor);
 		}
 
@@ -11209,12 +11209,12 @@ DONE);
 		game_input.mouse_cam = Vector2F.{0,0};
 	}
 	case 6; {
-		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.current_pixels_per_square);
 
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		if count_equals {
 			op_2D := perm.all_data.all_open_op_spaces[1];
-			AssertEquals(renderer_data.base_render_group.pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
+			AssertEquals(renderer_data.current_pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
 			AssertEquals(1.0, op_2D.render_groups.scissor_group.zoom_factor);
 		}
 
@@ -11225,12 +11225,12 @@ DONE);
 		game_input.mouse_cam = Vector2F.{0,0};
 	}
 	case 7; {
-		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.current_pixels_per_square);
 
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		if count_equals {
 			op_2D := perm.all_data.all_open_op_spaces[1];
-			AssertEquals(renderer_data.base_render_group.pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
+			AssertEquals(renderer_data.current_pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
 			AssertEquals(true, 1.0 < op_2D.render_groups.scissor_group.zoom_factor);
 		}
 
@@ -11239,12 +11239,12 @@ DONE);
 		game_input.mouse_cam = Vector2F.{0,0};
 	}
 	case 8; {
-		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.current_pixels_per_square);
 
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		if count_equals {
 			op_2D := perm.all_data.all_open_op_spaces[1];
-			AssertEquals(renderer_data.base_render_group.pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
+			AssertEquals(renderer_data.current_pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
 			AssertEquals(1.0, op_2D.render_groups.scissor_group.zoom_factor);
 		}
 
@@ -11253,12 +11253,12 @@ DONE);
 		game_input.mouse_cam = Vector2F.{0,0};
 	}
 	case 9; {
-		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.current_pixels_per_square);
 
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		if count_equals {
 			op_2D := perm.all_data.all_open_op_spaces[1];
-			AssertEquals(renderer_data.base_render_group.pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
+			AssertEquals(renderer_data.current_pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
 			AssertEquals(true, 1.0 > op_2D.render_groups.scissor_group.zoom_factor);
 		}
 
@@ -11267,13 +11267,13 @@ DONE);
 		game_input.mouse_cam = Vector2F.{0,0};
 	}
 	case 10; {
-		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.current_pixels_per_square);
 
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		op_2D : OperationSpace;
 		if count_equals {
 			op_2D = perm.all_data.all_open_op_spaces[1];
-			AssertEquals(renderer_data.base_render_group.pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
+			AssertEquals(renderer_data.current_pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
 			AssertEquals(1.0, op_2D.render_groups.scissor_group.zoom_factor);
 		}
 
@@ -11290,13 +11290,13 @@ DONE);
 		game_input.mouse_cam = WorldSpaceToCameraSpace(cam_pos, default_base_cam);;
 	}
 	case 11; {
-		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.current_pixels_per_square);
 
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		op_2D : OperationSpace;
 		if count_equals {
 			op_2D = perm.all_data.all_open_op_spaces[1];
-			AssertEquals(renderer_data.base_render_group.pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
+			AssertEquals(renderer_data.current_pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
 			AssertEquals(1.0, op_2D.render_groups.scissor_group.zoom_factor);
 		}
 
@@ -11309,13 +11309,13 @@ DONE);
 		game_input.mouse_cam = WorldSpaceToCameraSpace(Vector2F.{0,0}, default_base_cam);
 	}
 	case 12; {
-		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.current_pixels_per_square);
 
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		op_2D : OperationSpace;
 		if count_equals {
 			op_2D = perm.all_data.all_open_op_spaces[1];
-			AssertEquals(renderer_data.base_render_group.pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
+			AssertEquals(renderer_data.current_pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
 			AssertEquals(1.0, op_2D.render_groups.scissor_group.zoom_factor);
 		}
 
@@ -11333,13 +11333,13 @@ DONE);
 		game_input.mouse_cam = WorldSpaceToCameraSpace(cam_pos, default_base_cam);
 	}
 	case 13; {
-		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.current_pixels_per_square);
 
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		op_2D : OperationSpace;
 		if count_equals {
 			op_2D = perm.all_data.all_open_op_spaces[1];
-			AssertEquals(renderer_data.base_render_group.pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
+			AssertEquals(renderer_data.current_pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
 			AssertEquals(1.0, op_2D.render_groups.scissor_group.zoom_factor);
 		}
 
@@ -11356,13 +11356,13 @@ DONE);
 		game_input.mouse_cam = WorldSpaceToCameraSpace(cam_pos, default_base_cam);
 	}
 	case 14; {
-		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.current_pixels_per_square);
 
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		op_2D : OperationSpace;
 		if count_equals {
 			op_2D = perm.all_data.all_open_op_spaces[1];
-			AssertEquals(renderer_data.base_render_group.pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
+			AssertEquals(renderer_data.current_pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
 			AssertEquals(1.0, op_2D.render_groups.scissor_group.zoom_factor);
 		}
 
@@ -11380,7 +11380,7 @@ DONE);
 		game_input.mouse_cam = WorldSpaceToCameraSpace(cam_pos, default_base_cam);
 	}
 	case 15; {
-		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.current_pixels_per_square);
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 
 		//TODO this can be taken from settings if we ever add this there eventually
@@ -11389,7 +11389,7 @@ DONE);
 		op_2D : OperationSpace;
 		if count_equals {
 			op_2D = perm.all_data.all_open_op_spaces[1];
-			AssertEquals(renderer_data.base_render_group.pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
+			AssertEquals(renderer_data.current_pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
 			//TODO Can update this from settings if we add op space zoom speed to runtime settings eventually
 			AssertEquals(default_zoom_speed, op_2D.render_groups.scissor_group.zoom_factor);
 		}
@@ -11408,12 +11408,12 @@ DONE);
 		game_input.mouse_cam = WorldSpaceToCameraSpace(cam_pos, default_base_cam);
 	}
 	case 16; {
-		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.current_pixels_per_square);
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		op_2D : OperationSpace;
 		if count_equals {
 			op_2D = perm.all_data.all_open_op_spaces[1];
-			AssertEquals(renderer_data.base_render_group.pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
+			AssertEquals(renderer_data.current_pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
 			AssertEquals(1.0, op_2D.render_groups.scissor_group.zoom_factor);
 		}
 
@@ -11432,12 +11432,12 @@ DONE);
 		game_input.mouse_cam = WorldSpaceToCameraSpace(cam_pos, default_base_cam);
 	}
 	case 17; {
-		AssertEquals(true, renderer_data.default_pixels_per_square < renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(true, renderer_data.default_pixels_per_square < renderer_data.current_pixels_per_square);
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		op_2D : OperationSpace;
 		if count_equals {
 			op_2D = perm.all_data.all_open_op_spaces[1];
-			AssertEquals(renderer_data.base_render_group.pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
+			AssertEquals(renderer_data.current_pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
 			AssertEquals(1.0, op_2D.render_groups.scissor_group.zoom_factor);
 		}
 
@@ -11455,12 +11455,12 @@ DONE);
 		game_input.mouse_cam = WorldSpaceToCameraSpace(Vector2F.{0,0}, default_base_cam);
 	}
 	case 18; {
-		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.current_pixels_per_square);
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		op_2D : OperationSpace;
 		if count_equals {
 			op_2D = perm.all_data.all_open_op_spaces[1];
-			AssertEquals(renderer_data.base_render_group.pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
+			AssertEquals(renderer_data.current_pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
 			AssertEquals(1.0, op_2D.render_groups.scissor_group.zoom_factor);
 		}
 
@@ -11475,12 +11475,12 @@ DONE);
 		DownUpInputMap(.GLOBAL_ZOOM_IN, game_input);
 	}
 	case 20; {
-		AssertEquals(renderer_data.default_pixels_per_square + 6*global_zoom_speed, renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(renderer_data.default_pixels_per_square + 6*global_zoom_speed, renderer_data.current_pixels_per_square);
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		op_2D : OperationSpace;
 		if count_equals {
 			op_2D = perm.all_data.all_open_op_spaces[1];
-			AssertEquals(renderer_data.base_render_group.pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
+			AssertEquals(renderer_data.current_pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
 			AssertEquals(1.0, op_2D.render_groups.scissor_group.zoom_factor);
 		}
 
@@ -11495,12 +11495,12 @@ DONE);
 		DownUpInputMap(.GLOBAL_ZOOM_OUT, game_input);
 	}
 	case 22; {
-		AssertEquals(renderer_data.default_pixels_per_square - (10-6)*global_zoom_speed, renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(renderer_data.default_pixels_per_square - (10-6)*global_zoom_speed, renderer_data.current_pixels_per_square);
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		op_2D : OperationSpace;
 		if count_equals {
 			op_2D = perm.all_data.all_open_op_spaces[1];
-			AssertEquals(renderer_data.base_render_group.pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
+			AssertEquals(renderer_data.current_pixels_per_square, op_2D.render_groups.scissor_group.pixels_per_square);
 			AssertEquals(1.0, op_2D.render_groups.scissor_group.zoom_factor);
 		}
 
@@ -11512,14 +11512,14 @@ DONE);
 		DownUpInputMap(.GLOBAL_ZOOM_RESET, game_input);
 	}
 	case 23; {
-		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.current_pixels_per_square);
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		op_2D : OperationSpace;
 		if count_equals {
 			op_2D = perm.all_data.all_open_op_spaces[1];
 			AssertEquals(1.0, op_2D.render_groups.scissor_group.zoom_factor);
 			for perm.all_data.all_open_op_spaces {
-				AssertEquals(renderer_data.base_render_group.pixels_per_square, it.render_groups.scissor_group.pixels_per_square);
+				AssertEquals(renderer_data.current_pixels_per_square, it.render_groups.scissor_group.pixels_per_square);
 			}
 		}
 
@@ -11533,14 +11533,14 @@ DONE);
 		game_input.mouse_cam = Vector2F.{0,0};
 	}
 	case 24; {
-		AssertEquals(global_zoom_pixel_max, renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(global_zoom_pixel_max, renderer_data.current_pixels_per_square);
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		op_2D : OperationSpace;
 		if count_equals {
 			op_2D = perm.all_data.all_open_op_spaces[1];
 			AssertEquals(1.0, op_2D.render_groups.scissor_group.zoom_factor);
 			for perm.all_data.all_open_op_spaces {
-				AssertEquals(renderer_data.base_render_group.pixels_per_square, it.render_groups.scissor_group.pixels_per_square);
+				AssertEquals(renderer_data.current_pixels_per_square, it.render_groups.scissor_group.pixels_per_square);
 			}
 		}
 
@@ -11554,14 +11554,14 @@ DONE);
 		game_input.mouse_cam = Vector2F.{0,0};
 	}
 	case 25; {
-		AssertEquals(global_zoom_pixel_min, renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(global_zoom_pixel_min, renderer_data.current_pixels_per_square);
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		op_2D : OperationSpace;
 		if count_equals {
 			op_2D = perm.all_data.all_open_op_spaces[1];
 			AssertEquals(1.0, op_2D.render_groups.scissor_group.zoom_factor);
 			for perm.all_data.all_open_op_spaces {
-				AssertEquals(renderer_data.base_render_group.pixels_per_square, it.render_groups.scissor_group.pixels_per_square);
+				AssertEquals(renderer_data.current_pixels_per_square, it.render_groups.scissor_group.pixels_per_square);
 			}
 		}
 
@@ -11573,14 +11573,14 @@ DONE);
 		DownUpInputMap(.GLOBAL_ZOOM_RESET, game_input);
 	}
 	case 26; {
-		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.current_pixels_per_square);
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		op_2D : OperationSpace;
 		if count_equals {
 			op_2D = perm.all_data.all_open_op_spaces[1];
 			AssertEquals(1.0, op_2D.render_groups.scissor_group.zoom_factor);
 			for perm.all_data.all_open_op_spaces {
-				AssertEquals(renderer_data.base_render_group.pixels_per_square, it.render_groups.scissor_group.pixels_per_square);
+				AssertEquals(renderer_data.current_pixels_per_square, it.render_groups.scissor_group.pixels_per_square);
 			}
 		}
 
@@ -11594,14 +11594,14 @@ DONE);
 		game_input.mouse_cam = Vector2F.{0,0};
 	}
 	case 27; {
-		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.current_pixels_per_square);
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		op_2D : OperationSpace;
 		if count_equals {
 			op_2D = perm.all_data.all_open_op_spaces[1];
 			AssertEquals(op_zoom_max_factor, op_2D.render_groups.scissor_group.zoom_factor);
 			for perm.all_data.all_open_op_spaces {
-				AssertEquals(renderer_data.base_render_group.pixels_per_square, it.render_groups.scissor_group.pixels_per_square);
+				AssertEquals(renderer_data.current_pixels_per_square, it.render_groups.scissor_group.pixels_per_square);
 			}
 		}
 
@@ -11615,14 +11615,14 @@ DONE);
 		game_input.mouse_cam = Vector2F.{0,0};
 	}
 	case 28; {
-		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.current_pixels_per_square);
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		op_2D : OperationSpace;
 		if count_equals {
 			op_2D = perm.all_data.all_open_op_spaces[1];
 			AssertEquals(op_zoom_min_factor, op_2D.render_groups.scissor_group.zoom_factor);
 			for perm.all_data.all_open_op_spaces {
-				AssertEquals(renderer_data.base_render_group.pixels_per_square, it.render_groups.scissor_group.pixels_per_square);
+				AssertEquals(renderer_data.current_pixels_per_square, it.render_groups.scissor_group.pixels_per_square);
 			}
 		}
 
@@ -11634,14 +11634,14 @@ DONE);
 		DownUpInputMap(.OP_SPACE_ZOOM_RESET, game_input);
 	}
 	case 29; {
-		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.current_pixels_per_square);
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		op_2D : OperationSpace;
 		if count_equals {
 			op_2D = perm.all_data.all_open_op_spaces[1];
 			AssertEquals(1.0, op_2D.render_groups.scissor_group.zoom_factor);
 			for perm.all_data.all_open_op_spaces {
-				AssertEquals(renderer_data.base_render_group.pixels_per_square, it.render_groups.scissor_group.pixels_per_square);
+				AssertEquals(renderer_data.current_pixels_per_square, it.render_groups.scissor_group.pixels_per_square);
 			}
 		}
 
@@ -11656,14 +11656,14 @@ DONE);
 		game_input.mouse_cam = Vector2F.{0,0};
 	}
 	case 30; {
-		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.current_pixels_per_square);
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		op_2D : OperationSpace;
 		if count_equals {
 			op_2D = perm.all_data.all_open_op_spaces[1];
 			AssertEquals(1.0 + op_zoom_speed, op_2D.render_groups.scissor_group.zoom_factor);
 			for perm.all_data.all_open_op_spaces {
-				AssertEquals(renderer_data.base_render_group.pixels_per_square, it.render_groups.scissor_group.pixels_per_square);
+				AssertEquals(renderer_data.current_pixels_per_square, it.render_groups.scissor_group.pixels_per_square);
 			}
 		}
 
@@ -11678,14 +11678,14 @@ DONE);
 		game_input.mouse_cam = Vector2F.{0,0};
 	}
 	case 31; {
-		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.current_pixels_per_square);
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		op_2D : OperationSpace;
 		if count_equals {
 			op_2D = perm.all_data.all_open_op_spaces[1];
 			AssertEquals(1.0, op_2D.render_groups.scissor_group.zoom_factor);
 			for perm.all_data.all_open_op_spaces {
-				AssertEquals(renderer_data.base_render_group.pixels_per_square, it.render_groups.scissor_group.pixels_per_square);
+				AssertEquals(renderer_data.current_pixels_per_square, it.render_groups.scissor_group.pixels_per_square);
 			}
 		}
 
@@ -11700,14 +11700,14 @@ DONE);
 	}
 	case 32; {
 		AssertEquals(0, perm.all_data.all_chosen_entities.count);
-		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.current_pixels_per_square);
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		op_2D : OperationSpace;
 		if count_equals {
 			op_2D = perm.all_data.all_open_op_spaces[1];
 			AssertEquals(1.0, op_2D.render_groups.scissor_group.zoom_factor);
 			for perm.all_data.all_open_op_spaces {
-				AssertEquals(renderer_data.base_render_group.pixels_per_square, it.render_groups.scissor_group.pixels_per_square);
+				AssertEquals(renderer_data.current_pixels_per_square, it.render_groups.scissor_group.pixels_per_square);
 			}
 		}
 
@@ -11723,14 +11723,14 @@ DONE);
 	}
 	case 33; {
 		AssertEquals(0, perm.all_data.all_chosen_entities.count);
-		AssertEquals(renderer_data.default_pixels_per_square + global_zoom_speed, renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(renderer_data.default_pixels_per_square + global_zoom_speed, renderer_data.current_pixels_per_square);
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		op_2D : OperationSpace;
 		if count_equals {
 			op_2D = perm.all_data.all_open_op_spaces[1];
 			AssertEquals(1.0, op_2D.render_groups.scissor_group.zoom_factor);
 			for perm.all_data.all_open_op_spaces {
-				AssertEquals(renderer_data.base_render_group.pixels_per_square, it.render_groups.scissor_group.pixels_per_square);
+				AssertEquals(renderer_data.current_pixels_per_square, it.render_groups.scissor_group.pixels_per_square);
 			}
 		}
 
@@ -11746,14 +11746,14 @@ DONE);
 	}
 	case 34; {
 		AssertEquals(0, perm.all_data.all_chosen_entities.count);
-		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.current_pixels_per_square);
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		op_2D : OperationSpace;
 		if count_equals {
 			op_2D = perm.all_data.all_open_op_spaces[1];
 			AssertEquals(1.0, op_2D.render_groups.scissor_group.zoom_factor);
 			for perm.all_data.all_open_op_spaces {
-				AssertEquals(renderer_data.base_render_group.pixels_per_square, it.render_groups.scissor_group.pixels_per_square);
+				AssertEquals(renderer_data.current_pixels_per_square, it.render_groups.scissor_group.pixels_per_square);
 			}
 		}
 
@@ -11769,14 +11769,14 @@ DONE);
 	}
 	case 35; {
 		AssertEquals(0, perm.all_data.all_chosen_entities.count);
-		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.base_render_group.pixels_per_square);
+		AssertEquals(renderer_data.default_pixels_per_square, renderer_data.current_pixels_per_square);
 		count_equals := AssertEquals(2, perm.all_data.all_open_op_spaces.count);
 		op_2D : OperationSpace;
 		if count_equals {
 			op_2D = perm.all_data.all_open_op_spaces[1];
 			AssertEquals(1.0, op_2D.render_groups.scissor_group.zoom_factor);
 			for perm.all_data.all_open_op_spaces {
-				AssertEquals(renderer_data.base_render_group.pixels_per_square, it.render_groups.scissor_group.pixels_per_square);
+				AssertEquals(renderer_data.current_pixels_per_square, it.render_groups.scissor_group.pixels_per_square);
 			}
 		}
 
@@ -11844,9 +11844,9 @@ DONE);
 		load_file, load_success := LoadTextFile("c_load/Library", *perm.all_data.all_text_files);
 		// if load_success array_add(*perm.all_data.all_text_files, load_file);
 		text_op := CreateTextOpSpace(.[text_file.id, load_file.id], perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 		// text_op := CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-		// 	renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+		// 	renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 5);
 	} 
@@ -11983,9 +11983,9 @@ DONE);
 		load_file, load_success := LoadTextFile("c_load/Library", *perm.all_data.all_text_files);
 		// if load_success array_add(*perm.all_data.all_text_files, load_file);
 		text_op := CreateTextOpSpace(.[text_file.id, load_file.id], perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 		// text_op := CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-		// 	renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+		// 	renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 4+1);
 	} 
@@ -12066,9 +12066,9 @@ DONE);
 		load_file, load_success := LoadTextFile("c_load/Library", *perm.all_data.all_text_files);
 		// if load_success array_add(*perm.all_data.all_text_files, load_file);
 		text_op := CreateTextOpSpace(.[text_file.id, load_file.id], perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 		// text_op := CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-		// 	renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+		// 	renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 4+1);
 	} 
@@ -12168,9 +12168,9 @@ DONE);
 		load_file, load_success := LoadTextFile("c_load/Library", *perm.all_data.all_text_files);
 		// if load_success array_add(*perm.all_data.all_text_files, load_file);
 		text_op := CreateTextOpSpace(.[text_file.id, load_file.id], perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 		// text_op := CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-		// 	renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+		// 	renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 7+1);
 	} 
@@ -12290,7 +12290,7 @@ DONE);
 
 		load_file, load_success := LoadTextFile("c_load/Library", *perm.all_data.all_text_files);
 		text_op := CreateTextOpSpace(.[text_file.id], perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 4+1);
 	} 
@@ -12355,9 +12355,9 @@ Test_CodeCircle :: (
 		load_file, load_success := LoadTextFile("c_load/Library", *perm.all_data.all_text_files);
 		// if load_success array_add(*perm.all_data.all_text_files, load_file);
 		text_op := CreateTextOpSpace(.[text_file.id, load_file.id], perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 		// text_op := CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-		// 	renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+		// 	renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		cosd : CreateOpSpaceData;
 		cosd.op_space_external_type = OpSpaceExternalType.space_2d;
@@ -12551,9 +12551,9 @@ Test_CodeCS2 :: (
 		load_file, load_success := LoadTextFile("c_load/Library", *perm.all_data.all_text_files);
 		// if load_success array_add(*perm.all_data.all_text_files, load_file);
 		text_op := CreateTextOpSpace(.[text_file.id, load_file.id], perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 		// text_op := CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-		// 	renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+		// 	renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		cosd : CreateOpSpaceData;
 		cosd.op_space_external_type = OpSpaceExternalType.space_2d;
@@ -12727,9 +12727,9 @@ Test_CodeSpiral :: (
 		load_file, load_success := LoadTextFile("c_load/Library", *perm.all_data.all_text_files);
 		// if load_success array_add(*perm.all_data.all_text_files, load_file);
 		text_op := CreateTextOpSpace(.[text_file.id, load_file.id], perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 		// text_op := CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-		// 	renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+		// 	renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		cosd : CreateOpSpaceData;
 		cosd.op_space_external_type = OpSpaceExternalType.space_2d;
@@ -12899,9 +12899,9 @@ Test_Code3D :: (
 		load_file, load_success := LoadTextFile("c_load/Library", *perm.all_data.all_text_files);
 		// if load_success array_add(*perm.all_data.all_text_files, load_file);
 		text_op := CreateTextOpSpace(.[text_file.id, load_file.id], perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 		// text_op := CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-		// 	renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+		// 	renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		cosd : CreateOpSpaceData;
 		cosd.op_space_external_type = OpSpaceExternalType.space_3d;
@@ -13099,7 +13099,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 9);
 	} 
@@ -13229,7 +13229,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 6);
 	} 
@@ -13333,7 +13333,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 8);
 	} 
@@ -13444,7 +13444,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 10);
 	} 
@@ -13660,7 +13660,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 7);
 	} 
@@ -13857,7 +13857,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 7);
 	} 
@@ -14038,7 +14038,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 4);
 	} 
@@ -14150,7 +14150,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 6);
 	} 
@@ -14315,7 +14315,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 6);
 	} 
@@ -14425,7 +14425,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 8);
 	} 
@@ -14562,7 +14562,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 5);
 	} 
@@ -14646,7 +14646,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 5);
 	} 
@@ -14725,7 +14725,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 5);
 	} 
@@ -14811,7 +14811,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 6);
 	} 
@@ -14941,7 +14941,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 5);
 	} 
@@ -15052,7 +15052,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 4+1);
 	} 
@@ -16313,7 +16313,7 @@ Test_Terminal :: (
 		//but still valid with the viewable lines and line char count
 		//Test resizing terminal still is correct with split lines
 		op_space.world_size *= 0.9;
-		ResizeTerminalOpSpace(term_op, op_space.world_size, renderer_data.base_render_group.pixels_per_square, 
+		ResizeTerminalOpSpace(term_op, op_space.world_size, renderer_data.current_pixels_per_square, 
 			perm.text_editor_data, perm.terminal_data);
 		test_tsl.start_file_line_index += 2;
 		test_tsl.viewable_lines_from_zero -= 2;

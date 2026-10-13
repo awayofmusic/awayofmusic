@@ -169,7 +169,7 @@ CreateRenderGroup :: inline (
 	/*TODO could update these in thegame if needed since we have a pointer to RenderGroup
 	*/
 	render_group.zoom_factor = 1.0;
-	render_group.pixels_per_square = renderer_data.base_render_group.pixels_per_square;
+	render_group.pixels_per_square = renderer_data.current_pixels_per_square;
 	render_group.focal_squares = 24.0; //1 xy unit in 2D plane at this z square value from camera
 	//TODO this should be adjusted in renderer to be resolution independent
 	//TODO could adjust this relative to camera movement adjustment
@@ -238,7 +238,12 @@ RendererData :: struct {
 	memory : MemoryData;
 	is_initialized : bool;
 
+	//We use this to reset the global zoom and all pixels per square in all render groups
 	default_pixels_per_square : float;
+	//We use this for global zoom and for all render groups that use global zoom.
+	//For example all op space render groups use it but overlay render group does not so that
+	//the internal ui does not change based on the global zoom.
+	current_pixels_per_square : float;
 
 	//Note : This keeps track of memory used for base_render_group, overlay_render_group and terminal_render_group
 	initial_memory_used_size : int;
@@ -262,7 +267,8 @@ RendererData :: struct {
 	// row_group : *RenderGroup;
 	// post_row_group : *RenderGroup;
 	//Note : terminal needs its own RenderGroup so that it is not affected by level loads
-	terminal_render_group : *RenderGroup;
+	// terminal_render_group : *RenderGroup;
+	//This is used for internal ui and does not get affected by the global zoom
 	overlay_render_group : *RenderGroup;
 	//TODO should also have a top_render_group
 	//TODO FROM HERE grab render groups as needed
@@ -344,7 +350,7 @@ ResetAllRenderGroups :: inline (renderer_data : *RendererData) {
 	// ResetRenderGroup(renderer_data.row_group);
 	// ResetRenderGroup(renderer_data.post_row_group);
 	for renderer_data.all_render_groups ResetRenderGroup(it);
-	ResetRenderGroup(renderer_data.terminal_render_group);
+	// ResetRenderGroup(renderer_data.terminal_render_group);
 	ResetRenderGroup(renderer_data.overlay_render_group);
 }
 

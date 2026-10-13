@@ -40,7 +40,7 @@ TransformToCameraSpace :: inline (v : Vector2F, transform : Matrix2F,
 ViewportOffset :: inline (v : Vector2F, render_group : RenderGroup) -> Vector2F {
 	//TODO Try changing this to pixels_per_square * screen_half_dim to see if that works for zoom
 	viewport : Vector2F = v + render_group.half_monitor_squares;
-	// viewport : Vector2F = v + render_group.screen_half_dim * render_group.pixels_per_square;
+	// viewport : Vector2F = v + render_group.screen_half_dim * pixels_per_square;
 	return viewport;			
 }
 
@@ -85,19 +85,19 @@ DimSpaceToCameraSpace :: inline (dspace_pos : $vec_type, space : DimensionalSpac
 //REMINDER : Used to be s32 from old windows system layer for reference
 // MouseScreenToCam :: inline (mouse_x : s32, mouse_y : s32, render_group : RenderGroup) -> Vector2F {
 //TODO Can just pass in screen_half_dim and pixels pre square so we make it game independt and compute this in platform later
-MouseScreenToCam :: inline (mouse_x : int, mouse_y : int, render_group : RenderGroup) -> Vector2F {
-	delta_x : float = (mouse_x / cast(float) (render_group.window_width-1.0));
-	delta_y : float = (mouse_y / cast(float) (render_group.window_height-1.0));
+MouseScreenToCam :: inline (mouse_x : int, mouse_y : int, rd : RendererData) -> Vector2F {
+	delta_x : float = (mouse_x / cast(float) (rd.base_render_group.window_width-1.0));
+	delta_y : float = (mouse_y / cast(float) (rd.base_render_group.window_height-1.0));
 	#if 0 {
-	mouse_cam_x : float = 2.0 * render_group.half_monitor_squares.x * delta_x - render_group.half_monitor_squares.x;
-	mouse_cam_y : float = 2.0 * render_group.half_monitor_squares.y * delta_y - render_group.half_monitor_squares.y;
+	mouse_cam_x : float = 2.0 * rd.base_render_group.half_monitor_squares.x * delta_x - rd.base_render_group.half_monitor_squares.x;
+	mouse_cam_y : float = 2.0 * rd.base_render_group.half_monitor_squares.y * delta_y - rd.base_render_group.half_monitor_squares.y;
 	} else {
 	//TODO Need to either update half_monitor_squares when we update pixels_per_square OR just use this way everywhere
 	//Would this be clearer on 1 line?
-	mouse_cam_x : float = 2.0 * (render_group.screen_half_dim.x / render_group.pixels_per_square) * delta_x - 
-		render_group.screen_half_dim.x / render_group.pixels_per_square;
-	mouse_cam_y : float = 2.0 * (render_group.screen_half_dim.y / render_group.pixels_per_square) * delta_y - 
-		render_group.screen_half_dim.y / render_group.pixels_per_square;
+	mouse_cam_x : float = 2.0 * (rd.base_render_group.screen_half_dim.x / rd.current_pixels_per_square) * delta_x - 
+		rd.base_render_group.screen_half_dim.x / rd.current_pixels_per_square;
+	mouse_cam_y : float = 2.0 * (rd.base_render_group.screen_half_dim.y / rd.current_pixels_per_square) * delta_y - 
+		rd.base_render_group.screen_half_dim.y / rd.current_pixels_per_square;
 	}
 
 	mouse_cam : Vector2F = MakeV2F(mouse_cam_x, mouse_cam_y);
@@ -209,10 +209,10 @@ CamSpaceToPixelSpace :: inline (
 	pixel_pos : Vector2F = screen_half_dim + cam_pos * pixels_per_square;
 	return pixel_pos;
 }
-CamRectToPixelRect :: inline (rect : Rectangle2, g : *RenderGroup) -> Rectangle2 {
+CamRectToPixelRect :: inline (rect : Rectangle2, g : *RenderGroup, pixels_per_square : float) -> Rectangle2 {
 	rp : Rectangle2 = ---;
-	rp.min = g.screen_half_dim + rect.min * g.pixels_per_square;
-	rp.max = g.screen_half_dim + rect.max * g.pixels_per_square;
+	rp.min = g.screen_half_dim + rect.min * pixels_per_square;
+	rp.max = g.screen_half_dim + rect.max * pixels_per_square;
 	return rp;
 }
 
@@ -445,7 +445,8 @@ DrawTextInputBox :: inline (
 	text_string : string,
 	cursor_diff_x : float,
 	font_height : int,
-	render_group : *RenderGroup)
+	render_group : *RenderGroup,
+	pixels_per_square : float)
 {
 	PushTextAndCursorShaderOrder(render_group);
 
@@ -458,11 +459,11 @@ DrawTextInputBox :: inline (
 	text_cursor_start : Vector2F = world_rect.min;
 	text_cursor_start.y += 0.5*rect_height;
 	PushText(text_cursor_start, text_string, GREY_DARK_V, render_group, order = 10003);
-	PushTypeCursor(text_cursor_start, cursor_diff_x, font_height, render_group);
+	PushTypeCursor(text_cursor_start, cursor_diff_x, font_height, render_group, pixels_per_square);
 }
 
-ComputeFontHeightSquares :: inline (font_height : int, render_group : *RenderGroup) -> float {
-	result : float = (OP_SPACE_LINE_HEIGHT*font_height) / render_group.pixels_per_square;
+ComputeFontHeightSquares :: inline (font_height : int, render_group : *RenderGroup, pixels_per_square : float) -> float {
+	result : float = (OP_SPACE_LINE_HEIGHT*font_height) / pixels_per_square;
 	return result;
 }
 
@@ -488,6 +489,7 @@ PushTypeCursor :: inline (
 	cursor_diff_x : float,
 	font_height : int,
 	render_group : *RenderGroup,
+	pixels_per_square : float,
 	//TODO I think these should all be passed in. We just had the defaults before but now I think we should set
 	//them manually in all cases like we are doing in the text editor.
 	order : int = 10005,
@@ -498,7 +500,7 @@ PushTypeCursor :: inline (
 -> Rectangle2
 {
 	cursor_rect : Rectangle2 = TypeCursorRect(text_center_pos, cursor_diff_x, font_height, 
-		render_group.pixels_per_square, cursor_width, line_height_factor);
+		pixels_per_square, cursor_width, line_height_factor);
 	PushRectangle(cursor_rect, color, render_group, order = order);
 	return cursor_rect;
 }
@@ -516,13 +518,13 @@ TypeCursorRect :: inline (
 {
 	//TODO This should be set somewhere else like TextEditorData or RendererData so we don't have to recompute
 	//and also so the font is consistent.
-	// font_height_squares : float = (cast(float)(render_group.my_font.character_height + 0.5*render_group.my_font.typical_ascender)) / render_group.pixels_per_square;
-	// font_height_squares : float = (1.5*font_height) / render_group.pixels_per_square;
+	// font_height_squares : float = (cast(float)(render_group.my_font.character_height + 0.5*render_group.my_font.typical_ascender)) / pixels_per_square;
+	// font_height_squares : float = (1.5*font_height) / pixels_per_square;
 	//TODO Maybe we should not multiple by OP_SPACE_LINE_HEIGHT by default and pass that in...
 	// font_height_squares : float = ComputeFontHeightSquares(font_height, render_group);
 	//TODO We don't seem to use the line_height_factor since we are using the height of the cursor for it anyways...
-	// cursor_height : float = (line_height_factor*font_height) / render_group.pixels_per_square;
-	// cursor_height : float = (1.5*font_height) / render_group.pixels_per_square;
+	// cursor_height : float = (line_height_factor*font_height) / pixels_per_square;
+	// cursor_height : float = (1.5*font_height) / pixels_per_square;
 	cursor_height : float = line_height_factor * ComputeCursorHeight(font_height, pixels_per_square);
 	// font_height_squares_2 : float = OP_SPACE_LINE_HEIGHT;
 	cursor_pos_x : float = text_center_pos.x + cursor_diff_x;
@@ -570,6 +572,7 @@ DrawSingleLineCursor :: inline (
 	start_rect_x : float,
 	render_order : int,
 	render_group : *RenderGroup,
+	pixels_per_square : float,
 	ted : TextEditorData,
 	scs : SingleCursorSettings)
 {
@@ -580,7 +583,7 @@ DrawSingleLineCursor :: inline (
 
 	cursor_x_diff : float = (cursor.cursor_line_char - cursor.left_char_bound) * ted.code_font_1_char_width_world;
 	cursor_rect : Rectangle2 = TypeCursorRect(start_text_cam_pos, cursor_x_diff, ted.char_height, 
-		render_group.pixels_per_square, my_cursor_width, line_height_factor=scs.cursor_height_factor);
+		pixels_per_square, my_cursor_width, line_height_factor=scs.cursor_height_factor);
 	if scs.draw_cursor {
 		PushRectangle(cursor_rect, scs.cursor_color, render_group, order = render_order + 1);
 	}
@@ -3759,10 +3762,10 @@ SetupTextEditorData :: inline (ted : *TextEditorData, renderer_data : RendererDa
 	//and recompute it wherever we use it which may be preferable although we will have to adjust the
 	//font size on zoom as well eventually. Leaving it like this for now for consistency and since I think
 	//when we change the font size, we will have to update this anyways.
-	ted.code_font_1_char_width_world = one_char_width / renderer_data.base_render_group.pixels_per_square;
+	ted.code_font_1_char_width_world = one_char_width / renderer_data.current_pixels_per_square;
 	ted.char_height = renderer_data.all_my_fonts_data[1].char_height;
 	// print("char_height=%, char_width_pixel=%, chard_width_world=%, pixels_per_square=%\n", 
-	// 	ted.char_height, one_char_width, ted.code_font_1_char_width_world, renderer_data.base_render_group.pixels_per_square);
+	// 	ted.char_height, one_char_width, ted.code_font_1_char_width_world, renderer_data.current_pixels_per_square);
 
 	//TODO This should be udpated from settings
 	//TODO MAybe we should store these in FileString instead

@@ -187,7 +187,7 @@ ExternalPerFrame :: (sld : *SharedLibraryData) {
 			my_text := "[0,4,7]";
 			PushText(text_formatted_pos, my_text, WHITE_V, op_space.render_groups.scissor_group, 10003);
 			rect_formatted : Rectangle2 = Text3DBackgroundRect(my_text, text_formatted_pos, 
-				op_space.render_groups.scissor_group.pixels_per_square, sld.text_editor_data);
+				renderer_data.current_pixels_per_square, sld.text_editor_data);
 			PushRectangle(rect_formatted, BLACK_V, op_space.render_groups.scissor_group, order = 10001);
 		}
 	}

@@ -80,7 +80,7 @@ Test_TextWrite :: (
 		}
 
 		text_op := CreateTextOpSpace(.[main_file.id, load_file.id], perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 34+1);
 	} 
@@ -298,7 +298,7 @@ DONE;
 
 			text_rect_world_height : float = ComputeTextRectWorldHeight(text_op.bottom_proportion, op_space.world_size);
 			viewable_lines : int = TextViewableLinesFromZero(text_op.text_line_height_factor, text_rect_world_height, 
-				perm.text_editor_data.char_height, op_space.render_groups.scissor_group.pixels_per_square);
+				perm.text_editor_data.char_height, renderer_data.current_pixels_per_square);
 
 			file_0 := perm.all_data.all_text_files[0];
 			tab_0 : TextTab = text_op.file_tabs[0];
@@ -336,7 +336,7 @@ DONE;
 
 			text_rect_world_height : float = ComputeTextRectWorldHeight(text_op.bottom_proportion, op_space.world_size);
 			viewable_lines : int = TextViewableLinesFromZero(text_op.text_line_height_factor, text_rect_world_height, 
-				perm.text_editor_data.char_height, op_space.render_groups.scissor_group.pixels_per_square);
+				perm.text_editor_data.char_height, renderer_data.current_pixels_per_square);
 
 			file_0 := perm.all_data.all_text_files[0];
 			tab_0 : TextTab = text_op.file_tabs[0];
@@ -377,7 +377,7 @@ DONE;
 
 			text_rect_world_height : float = ComputeTextRectWorldHeight(text_op.bottom_proportion, op_space.world_size);
 			viewable_lines : int = TextViewableLinesFromZero(text_op.text_line_height_factor, text_rect_world_height, 
-				perm.text_editor_data.char_height, op_space.render_groups.scissor_group.pixels_per_square);
+				perm.text_editor_data.char_height, renderer_data.current_pixels_per_square);
 
 			file_0 := perm.all_data.all_text_files[0];
 			tab_0 : TextTab = text_op.file_tabs[0];
@@ -419,7 +419,7 @@ DONE;
 
 			text_rect_world_height : float = ComputeTextRectWorldHeight(text_op.bottom_proportion, op_space.world_size);
 			viewable_lines : int = TextViewableLinesFromZero(text_op.text_line_height_factor, text_rect_world_height, 
-				perm.text_editor_data.char_height, op_space.render_groups.scissor_group.pixels_per_square);
+				perm.text_editor_data.char_height, renderer_data.current_pixels_per_square);
 
 			file_0 := perm.all_data.all_text_files[0];
 			tab_0 : TextTab = text_op.file_tabs[0];
@@ -471,7 +471,7 @@ DONE;
 
 			text_rect_world_height : float = ComputeTextRectWorldHeight(text_op.bottom_proportion, op_space.world_size);
 			viewable_lines : int = TextViewableLinesFromZero(text_op.text_line_height_factor, text_rect_world_height, 
-				perm.text_editor_data.char_height, op_space.render_groups.scissor_group.pixels_per_square);
+				perm.text_editor_data.char_height, renderer_data.current_pixels_per_square);
 
 			file_0 := perm.all_data.all_text_files[0];
 			tab_0 : TextTab = text_op.file_tabs[0];
@@ -513,7 +513,7 @@ DONE;
 		resize_rect_world.max.x += 2;
 		op_space.world_offset = GetCenter(resize_rect_world);
 		op_space.world_size = GetDim(resize_rect_world);
-		ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
+		ResizeTextOpSpace(text_op, op_space.world_size, renderer_data.current_pixels_per_square,
 			perm.text_editor_data);
 
 		AssertFloatEquals(0, text_op.bottom_proportion);
@@ -525,7 +525,7 @@ DONE;
 
 			text_rect_world_height : float = ComputeTextRectWorldHeight(text_op.bottom_proportion, op_space.world_size);
 			viewable_lines : int = TextViewableLinesFromZero(text_op.text_line_height_factor, text_rect_world_height, 
-				perm.text_editor_data.char_height, op_space.render_groups.scissor_group.pixels_per_square);
+				perm.text_editor_data.char_height, renderer_data.current_pixels_per_square);
 
 			file_0 := perm.all_data.all_text_files[0];
 			tab_0 : TextTab = text_op.file_tabs[0];
@@ -567,7 +567,7 @@ DONE;
 		rect_bottom_right : Rectangle2 = RectBottomRightDim(op_bottom_right, Vector2F.{0.75,0.75});
 		default_base_cam : Camera2D = GetRenderMSpace(perm.all_data).mspace_cam;
 		rect_world_pos : Vector2F = GetCenter(rect_bottom_right);
-		SetMouseWorldPos(rect_world_pos, default_base_cam, op_space.render_groups.scissor_group);
+		SetMouseWorldPos(rect_world_pos, default_base_cam, op_space.render_groups.scissor_group, renderer_data.pixels_per_square);
 
 	   // MouseP : POINT;
 	   // GetCursorPos(*MouseP);
@@ -602,7 +602,7 @@ DONE;
 		resize_rect_world.max.x -= 2;
 		op_space.world_offset = GetCenter(resize_rect_world);
 		op_space.world_size = GetDim(resize_rect_world);
-		ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
+		ResizeTextOpSpace(text_op, op_space.world_size, renderer_data.current_pixels_per_square,
 			perm.text_editor_data);
 
 		AssertFloatEquals(0, text_op.bottom_proportion);
@@ -614,7 +614,7 @@ DONE;
 
 			text_rect_world_height : float = ComputeTextRectWorldHeight(text_op.bottom_proportion, op_space.world_size);
 			viewable_lines : int = TextViewableLinesFromZero(text_op.text_line_height_factor, text_rect_world_height, 
-				perm.text_editor_data.char_height, op_space.render_groups.scissor_group.pixels_per_square);
+				perm.text_editor_data.char_height, renderer_data.current_pixels_per_square);
 
 			file_0 := perm.all_data.all_text_files[0];
 			tab_0 : TextTab = text_op.file_tabs[0];
@@ -657,7 +657,7 @@ DONE;
 
 			text_rect_world_height : float = ComputeTextRectWorldHeight(text_op.bottom_proportion, op_space.world_size);
 			viewable_lines : int = TextViewableLinesFromZero(text_op.text_line_height_factor, text_rect_world_height, 
-				perm.text_editor_data.char_height, op_space.render_groups.scissor_group.pixels_per_square);
+				perm.text_editor_data.char_height, renderer_data.current_pixels_per_square);
 
 			file_0 := perm.all_data.all_text_files[0];
 			tab_0 : TextTab = text_op.file_tabs[0];
@@ -8939,7 +8939,7 @@ Test_TextPropMouse :: (
 
 		//Reset manually here so we don't have to compute the proportions in the test again
 		text_op.set_left_proportion = 0.6;
-		ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
+		ResizeTextOpSpace(text_op, op_space.world_size, renderer_data.current_pixels_per_square,
 			perm.text_editor_data);
 		AddPressKeyboard(.MOUSE_BUTTON_LEFT, .UP_THIS_FRAME, game_input);
 		tt_op.left_proportion = text_op.set_left_proportion;
@@ -9121,7 +9121,7 @@ Test_TextPropMouse :: (
 		//Reset proportions before doing the watch pane proportions
 		text_op.set_bottom_proportion = 0.4;
 		text_op.set_r_bottom_height_proportion = 0.4;
-		ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
+		ResizeTextOpSpace(text_op, op_space.world_size, renderer_data.current_pixels_per_square,
 			perm.text_editor_data);
 	}
 	case 20; {
@@ -16073,7 +16073,7 @@ Test_TextTabs :: (
 			// main_file.id, load_file.id, lf_1.id, lf_2.id, lf_3.id, lf_4.id, lf_5.id, bound_test.id,
 			// main_file.id, load_file.id, lf_1.id, lf_2.id, lf_3.id, lf_4.id, lf_5.id, bound_test.id,
 			// main_file.id, load_file.id, lf_1.id, lf_2.id, lf_3.id, lf_4.id, lf_5.id, bound_test.id],
-			perm.text_editor_data, renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			perm.text_editor_data, renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	}
 
 main_string :: #string DONE
@@ -17237,13 +17237,15 @@ DONE;
 
 		//TEST reopen twice to make sure it only opens once
 		abs_path := get_absolute_path("c_test/write_test");
-		OpenFileTab(abs_path, text_op, *perm.all_data.all_text_files, op_space, perm.text_editor_data);
+		OpenFileTab(abs_path, text_op, *perm.all_data.all_text_files, op_space, perm.text_editor_data, 
+			renderer_data.current_pixels_per_square);
 		count_equals := AssertEquals(8, text_op.file_tabs.count);
 		if count_equals {
 			AssertEquals(1, text_op.file_tabs[7].text_file_id);
 			AssertEquals(0, text_op.file_tabs[0].text_file_id);
 			//Make sure we only open this up here once
-			OpenFileTab(abs_path, text_op, *perm.all_data.all_text_files, op_space, perm.text_editor_data);
+			OpenFileTab(abs_path, text_op, *perm.all_data.all_text_files, op_space, perm.text_editor_data, 
+				renderer_data.current_pixels_per_square);
 			AssertEquals(8, text_op.file_tabs.count);
 			AssertEquals(1, text_op.file_tabs[7].text_file_id);
 			AssertEquals(0, text_op.file_tabs[0].text_file_id);
@@ -17512,13 +17514,15 @@ DONE;
 
 		//TEST reopen twice to make sure it only opens once
 		abs_path := get_absolute_path("c_test/bound_test");
-		OpenFileTab(abs_path, text_op, *perm.all_data.all_text_files, op_space, perm.text_editor_data);
+		OpenFileTab(abs_path, text_op, *perm.all_data.all_text_files, op_space, perm.text_editor_data, 
+			renderer_data.current_pixels_per_square);
 		count_equals := AssertEquals(8, text_op.file_tabs.count);
 		if count_equals {
 			AssertEquals(7, text_op.file_tabs[7].text_file_id);
 			AssertEquals(0, text_op.file_tabs[0].text_file_id);
 			//Make sure we only open this up here once
-			OpenFileTab(abs_path, text_op, *perm.all_data.all_text_files, op_space, perm.text_editor_data);
+			OpenFileTab(abs_path, text_op, *perm.all_data.all_text_files, op_space, perm.text_editor_data, 
+				renderer_data.current_pixels_per_square);
 			AssertEquals(8, text_op.file_tabs.count);
 			AssertEquals(7, text_op.file_tabs[7].text_file_id);
 			AssertEquals(0, text_op.file_tabs[0].text_file_id);
@@ -17566,13 +17570,15 @@ DONE;
 
 		//TEST reopen twice to make sure it only opens once
 		abs_path := get_absolute_path("c_test/write_test");
-		OpenFileTab(abs_path, text_op, *perm.all_data.all_text_files, op_space, perm.text_editor_data);
+		OpenFileTab(abs_path, text_op, *perm.all_data.all_text_files, op_space, perm.text_editor_data, 
+			renderer_data.current_pixels_per_square);
 		count_equals := AssertEquals(8, text_op.file_tabs.count);
 		if count_equals {
 			AssertEquals(1, text_op.file_tabs[7].text_file_id);
 			AssertEquals(0, text_op.file_tabs[0].text_file_id);
 			//Make sure we only open this up here once
-			OpenFileTab(abs_path, text_op, *perm.all_data.all_text_files, op_space, perm.text_editor_data);
+			OpenFileTab(abs_path, text_op, *perm.all_data.all_text_files, op_space, perm.text_editor_data, 
+				renderer_data.current_pixels_per_square);
 			AssertEquals(8, text_op.file_tabs.count);
 			AssertEquals(1, text_op.file_tabs[7].text_file_id);
 			AssertEquals(0, text_op.file_tabs[0].text_file_id);
@@ -19011,7 +19017,8 @@ Test_TextOpCursor :: (
 
 		//TEST add file tab and then update and then move over to check it's still ok
 		abs_path := get_absolute_path("c_test/write_test");
-		OpenFileTab(abs_path, text_op_2, *perm.all_data.all_text_files, op_space_2, perm.text_editor_data);
+		OpenFileTab(abs_path, text_op_2, *perm.all_data.all_text_files, op_space_2, perm.text_editor_data, 
+			renderer_data.current_pixels_per_square);
 		AssertEquals(2, text_op_2.file_tabs.count);
 		AssertEquals(1, text_op_2.ftab_i);
 

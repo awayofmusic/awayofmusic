@@ -493,7 +493,7 @@ if(Window) {
 				//TODO We could just pass in screen half dim and pixels per square if that removes the need for a RenderGroup
 				//then in the platform data layer
 				new_input.last_frame_mouse_cam = new_input.mouse_cam;
-				new_input.mouse_cam = MouseScreenToCam(x, y, renderer_data.base_render_group);
+				new_input.mouse_cam = MouseScreenToCam(x, y, renderer_data);
 			} else {
 				//If we fail to get the mouse this frame, then the mouse stays in the same place as last frame and we log an error
 				log_error("Cannot get mouse pointer position.\n");
@@ -836,8 +836,8 @@ GetDeviceFPS :: (window : Window_Type) -> float64 {
 	// target_fps = 59.0;
 	return target_fps;
 }
-SetMouseWorldPos :: inline (world_pos : Vector2F, cam : Camera2D, render_group : RenderGroup) {
-	mouse_pixel_pos : Vector2F = WorldSpaceToPixelSpace(world_pos, cam, render_group.screen_half_dim, render_group.pixels_per_square);
+SetMouseWorldPos :: inline (world_pos : Vector2F, cam : Camera2D, render_group : RenderGroup, pixels_per_square : float) {
+	mouse_pixel_pos : Vector2F = WorldSpaceToPixelSpace(world_pos, cam, render_group.screen_half_dim, pixels_per_square);
 	//TODO Need to update this per OS
 	Win32SetCursorPosition(cast(s32) mouse_pixel_pos.x, cast(s32) mouse_pixel_pos.y);
 }
@@ -1176,8 +1176,8 @@ GetDeviceFPS :: (window : Window_Type) -> float64 {
 	return target_fps;
 }
 //TODO Should we have a function for each here or put the OS inside since the WorldSpaceToPixelSpace is the same for both of them...
-SetMouseWorldPos :: inline (world_pos : Vector2F, cam : Camera2D, render_group : RenderGroup) {
-	mouse_pixel_pos : Vector2F = WorldSpaceToPixelSpace(world_pos, cam, render_group.screen_half_dim, render_group.pixels_per_square);
+SetMouseWorldPos :: inline (world_pos : Vector2F, cam : Camera2D, render_group : RenderGroup, pixels_per_square : float) {
+	mouse_pixel_pos : Vector2F = WorldSpaceToPixelSpace(world_pos, cam, render_group.screen_half_dim, pixels_per_square);
 	print("SetMouseWorldPos NOT implement for mac yet.\n");
 	//TODO Need to update this per OS
 	// Win32SetCursorPosition(cast(s32) mouse_pixel_pos.x, cast(s32) mouse_pixel_pos.y);

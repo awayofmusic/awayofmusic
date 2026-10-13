@@ -52,7 +52,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 47+1);
 	} 
@@ -1564,7 +1564,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 15+1);
 	} 
@@ -2154,7 +2154,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 34+1);
 	} 
@@ -3492,7 +3492,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 40+1);
 	} 
@@ -5135,7 +5135,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 40+1);
 	} 
@@ -6815,7 +6815,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 11);
 	} 
@@ -7127,7 +7127,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 14);
 	} 
@@ -7449,7 +7449,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 10);
 	} 
@@ -7732,7 +7732,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 6);
 	} 
@@ -7870,7 +7870,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 12+1);
 	}
@@ -8037,7 +8037,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 25+1);
 	} 
@@ -8209,7 +8209,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 25+1);
 	} 
@@ -8383,7 +8383,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 57+1);
 	} 
@@ -8613,7 +8613,7 @@ Test :: struct {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 4+1);
 	} 
@@ -8711,7 +8711,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 25+1);
 	} 
@@ -8886,7 +8886,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 31+1);
 	} 
@@ -9072,7 +9072,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 36+1);
 	} 
@@ -9261,7 +9261,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 7+1);
 	} 
@@ -9383,7 +9383,7 @@ foo :: (v : V2) -> V2 {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 11);
 	} 
@@ -9562,7 +9562,7 @@ f2 :: (a : [2] int) {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 27);
 	} 
@@ -9908,7 +9908,7 @@ main :: () {
 DONE,,test_alloc);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 16);
 	} 
@@ -10130,7 +10130,7 @@ main :: () {
 DONE,,test_alloc);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 7+1);
 	} 
@@ -10218,7 +10218,7 @@ Foo :: (arr : [] int) {
 DONE,,test_alloc);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 4+1);
 	} 
@@ -10341,7 +10341,7 @@ Test :: struct {
 DONE,,test_alloc);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 44);
 	} 
@@ -10710,7 +10710,7 @@ Test :: struct {
 DONE,,test_alloc);	
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 14);
 	} 
@@ -10935,7 +10935,7 @@ T2 :: struct {
 DONE,,test_alloc);	
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 92+1);
 	} 
@@ -11528,7 +11528,7 @@ T2 :: struct {
 DONE,,test_alloc);	
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 63+1);
 	} 
@@ -11799,7 +11799,7 @@ main :: () {
 DONE,,test_alloc);	
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 4+1);
 	} 
@@ -11883,7 +11883,7 @@ main :: () {
 }
 DONE);
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 4+1);
 	} 
@@ -12031,7 +12031,7 @@ main :: () {
 }
 DONE);
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 4+1);
 	} 
@@ -12157,7 +12157,7 @@ main :: () {
 DONE,,test_alloc);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 10+1);
 	} 
@@ -12269,7 +12269,7 @@ T2 :: struct {
 DONE,,test_alloc);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 21+1);
 	} 
@@ -12382,7 +12382,7 @@ Test :: struct {
 DONE,,test_alloc);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 5+1);
 	} 
@@ -12461,7 +12461,7 @@ main :: () {
 }
 DONE);
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 10);
 	} 
@@ -12657,7 +12657,7 @@ main :: () {
 }
 DONE);
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 11);
 	} 
@@ -12873,7 +12873,7 @@ main :: () {
 }
 DONE);
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 18+1);
 	} 
@@ -13426,7 +13426,7 @@ pre_print_string,
 pre_print_string
 ));
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 8+1);
 	} 
@@ -13520,7 +13520,7 @@ DONE,
 test_string, test_string,
 ));
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 15+1);
 	} 
@@ -13636,7 +13636,7 @@ main :: () {
 }
 DONE);
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 11+1);
 	} 
@@ -13772,7 +13772,7 @@ main :: () {
 }
 DONE);
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 19+1);
 	} 
@@ -13961,7 +13961,7 @@ main :: () {
 }
 DONE);
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 53+1);
 	} 
@@ -14357,7 +14357,7 @@ TestEnum :: enum {
 #global gpp : **int;
 DONE);
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 27+1);
 	} 
@@ -14594,7 +14594,7 @@ main :: () {
 #global y : int : 2;
 DONE);
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 5+1);
 	} 
@@ -14694,7 +14694,7 @@ main :: () {
 }
 DONE);
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 8+1);
 	} 
@@ -14826,7 +14826,7 @@ CompareNeumes :: (a : *void, b : *void) -> int {
 }
 DONE);
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 24+1);
 	} 
@@ -15009,7 +15009,7 @@ CompareNeumes :: (a : *void, b : *void) -> int {
 }
 DONE);
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 
 		array_resize(*perm.test_data.all_sub_tests, 24+1);
 	} 
@@ -15162,7 +15162,7 @@ Test_CallStackRecurse :: (
 		WriteFileString(text_file, TEST_RECURSE_STRING);
 		
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 20+1);
 	} 
@@ -15300,7 +15300,7 @@ Test_ImportBasic :: (
 		//TODO Test that basic gets loaded automatically
 		// import_global := LoadTextFile(IMPORT_GLOBAL_NAME, *perm.all_data.all_text_files);
 		text_op := CreateTextOpSpace(.[import_test.id], perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data, TEST_TEXT_NAME);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data, TEST_TEXT_NAME);
 
 		array_resize(*perm.test_data.all_sub_tests, 7+1);
 	} 
@@ -15448,7 +15448,7 @@ Test_ImportGlobal :: (
 		import_test := LoadTextFile(IMPORT_TEST_NAME, *perm.all_data.all_text_files);
 		import_global := LoadTextFile(IMPORT_GLOBAL_NAME, *perm.all_data.all_text_files);
 		text_op := CreateTextOpSpace(.[import_test.id, import_global.id], perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data, TEST_TEXT_NAME);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data, TEST_TEXT_NAME);
 
 		array_resize(*perm.test_data.all_sub_tests, 11+1);
 	} 
@@ -15638,7 +15638,7 @@ Test_ImportGlobalFunc :: (
 		import_test := LoadTextFile(IMPORT_GF_TEST, *perm.all_data.all_text_files);
 		import_global := LoadTextFile(IMPORT_GLOBAL_FUNC, *perm.all_data.all_text_files);
 		text_op := CreateTextOpSpace(.[import_test.id, import_global.id], perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data, TEST_TEXT_NAME);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data, TEST_TEXT_NAME);
 
 		array_resize(*perm.test_data.all_sub_tests, 20+1);
 	} 
@@ -16014,7 +16014,7 @@ Test_MultiTabDebug :: (
 		tab_test := LoadTextFile(TAB_T1_NAME, *perm.all_data.all_text_files);
 		tab_test_2 := LoadTextFile(TAB_T2_NAME, *perm.all_data.all_text_files);
 		text_op := CreateTextOpSpace(.[tab_test.id, tab_test_2.id], perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data, TEST_TEXT_NAME);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data, TEST_TEXT_NAME);
 
 		array_resize(*perm.test_data.all_sub_tests, 24+1);
 	} 

@@ -1761,7 +1761,8 @@ SelectedTextBarType :: enum u8 {
 CloseTextBars :: inline (
 	text_op : *TextOpSpaceData,
 	op_space : OperationSpace,
-	ted : TextEditorData) 
+	ted : TextEditorData,
+	pixels_per_square : float) 
 {
 	if text_op.text_first_bar_type == TextFirstBarType.GOTO_LINE {
 		//We always reset with goto line so itll reset from the find and also if we close and re-open.
@@ -1772,7 +1773,7 @@ CloseTextBars :: inline (
 	text_op.text_first_bar_type = TextFirstBarType.NONE;
 	text_op.text_second_bar_type = TextSecondBarType.NONE;
 	text_op.selected_text_bar = SelectedTextBarType.NONE;					
-	ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square, ted);
+	ResizeTextOpSpace(text_op, op_space.world_size, pixels_per_square, ted);
 }
 TEXT_STATUS_MESSAGE_SIZE :: #run Kilobytes(1);
 SetTextStatus :: inline (
@@ -2586,7 +2587,8 @@ OpenFileTabWithExplorer :: inline (
 	text_op : *TextOpSpaceData,
 	all_text_files : *[..] TextFile,
 	op_space : OperationSpace,
-	ted : TextEditorData)
+	ted : TextEditorData,
+	pixels_per_square : float)
 //TODO Could return fe_result if thats needed here like error info or something else
 -> *TextFile, found_text_file : bool
 {
@@ -2602,7 +2604,7 @@ OpenFileTabWithExplorer :: inline (
 		SetTextStatus(fe_result.error_msg, text_op);
 		return null, false;
 	}
-	text_file, found_text_file := OpenFileTab(fe_result.file_name, text_op, all_text_files, op_space, ted);
+	text_file, found_text_file := OpenFileTab(fe_result.file_name, text_op, all_text_files, op_space, ted, pixels_per_square);
 	return text_file, found_text_file;
 }
 /*DOC : This can be used to add file tabs by name maybe from terminal
@@ -2615,6 +2617,7 @@ OpenFileTab :: inline (
 	all_text_files : *[..] TextFile,
 	op_space : OperationSpace,
 	ted : TextEditorData,
+	pixels_per_square : float,
 	//If we deleted the system file but the file still exists here then we will still find it with this being false
 	//I tend to check this externally for resilience since file path checking should be thorough so we don't crash out for file name errors
 	$check_absolute_path : bool = false)
@@ -2644,7 +2647,7 @@ OpenFileTab :: inline (
 			//DOC : Resize to adjust tab cursors properly with new tab
 			//Technically we can just update the cursor bounds for this tab but this seems more resilient overall
 			//in case we change something later where adding the tab depends on or changes something else in the text op space.
-			ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square, ted);
+			ResizeTextOpSpace(text_op, op_space.world_size, pixels_per_square, ted);
 			//We will see the file if it opened so I don't think we need to set a text status here but we can if needed later
 			// SetTextStatus(tprint("Opened file %", fe_result.file_name), text_op);
 		}
@@ -2675,7 +2678,7 @@ CloseFileTab :: inline (
 	}
 	//TODO We only need to do this if we store the file tab rects in text_op and then likely recompute
 	//this or can do something more efficient as well
-	// ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
+	// ResizeTextOpSpace(text_op, op_space.world_size, renderer_data.current_pixels_per_square,
 	// 	perm.text_editor_data);
 }
 /*TODO We can optimize this later if fetching text files
@@ -2741,7 +2744,7 @@ ComputeTextOpPositions :: inline (
 	top : TextOpPositions;
 
 	top.TEXT_LINE_HEIGHT = ComputeTextLineHeight(text_op.text_line_height_factor,
-		text_editor_data.char_height, op_space.render_groups.scissor_group.pixels_per_square);
+		text_editor_data.char_height, renderer_data.current_pixels_per_square);
 	//TODO I think these will always be the same but may change relative to font and stuff like that.
 	//Would need to test with different fonts and different window sizes.
 	// LOC_START_Y : float = 14.5 - text_op.top_margin_height;
@@ -2753,7 +2756,7 @@ ComputeTextOpPositions :: inline (
 	top.DEBUG_START_X = ator.op_rect.min.x + 0.5*(top.MARGIN_END-ator.op_rect.min.x);
 
 	//We adjust start_y for debugging so it is in line with the cursor and chars.
-	top.cursor_height = ComputeCursorHeight(text_editor_data.char_height, op_space.render_groups.scissor_group.pixels_per_square);
+	top.cursor_height = ComputeCursorHeight(text_editor_data.char_height, renderer_data.current_pixels_per_square);
 	top.y_cursor_adjust = YAdjustCursorHeight(top.cursor_height);
 	top.DEBUG_START_Y = top.LOC_START_Y - top.y_cursor_adjust;
 
@@ -3118,7 +3121,7 @@ UpdateAllTextOpTabsWithTextFile :: inline (
 				assert(op_space.op_space_external_type == OpSpaceExternalType.txt);
 				assert(found_op_space);
 
-				// ResizeTextOpSpace(check_text, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square, ted);
+				// ResizeTextOpSpace(check_text, op_space.world_size, renderer_data.current_pixels_per_square, ted);
 				#if 1 {
 				MoveCursorToLineAndLineChar(tab.tab_cursor.cursor_line_number, tab.tab_cursor.cursor_line_char,
 					*tab.tab_cursor, text_file.file_string);
@@ -3212,6 +3215,7 @@ SelectHighlightedCallFrame :: inline (
 	all_data : *AllData,
 	op_space : OperationSpace,
 	ted : TextEditorData,
+	pixels_per_square : float,
 	reset_watch_data : bool = false) 
 {
 	//sanity check should not happen since highlighted call stack index is checked on input
@@ -3241,7 +3245,7 @@ SelectHighlightedCallFrame :: inline (
 	d_line, found_d_line := GetDebugLineAsm(instr_index, text_op.text_comp_data);
 	//sanity check should not happen since debug call frames are only created with valid instructions in the debugger
 	assert(found_d_line, "REPORT : debug line asm not found in text op %.\n", text_op.*);
-	text_file, found_text_file := OpenFileTab(d_line.absolute_path_name, text_op, *all_data.all_text_files, op_space, ted);
+	text_file, found_text_file := OpenFileTab(d_line.absolute_path_name, text_op, *all_data.all_text_files, op_space, ted, pixels_per_square);
 	if found_text_file {
 		MoveToLine(d_line.line_number, text_file.file_string, *text_op.file_tabs[text_op.ftab_i].tab_cursor);
 	} else {
@@ -3681,6 +3685,7 @@ ResizeAnyOpSpace :: inline (
 	//TODO We are not using the pointer here but just in case we need to eventually
 	//I think it makes more sense as a resizing input
 	op_space : *OperationSpace,
+	renderer_data : *RendererData,
 	perm : *Persist) 
 {
 	if op_space.op_space_external_type == {
@@ -3688,7 +3693,7 @@ ResizeAnyOpSpace :: inline (
 		term_op : *TerminalOpSpaceData = ArrayFindFirstByNameId(perm.all_data.all_terminal_op_space_data,
 			op_space.id, "op_space_id");
 
-		ResizeTerminalOpSpace(term_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square, 
+		ResizeTerminalOpSpace(term_op, op_space.world_size, renderer_data.current_pixels_per_square, 
 			perm.text_editor_data, perm.terminal_data);
 	}
 	case OpSpaceExternalType.txt; {
@@ -3696,7 +3701,7 @@ ResizeAnyOpSpace :: inline (
 			op_space.id, "op_space_id");
 		assert(found_text_op);
 
-		ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
+		ResizeTextOpSpace(text_op, op_space.world_size, renderer_data.current_pixels_per_square,
 			perm.text_editor_data);
 	}
 	case OpSpaceExternalType.space_3d; {
@@ -3709,12 +3714,12 @@ ResizeAnyOpSpace :: inline (
 	}
 }
 //TODO We can reuse this for a reset to pixels_per_square base 
-ResizeAllOpSpaces :: inline (perm : *Persist) {
+ResizeAllOpSpaces :: inline (renderer_data : *RendererData, perm : *Persist) {
 	for * perm.all_data.all_open_op_spaces {
-		ResizeAnyOpSpace(it, perm);
+		ResizeAnyOpSpace(it, renderer_data, perm);
 	}
 	for * perm.all_data.all_closed_op_spaces {
-		ResizeAnyOpSpace(it, perm);
+		ResizeAnyOpSpace(it, renderer_data, perm);
 	}
 }
 //TODO RUNTIME SETTINGS can allow this to be adjustable if needed
@@ -3730,6 +3735,7 @@ UpdatePixelsPerSquareEverywhere :: inline (
 	renderer_data : *RendererData,
 	perm : *Persist) 
 {
+	renderer_data.current_pixels_per_square = new_pixels_per_square;
 	renderer_data.base_render_group.pixels_per_square = new_pixels_per_square;
 	//TODO Can call UpdateFontSize here if we want to change the font size on global zooming
 	//OR should we change that only at the text op space level eventually?
@@ -3738,7 +3744,7 @@ UpdatePixelsPerSquareEverywhere :: inline (
 		it.pixels_per_square = new_pixels_per_square;
 		UpdateHalfMonitorSquares(it);
 	}
-	ResizeAllOpSpaces(perm);
+	ResizeAllOpSpaces(renderer_data, perm);
 }
 
 //TODO could just pass in world_size and world_offset if that is more efficient
@@ -3749,7 +3755,7 @@ OpSpaceTitleBarRect :: inline (op_space : OperationSpace, ted : TextEditorData) 
 	// op_ui_size : Vector2F = MakeV2F(OP_SPACE_MIN_SIZE.x, 1.6);
 	// op_ui_size : Vector2F = MakeV2F(OP_SPACE_MIN_SIZE.x, 1.4);
 	//46.2 = 1.4 * 33 which should be the default pixels per square actually
-	// height : float = 46.2 / op_space.render_groups.scissor_group.pixels_per_square;
+	// height : float = 46.2 / renderer_data.current_pixels_per_square;
 	// title_bar_size : Vector2F = MakeV2F(op_space.world_size.x, 1.4);
 	height : float = 2.1 * ted.code_font_1_char_width_world;
 	title_bar_size : Vector2F = MakeV2F(op_space.world_size.x, height);
@@ -3847,7 +3853,7 @@ SetOpSpaceRenderGroups :: inline (
 		osrg = pop(*renderer_data.free_op_space_render_groups);
 	} else {
 		op_space_viewport : Rectangle2 = MakeRectToPixelSpace(op_space.world_offset, op_space.world_size,
-			renderer_data.base_render_group.screen_half_dim, renderer_data.base_render_group.pixels_per_square);
+			renderer_data.base_render_group.screen_half_dim, renderer_data.current_pixels_per_square);
 
 		//TODO Only need to create this if the OperationSpace is 3D but right now that is in separate data.
 		//Eventually if we store OperationSpace and separate out RenderGroup and reuse those, then we can

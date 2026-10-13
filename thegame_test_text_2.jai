@@ -41,7 +41,7 @@ main :: () {
 DONE);
 
 		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
-			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
 	
 		array_resize(*perm.test_data.all_sub_tests, 48+1);
 	}

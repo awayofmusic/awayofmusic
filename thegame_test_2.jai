@@ -280,7 +280,7 @@ Test_TextConsole :: (
 
 		//Reset manually here to get the right proportion
 		text_op.set_left_proportion = 0.6;
-		ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
+		ResizeTextOpSpace(text_op, op_space.world_size, renderer_data.current_pixels_per_square,
 			perm.text_editor_data);
 		tt_op.console_tsl.line_char_count *= 2;
 		tt_op.console_tsl.line_char_count += 1;
@@ -312,7 +312,7 @@ Test_TextConsole :: (
 
 		//Reset manually here to get the right proportion
 		text_op.set_bottom_proportion = 0.4;
-		ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
+		ResizeTextOpSpace(text_op, op_space.world_size, renderer_data.current_pixels_per_square,
 			perm.text_editor_data);
 		tt_op.console_tsl.viewable_lines_from_zero += 1;
 		tt_op.console_tsl.viewable_lines_from_zero *= 2;
@@ -323,7 +323,7 @@ Test_TextConsole :: (
 		//Test a general resize here increase
 		text_op.set_left_proportion = 0.8;
 		text_op.set_bottom_proportion = 0.8;
-		ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
+		ResizeTextOpSpace(text_op, op_space.world_size, renderer_data.current_pixels_per_square,
 			perm.text_editor_data);
 
 		tt_op.console_tsl.split_lines.count = 11;
@@ -335,7 +335,7 @@ Test_TextConsole :: (
 		//Reset manually here to get the right proportion
 		text_op.set_left_proportion = 0.6;
 		text_op.set_bottom_proportion = 0.4;
-		ResizeTextOpSpace(text_op, op_space.world_size, op_space.render_groups.scissor_group.pixels_per_square,
+		ResizeTextOpSpace(text_op, op_space.world_size, renderer_data.current_pixels_per_square,
 			perm.text_editor_data);
 
 		tt_op.console_tsl.split_lines.count = 15;
