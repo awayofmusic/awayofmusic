@@ -2614,7 +2614,10 @@ OpenFileTab :: inline (
 	text_op : *TextOpSpaceData,
 	all_text_files : *[..] TextFile,
 	op_space : OperationSpace,
-	ted : TextEditorData)
+	ted : TextEditorData,
+	//If we deleted the system file but the file still exists here then we will still find it with this being false
+	//I tend to check this externally for resilience since file path checking should be thorough so we don't crash out for file name errors
+	$check_absolute_path : bool = false)
 -> *TextFile, found_text_file : bool
 {
 	if text_op.file_tabs.count == MAX_TEXT_FILE_TABS {
@@ -2624,7 +2627,7 @@ OpenFileTab :: inline (
 	}
 	//TODO Could pull this out to LoadFileTab by file name directly
 	//Can use this for tests and also when opening a text op space from a file later
-	text_file, found_text_file := GetOrLoadTextFileByAbsolutePath(absolute_file_name, all_text_files);
+	text_file, found_text_file := GetOrLoadTextFileByAbsolutePath(absolute_file_name, all_text_files, check_absolute_path);
 	if found_text_file {
 		tab_index : int;
 		text_file_already_open_in_this_text_op_space : bool = false;
@@ -3241,6 +3244,8 @@ SelectHighlightedCallFrame :: inline (
 	text_file, found_text_file := OpenFileTab(d_line.absolute_path_name, text_op, *all_data.all_text_files, op_space, ted);
 	if found_text_file {
 		MoveToLine(d_line.line_number, text_file.file_string, *text_op.file_tabs[text_op.ftab_i].tab_cursor);
+	} else {
+		print("file % not found with debug line %\n", d_line.absolute_path_name, d_line);
 	}
 	MoveToAsmIndex(instr_index, text_op);
 }
@@ -3709,7 +3714,7 @@ ResizeAllOpSpaces :: inline (perm : *Persist) {
 		ResizeAnyOpSpace(it, perm);
 	}
 	for * perm.all_data.all_closed_op_spaces {
-		ResizeAnyOpSpace(it, perm);	
+		ResizeAnyOpSpace(it, perm);
 	}
 }
 //TODO RUNTIME SETTINGS can allow this to be adjustable if needed

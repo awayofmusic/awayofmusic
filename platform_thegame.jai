@@ -2166,6 +2166,7 @@ in the same way.
 GetOrLoadTextFileByAbsolutePath :: inline (
 	file_name : string,
 	all_text_files : *[..] TextFile,
+	//If we deleted the system file but the file still exists here then we will still find it with this being false
 	$check_absolute_path : bool = false)
 -> *TextFile, found_text_file : bool, loaded_file : bool
 {
@@ -2219,6 +2220,10 @@ GetOrLoadTextFileByFileName :: inline (
 	}
 	return text_file, found_text_file, loaded_file;
 }
+/*REMINDER : This function assumes that the new_name file name is valid since we only update
+on text file creation or on text file saving. So we already did a read or write in the system
+and that would have failed. We could do an extra check in here with file_exists() here but I think it's ok
+*/
 UpdateTextFileName :: inline (new_name : string, text_file : *TextFile) {
 	//TODO We can remove these if we set some memory for text file strings for each file
 	//maybe a Flat_Pool would be fine for that here.

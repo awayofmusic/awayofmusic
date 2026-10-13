@@ -4996,6 +4996,50 @@ DONE;
 			// 	}
 			// 	}						
 			// }
+			case TerminalCommandType.text_tab; {
+				help_msg ::
+#string DONE
+text_tab text_op_name file_path_name
+Open a file tab in an open text op space.
+DONE;
+				if IsTerminalCmdHelp(cmd_switches) {
+					print_to_builder(*sb, help_msg);
+				} else if command_tokens.count == 3 {
+					//TODO once we update pixels per square then we can also add tabs when the op space is closed
+					op_space, found_op_space := ArrayFindFirstByNameId(perm.all_data.all_open_op_spaces,
+						command_tokens[1].token, "op_space_name");
+					file_does_exist : bool = file_exists(command_tokens[2].token);
+					if !found_op_space {
+						print_to_builder(*sb, "% text op space not open\n", command_tokens[1].token);
+					} else if op_space.op_space_external_type != OpSpaceExternalType.txt {
+						print_to_builder(*sb, "% is not a text op space\n", command_tokens[1].token);
+					} 
+					if !file_does_exist {
+						print_to_builder(*sb, "% file not found\n", command_tokens[2].token);
+					} 
+
+					if found_op_space && file_does_exist && 
+						op_space.op_space_external_type == OpSpaceExternalType.txt
+					{
+						text_op, found_text_op := ArrayFindFirstByNameId(perm.all_data.all_text_op_space_data, 
+							op_space.id, "op_space_id");
+						assert(found_text_op);
+
+						abs_path : string = get_absolute_path(command_tokens[2].token);
+						text_file, found_text_file := 
+							OpenFileTab(abs_path, text_op, *perm.all_data.all_text_files, op_space.*, perm.text_editor_data);
+						if !found_text_file {
+							//We already check above that file exists to get the absolute path but we check here for resilience.
+							print_to_builder(*sb, "% file not found\n", command_tokens[2].token);
+						} else {
+							print_to_builder(*sb, "% file tab opened in %.\n", command_tokens[2].token, command_tokens[1].token);
+						}
+					}
+				}
+				else {
+					print_to_builder(*sb, INVALID_CMD_MSG, help_msg);
+				}
+			}
 			case TerminalCommandType.clear; {
 				ClearTerminal(*perm.terminal_data, perm.all_data.all_terminal_op_space_data);
 				reset(*sb);

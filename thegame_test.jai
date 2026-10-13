@@ -9886,6 +9886,139 @@ DONE);
 
 } @ITest
 
+Test_TextTabCmd :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	perm : *Persist = GetPermanentStorage(game_memory);
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+		perm.all_data = InitAllData();
+		ResetAllRendererData(renderer_data);
+
+		text_file := CreateTestTextFile(*ALL_NEXT_IDS, *perm.all_data.all_text_files);
+		WriteFileString(text_file,
+#string DONE
+TEST TEXT FILE
+DONE);
+
+		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
+			renderer_data.base_render_group.pixels_per_square, perm.all_data, renderer_data);
+
+		array_resize(*perm.test_data.all_sub_tests, 5);
+	} 
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	text_op : *TextOpSpaceData;
+	if perm.all_data.all_text_op_space_data.count > 0 {
+		text_op = *perm.all_data.all_text_op_space_data[0];
+	}
+
+	if perm.test_data.sub_test_index == {
+	case 0; {
+		//TODO ADD these tests once we update the pixels per square for resizing
+		// //TEST adding tab when op space is closed should work
+		// open_test := MakeTerminalEvent(.text_tab, TEST_TEXT_NAME, TAB_T1_NAME);
+		// array_add(*perm.all_data.all_terminal_events, open_test);
+	}
+	case 1; {
+		// count_equals := AssertEquals(1, perm.all_data.all_closed_op_spaces.count);
+		// if count_equals {
+		// 	op_space := perm.all_data.all_closed_op_spaces[0];
+		// 	AssertEquals(OP_SPACE_NAME, op_space.op_space_name);
+		// 	AssertEquals(OpSpaceExternalType.txt, op_space.op_space_external_type);
+
+		// 	count_equals = AssertEquals(2, text_op.file_tabs.count);
+		// 	if count_equals {
+		// 	 	AssertEquals(1, text_op.ftab_i);
+		//  		text_file, found_text_file := ArrayFindFirstByNameId(perm.all_data.all_text_files,
+		//  			text_op.file_tabs[1].text_file_id, "id");
+		//  		AssertEquals(true, found_text_file);
+		//  		if found_text_file {
+		// 	 		AssertEquals(get_absolute_path(TAB_T1_NAME), text_file.absolute_path_name);
+		// 	 	}
+		//  	}
+		// }
+
+		//Test opening a tab when the text op is open
+		text_tab_test := MakeTerminalEvent(.open_op, TEST_TEXT_NAME);
+		array_add(*perm.all_data.all_terminal_events, text_tab_test);
+	}
+	case 2; {
+		text_tab_test := MakeTerminalEvent(.text_tab, TEST_TEXT_NAME, TAB_T2_NAME);
+		array_add(*perm.all_data.all_terminal_events, text_tab_test);
+	}
+	case 3; {
+		count_equals := AssertEquals(1, perm.all_data.all_open_op_spaces.count);
+		if count_equals {
+			op_space := perm.all_data.all_open_op_spaces[0];
+			AssertEquals(TEST_TEXT_NAME, op_space.op_space_name);
+			AssertEquals(OpSpaceExternalType.txt, op_space.op_space_external_type);
+
+			count_equals = AssertEquals(2, text_op.file_tabs.count);
+			if count_equals {
+			 	//Test that we changed tabs and that the new tab exists
+			 	AssertEquals(1, text_op.ftab_i);
+
+		 		text_file, found_text_file := ArrayFindFirstByNameId(perm.all_data.all_text_files,
+		 			text_op.file_tabs[1].text_file_id, "id");
+		 		AssertEquals(true, found_text_file);
+		 		if found_text_file {
+			 		AssertEquals(get_absolute_path(TAB_T2_NAME), text_file.absolute_path_name);
+			 	}
+
+		 		// text_file, found_text_file = ArrayFindFirstByNameId(perm.all_data.all_text_files,
+		 		// 	text_op.file_tabs[2].text_file_id, "id");
+		 		// AssertEquals(true, found_text_file);
+		 		// if found_text_file {
+			 	// 	AssertEquals(get_absolute_path(TAB_T2_NAME), text_file.absolute_path_name);
+			 	// }
+		 	}
+		}
+
+		//TEST that nothing happens if the file does not exist
+		no_file_test := MakeTerminalEvent(.text_tab, TEST_TEXT_NAME, "NON_EXISTANT_FILE123l1kj23lkjlkj");
+		array_add(*perm.all_data.all_terminal_events, no_file_test);
+	}
+	case 4; {
+		count_equals := AssertEquals(1, perm.all_data.all_open_op_spaces.count);
+		if count_equals {
+			op_space := perm.all_data.all_open_op_spaces[0];
+			AssertEquals(TEST_TEXT_NAME, op_space.op_space_name);
+			AssertEquals(OpSpaceExternalType.txt, op_space.op_space_external_type);
+
+			count_equals = AssertEquals(2, text_op.file_tabs.count);
+		}
+
+		//TEST that nothing happens if the text op does not exist
+		no_file_test := MakeTerminalEvent(.text_tab, "NON_EXISTANT_FILE123l1kj23lkjlkj", TAB_T3_NAME);
+		array_add(*perm.all_data.all_terminal_events, no_file_test);
+	}
+	case 5; {
+		count_equals := AssertEquals(1, perm.all_data.all_open_op_spaces.count);
+		if count_equals {
+			op_space := perm.all_data.all_open_op_spaces[0];
+			AssertEquals(TEST_TEXT_NAME, op_space.op_space_name);
+			AssertEquals(OpSpaceExternalType.txt, op_space.op_space_external_type);
+
+			count_equals = AssertEquals(2, text_op.file_tabs.count);
+		}
+
+		//TEST that nothing happens if the text op does not exist
+		// no_file_test := MakeTerminalEvent(.text_tab, "NON_EXISTANT_FILE123l1kj23lkjlkj", TAB_T3_NAME);
+		// array_add(*perm.all_data.all_terminal_events, no_file_test);
+	}
+	}
+
+	ContinueTest(*perm.test_data);
+
+} @ITest
+
 Test_LoadTextOp :: (
 	test_name : string,
 	game_memory : *GameMemory, 

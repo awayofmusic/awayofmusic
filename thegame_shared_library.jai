@@ -228,6 +228,8 @@ TerminalCommandType :: enum {
 	create_op; //create a new empty text op_space
 	load_op; //load file and open op_space
 
+	text_tab; //open a tab in a text op
+
 	move_op;
 
 	goto;
