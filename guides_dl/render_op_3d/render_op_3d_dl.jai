@@ -101,7 +101,7 @@ ExternalPerFrame :: (sld : *SharedLibraryData) {
 
 	for * op_space : sld.all_open_op_spaces if op_space.op_space_name == op_space_name {
 	//This does not render the op_space if it cannot be seen in the current mspace.
-	if IsFixedViewableOpSpace(op_space, sld.render_mspace_id) {
+	if IsViewableOpSpace(op_space, sld.render_mspace_id, sld.renderer_data.*, default_base_cam) {
 		op_3D, found_op_3D := ArrayFindFirstByNameId(sld.all_op_spec_data_3D.*,
 			op_space.id, "op_space_id");
 		assert(found_op_3D);

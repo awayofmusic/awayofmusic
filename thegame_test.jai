@@ -10026,6 +10026,208 @@ DONE);
 
 } @ITest
 
+//TEST if the op space stops rendering when its outside of the window
+Test_OffScreenOpSpace :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	TEST_STRING :: "TEST";
+	perm : *Persist = GetPermanentStorage(game_memory);
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+		perm.all_data = InitAllData();
+		ResetAllRendererData(renderer_data);
+
+		text_file := CreateTestTextFile(*ALL_NEXT_IDS, *perm.all_data.all_text_files);
+		WriteFileString(text_file, TEST_STRING);
+		CreateTextOpSpace(text_file.id, perm.text_editor_data, 
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
+
+		array_resize(*perm.test_data.all_sub_tests, 13+1);
+	} 
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	render_mspace := GetRenderMSpace(perm.all_data);
+	default_base_cam : *Camera2D = *render_mspace.mspace_cam;
+
+	text_file : *TextFile = *perm.all_data.all_text_files[0];
+	text_op : *TextOpSpaceData;
+	if perm.all_data.all_text_op_space_data.count > 0 {
+		text_op = *perm.all_data.all_text_op_space_data[0];
+	}
+
+	ADDED_TEXT :: "MORE TEST";
+	if perm.test_data.sub_test_index == {
+	case 0; {
+		test_cmd := MakeTerminalEvent(.open_op, TEST_TEXT_NAME);
+		array_add(*perm.all_data.all_terminal_events, test_cmd);
+	}
+	case 1; {
+		default_base_cam.world_pos.x += 3 * renderer_data.base_render_group.half_monitor_squares.x;
+	}
+	case 2; {
+		//TODO Could add a similar test for 2d and 3d op space if we want but its fine if not
+		op_space := perm.all_data.all_open_op_spaces[0];
+		is_viewable : bool = IsViewableOpSpace(op_space, perm.all_data.render_mspace_id, renderer_data, default_base_cam);
+		AssertEquals(false, is_viewable);
+
+		//TEST that adding text even if we are off screen still works
+		AssertEquals(TEST_STRING.count, text_file.text_string.count);
+		AddTextInput(ADDED_TEXT, game_input);
+	}
+	case 3; {
+		AssertEquals(TEST_STRING.count + ADDED_TEXT.count, text_file.text_string.count);
+
+		DownUpInputMap(.TERMINAL_TOGGLE, game_input);
+	}
+	case 4; {
+		text_space := perm.all_data.all_open_op_spaces[0];
+		op0_viewable : bool = IsViewableOpSpace(text_space, perm.all_data.render_mspace_id, renderer_data, default_base_cam);
+		AssertEquals(false, op0_viewable);
+
+		terminal_space := perm.all_data.all_open_op_spaces[1];
+		op1_viewable : bool = IsViewableOpSpace(terminal_space, perm.all_data.render_mspace_id, renderer_data, default_base_cam);
+		AssertEquals(true, op1_viewable);
+
+		render_mspace.mspace_cam.world_pos.x -= 3 * renderer_data.base_render_group.half_monitor_squares.x;
+	}
+	case 5; {
+		text_space := perm.all_data.all_open_op_spaces[0];
+		op0_viewable : bool = IsViewableOpSpace(text_space, perm.all_data.render_mspace_id, renderer_data, default_base_cam);
+		AssertEquals(true, op0_viewable);
+
+		terminal_space := perm.all_data.all_open_op_spaces[1];
+		op1_viewable : bool = IsViewableOpSpace(terminal_space, perm.all_data.render_mspace_id, renderer_data, default_base_cam);
+		AssertEquals(false, op1_viewable);
+
+		//TEST terminal adds string even if off screen
+		AssertEquals(0, perm.terminal_data.terminal_command_string.text_string.count);
+		AddTextInput(ADDED_TEXT, game_input);
+	}
+	case 6; {
+		AssertEquals(ADDED_TEXT, perm.terminal_data.terminal_command_string.text_string);
+
+		text_space := perm.all_data.all_open_op_spaces[0];
+		op0_viewable : bool = IsViewableOpSpace(text_space, perm.all_data.render_mspace_id, renderer_data, default_base_cam);
+		AssertEquals(true, op0_viewable);
+
+		terminal_space := perm.all_data.all_open_op_spaces[1];
+		op1_viewable : bool = IsViewableOpSpace(terminal_space, perm.all_data.render_mspace_id, renderer_data, default_base_cam);
+		AssertEquals(false, op1_viewable);
+
+		//TEST both off screen
+		render_mspace.mspace_cam.world_pos.y += 3 * renderer_data.base_render_group.half_monitor_squares.y;
+	}
+	case 7; {
+		text_space := perm.all_data.all_open_op_spaces[0];
+		op0_viewable : bool = IsViewableOpSpace(text_space, perm.all_data.render_mspace_id, renderer_data, default_base_cam);
+		AssertEquals(false, op0_viewable);
+
+		terminal_space := perm.all_data.all_open_op_spaces[1];
+		op1_viewable : bool = IsViewableOpSpace(terminal_space, perm.all_data.render_mspace_id, renderer_data, default_base_cam);
+		AssertEquals(false, op1_viewable);
+
+		//TEST space_2d off screen
+		cosd : CreateOpSpaceData;
+		cosd.op_space_external_type = OpSpaceExternalType.space_2d;
+		cosd.op_space_name = "test";
+		CreateClosedOpSpace(cosd,
+			*perm.all_data.all_closed_op_spaces, 
+			*perm.all_data.all_op_space_spec_data, 
+			*perm.all_data.all_op_spec_data_3D);
+
+		test_cmd := MakeTerminalEvent(.open_op, cosd.op_space_name);
+		array_add(*perm.all_data.all_terminal_events, test_cmd);
+	}
+	case 8; {
+		count_equals := AssertEquals(3, perm.all_data.all_open_op_spaces.count);
+		if count_equals {
+			op_space_2d := perm.all_data.all_open_op_spaces[2];
+			op_viewable : bool = IsViewableOpSpace(op_space_2d, perm.all_data.render_mspace_id, renderer_data, default_base_cam);
+			AssertEquals(true, op_viewable);
+		}
+
+		render_mspace.mspace_cam.world_pos.x += 3 * renderer_data.base_render_group.half_monitor_squares.x;
+	}
+	case 9; {
+		count_equals := AssertEquals(3, perm.all_data.all_open_op_spaces.count);
+		if count_equals {
+			op_space_2d := perm.all_data.all_open_op_spaces[2];
+			op_viewable : bool = IsViewableOpSpace(op_space_2d, perm.all_data.render_mspace_id, renderer_data, default_base_cam);
+			AssertEquals(false, op_viewable);
+			AssertEquals(0.0, op_space_2d.op_2D_cam.world_pos.x);
+		}
+
+		//TEST still move cam while off screen
+		DownUpThisFrame(#char "D", game_input);
+	}
+	case 10; {
+		count_equals := AssertEquals(3, perm.all_data.all_open_op_spaces.count);
+		if count_equals {
+			op_space_2d := perm.all_data.all_open_op_spaces[2];
+			op_viewable : bool = IsViewableOpSpace(op_space_2d, perm.all_data.render_mspace_id, renderer_data, default_base_cam);
+			AssertEquals(false, op_viewable);
+			AssertEquals(true, op_space_2d.op_2D_cam.world_pos.x > 0);
+		}
+
+		//TEST space_3d off screen
+		cosd : CreateOpSpaceData;
+		cosd.op_space_external_type = OpSpaceExternalType.space_3d;
+		cosd.op_space_name = "test3d";
+		CreateClosedOpSpace(cosd,
+			*perm.all_data.all_closed_op_spaces, 
+			*perm.all_data.all_op_space_spec_data, 
+			*perm.all_data.all_op_spec_data_3D);
+
+		test_cmd := MakeTerminalEvent(.open_op, cosd.op_space_name);
+		array_add(*perm.all_data.all_terminal_events, test_cmd);
+	}
+	case 11; {
+		count_equals := AssertEquals(4, perm.all_data.all_open_op_spaces.count);
+		if count_equals {
+			op_space_3d := perm.all_data.all_open_op_spaces[3];
+			op_viewable : bool = IsViewableOpSpace(op_space_3d, perm.all_data.render_mspace_id, renderer_data, default_base_cam);
+			AssertEquals(true, op_viewable);
+		}
+
+		render_mspace.mspace_cam.world_pos.y += 3 * renderer_data.base_render_group.half_monitor_squares.y;
+	}
+	case 12; {
+		count_equals := AssertEquals(4, perm.all_data.all_open_op_spaces.count);
+		if count_equals {
+			op_space_3d := perm.all_data.all_open_op_spaces[3];
+			op_viewable : bool = IsViewableOpSpace(op_space_3d, perm.all_data.render_mspace_id, renderer_data, default_base_cam);
+			AssertEquals(false, op_viewable);
+			spec_3D := perm.all_data.all_op_spec_data_3D[0];
+			cam_trans_3D := GetTranslation(spec_3D.op_space_3D.cam_trans);
+			AssertEquals(0.0, cam_trans_3D.z);
+		}
+
+		//TEST still move 3d cam while off screen
+		DownUpThisFrame(#char "I", game_input);
+	}
+	case 13; {
+		count_equals := AssertEquals(4, perm.all_data.all_open_op_spaces.count);
+		if count_equals {
+			op_space_3d := perm.all_data.all_open_op_spaces[3];
+			op_viewable : bool = IsViewableOpSpace(op_space_3d, perm.all_data.render_mspace_id, renderer_data, default_base_cam);
+			AssertEquals(false, op_viewable);
+			spec_3D := perm.all_data.all_op_spec_data_3D[0];
+			cam_trans_3D := GetTranslation(spec_3D.op_space_3D.cam_trans);
+			AssertEquals(true, cam_trans_3D.z > 0);
+		}
+	}	
+	}
+
+	ContinueTest(*perm.test_data);
+
+} @ITest
+
 Test_LoadTextOp :: (
 	test_name : string,
 	game_memory : *GameMemory, 

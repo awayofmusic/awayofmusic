@@ -3993,6 +3993,36 @@ OpRectToCamRect :: inline (
 	return cam_rect;
 }
 
+CamSpaceToPixelSpace :: inline (
+	cam_pos : Vector2F,
+	screen_half_dim : Vector2F,
+	pixels_per_square : float) 
+-> Vector2F
+{
+	pixel_pos : Vector2F = screen_half_dim + cam_pos * pixels_per_square;
+	return pixel_pos;
+}
+//NOTE : screen_half_dim == window_center_pixel
+CamRectToPixelRect :: inline (
+	cam_rect : Rectangle2,
+	window_center_pixel : Vector2F,
+	pixels_per_square : float)
+-> Rectangle2 
+{
+	pixel_rect := cam_rect;
+	pixel_rect.min = CamSpaceToPixelSpace(cam_rect.min, window_center_pixel, pixels_per_square);
+	pixel_rect.max = CamSpaceToPixelSpace(cam_rect.max, window_center_pixel, pixels_per_square);
+	return pixel_rect;
+}
+//TODO Maybe just using the render group pixel rect is fine here but at least this gives us the option.
+CamRectToPixelRect :: inline (rect : Rectangle2, g : *RenderGroup, pixels_per_square : float) -> Rectangle2 {
+	// rp : Rectangle2 = ---;
+	// rp.min = g.screen_half_dim + rect.min * pixels_per_square;
+	// rp.max = g.screen_half_dim + rect.max * pixels_per_square;
+	rp := CamRectToPixelRect(rect, g.screen_half_dim, pixels_per_square);
+	return rp;
+}
+
 OpQuadToCamQuad :: inline (
 	quad : Quad2F, 	
 	op_space : OperationSpace,
@@ -4035,16 +4065,41 @@ OpCircleToCamCircle :: inline (
 	return cam_c;
 }
 
-IsFixedViewableOpSpace :: inline (
+IsViewableOpSpace :: inline (
 	op_space : OperationSpace,
-	render_mspace_id : int)
+	render_mspace_id : int,
+	renderer_data : RendererData,
+	default_base_cam : Camera2D)
 -> bool 
 {
-	is_viewable : bool = op_space.fixed_op_type == .FIXED_TO_CAMERA ||
+	is_mspace_viewable : bool = IsOpSpaceViewableInMSpace(op_space, render_mspace_id);
+	is_on_screen : bool = IsOpSpaceViewableOnScreen(op_space, renderer_data, default_base_cam);
+	should_render : bool = is_mspace_viewable && is_on_screen;
+	return should_render;
+}
+IsOpSpaceViewableInMSpace :: inline (op_space : OperationSpace, render_mspace_id : int) -> bool {
+	is_mspace_viewable : bool = op_space.fixed_op_type == .FIXED_TO_CAMERA ||
 		(op_space.fixed_op_type == .FIXED_TO_MSPACE && 
 		 op_space.fixed_mspace_id == render_mspace_id);
-	return is_viewable;
+	return is_mspace_viewable;	
 }
+IsOpSpaceViewableOnScreen :: inline (
+	op_space : OperationSpace, 
+	renderer_data : RendererData,
+	default_base_cam : Camera2D) 
+-> bool 
+{
+	op_rect_world : Rectangle2 = RectCenterDim(op_space.world_offset, op_space.world_size);
+	op_rect_cam : Rectangle2 = WorldRectToCamRect(op_rect_world, default_base_cam);
+	pixel_rect : Rectangle2 = CamRectToPixelRect(op_rect_cam, 
+		renderer_data.base_render_group.screen_half_dim, renderer_data.current_pixels_per_square);
+
+	is_viewable : bool = 
+		RectanglesIntersect(renderer_data.base_render_group.render_viewport, pixel_rect) ||
+		ContainsRectangle(renderer_data.base_render_group.render_viewport, pixel_rect);
+	return is_viewable;	  
+}
+
 //TODO Should we use this above for clarity and avoid duplicate code?
 OpSpaceFixedToMSpace :: inline (
 	op_space : OperationSpace,

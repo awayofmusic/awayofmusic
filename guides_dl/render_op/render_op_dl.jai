@@ -66,7 +66,7 @@ ExternalPerFrame :: (sld : *SharedLibraryData) {
 	*/
 	for * op_space : sld.all_open_op_spaces if op_space.op_space_name == op_space_name {
 	//This does not render the op_space if it cannot be seen in the current mspace.
-	if IsFixedViewableOpSpace(op_space, sld.render_mspace_id) {
+	if ShouldRenderOpSpace(op_space, sld.render_mspace_id, sld.renderer_data.*, default_base_cam) {
 		rect : Rectangle2 = RectCenterDim(.{0,0},.{1.5,1.5});
 		rect_color : Vector4F = FGREEN_V;
 		//Anything rendered in an op space neds to be converted to camera space which can generally be done with OpSpaceToCameraSpace.

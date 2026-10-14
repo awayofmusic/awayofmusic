@@ -188,34 +188,6 @@ MakeRectToPixelSpace :: inline (
 	return pixel_rect;
 }
 
-CamRectToPixelRect :: inline (
-	cam_rect : Rectangle2,
-	window_center_pixel : Vector2F,
-	pixels_per_square : float)
--> Rectangle2 
-{
-	pixel_rect := cam_rect;
-	pixel_rect.min = CamSpaceToPixelSpace(pixel_rect.min, window_center_pixel, pixels_per_square);
-	pixel_rect.max = CamSpaceToPixelSpace(pixel_rect.max, window_center_pixel, pixels_per_square);
-	return pixel_rect;
-}
-
-CamSpaceToPixelSpace :: inline (
-	cam_pos : Vector2F,
-	screen_half_dim : Vector2F,
-	pixels_per_square : float) 
--> Vector2F
-{
-	pixel_pos : Vector2F = screen_half_dim + cam_pos * pixels_per_square;
-	return pixel_pos;
-}
-CamRectToPixelRect :: inline (rect : Rectangle2, g : *RenderGroup, pixels_per_square : float) -> Rectangle2 {
-	rp : Rectangle2 = ---;
-	rp.min = g.screen_half_dim + rect.min * pixels_per_square;
-	rp.max = g.screen_half_dim + rect.max * pixels_per_square;
-	return rp;
-}
-
 WorldSpaceToPixelSpace :: inline (
 	world_pos : Vector2F,
 	cam : Camera2D,

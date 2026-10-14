@@ -450,7 +450,7 @@ hovering_top_op_space : bool = false;
 //TODO We could store all the op_spaces we are hovering over in an array if we want to overlay op_spaces
 //so we can have audio played or interaction on multiple spaces at once. Visual already works if we make background transparent.
 for * op_space : perm.all_data.all_open_op_spaces {
-if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
+if IsViewableOpSpace(op_space.*, perm.all_data.render_mspace_id, renderer_data.*, default_base_cam) {
 	//Note : choose highest op_space based on render group order and re-order render_group if we
 	//end up selecting a lower op_space
 	//TODO Should we just store this rect in OperationSpace? Depends on how we move and resize it.
@@ -4361,7 +4361,7 @@ if op_space.op_close_selected && !is_moving_op_space && IsInRectangle(mouse_cam,
 } 
 //In case we close the op space, we don't want to grab invalid rendering data below.
 //We don't want to render the bar if it's chosen but not in the same mspace
-if !is_closed_op_space && IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
+if !is_closed_op_space && IsViewableOpSpace(op_space.*, perm.all_data.render_mspace_id, renderer_data.*, default_base_cam) {
 	PushRectangle(tb_data.title_bar_cam_rect, BLACK_V, op_space.render_groups.post_render_group, order = -10000);
 		PushText(tb_data.name_cam_pos, op_space.op_space_name, LIGHT_BROWN, op_space.render_groups.post_render_group, order = 10);
 	PushRectangleOutline(tb_data.title_bar_cam_rect, LIGHT_BROWN, op_space.render_groups.post_render_group, order = 10, r = 2.0);
@@ -6808,17 +6808,12 @@ if is_row_hovering {
 }
 
 for * op_space : perm.all_data.all_open_op_spaces {
-//TODO We can put this in IsFixedViewableOpSpace and since it's only viewable if the screen intersectes or contains the op space rectangle
-// if !RectanglesIntersect(renderer_data.base_render_group.render_viewport, pixel_rect) &&
-// !ContainsRectangle(renderer_data.base_render_group.render_viewport, pixel_rect) 
-if IsFixedViewableOpSpace(op_space.*, perm.all_data.render_mspace_id) {
+if IsViewableOpSpace(op_space.*, perm.all_data.render_mspace_id, renderer_data.*, default_base_cam) {
 	//Draw Window Rect
 	op_rect_world : Rectangle2 = RectCenterDim(op_space.world_offset, op_space.world_size);
-	// op_rect_cam : Rectangle2 = WorldRectToCamRect(op_rect_world, default_base_cam);
 	op_rect_cam : Rectangle2 = WorldRectToCamRect(op_rect_world, default_base_cam);
 	pixel_rect : Rectangle2 = CamRectToPixelRect(op_rect_cam, 
-		renderer_data.base_render_group.screen_half_dim, renderer_data.current_pixels_per_square);
-
+		renderer_data.base_render_group, renderer_data.current_pixels_per_square);
 
 	//TODO Should we not only update this when we move the window?
 	op_space.render_groups.pre_scissor_group.render_viewport = pixel_rect;
