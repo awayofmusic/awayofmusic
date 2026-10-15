@@ -3016,6 +3016,7 @@ Test_MusicRows :: (
 	SetupMusic(perm.all_data);
 
 	rows : [2] CreateRowData;
+	rows[0].row_system_type = RowSystemType.internal_pitch;
 	// rows[0].tuning_system_type = .EQUAL_TEMPERAMENT;
 	// rows[0].tuning_system_count = 12;
 	//Note : This is set by default
@@ -10027,6 +10028,8 @@ DONE);
 } @ITest
 
 //TEST if the op space stops rendering when its outside of the window
+//We also check that we can still update when its selected but off screen
+//we can remove those checks and just check that its off screen if thats an issue
 Test_OffScreenOpSpace :: (
 	test_name : string,
 	game_memory : *GameMemory, 

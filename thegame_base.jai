@@ -1460,6 +1460,27 @@ if frame_hover_entities.count > 0 {
 				}
 				}
 			}
+
+			//CUSTOM : Set show row hover = false and then this can be done the same way through a dynamic library
+			//and then the text can be set to anything or the hover and can do anything else as well.
+			if perm.all_data.runtime_settings.show_row_hover {
+				for section : mspace_for_input.all_section_to_row if section.row_id == row.id {
+					rsrl : RowSectionRectsLoop = BuildRSRLoop(section, row, perm.all_data.all_tuning_systems, 
+						perm.all_data.all_space_points, perm.all_data.global_rules.memory_unit_width);
+					for rs_ret : rsrl {
+						cam_rect : Rectangle2 = WorldRectToCamRect(rs_ret.world_rect, default_base_cam);
+				   	if IsInRectangle(mouse_cam, cam_rect) {
+			   			// x_float : float = WorldXToRowXFloat(world_mouse.x, row, perm.all_data.global_rules.memory_unit_width);
+			   			pos_mod : int = rs_ret.point.int_pos.x;
+							text := tprint("%,%,%", pos_mod, rs_ret.octave, rsrl.tuning_system.short_name);
+							hover_cam := mouse_cam + Vector2F.{1,0};
+							hover_rect : Rectangle2 = TextBackgroundRect2D(text, hover_cam, perm.text_editor_data, renderer_data.current_pixels_per_square);
+							PushRectangle(hover_rect, GREY_BLACKER_V, renderer_data.base_render_group, order = MAX_ROW_RENDER_ORDER);
+							PushText(hover_cam, text, GREY_DARK_V, renderer_data.base_render_group, order = MAX_ROW_RENDER_ORDER+1);
+						}
+					}
+				}
+			}
 		}
 		else if hover_entity.entity_type == EntityType.OP_LINEAR_ROW {
 			if !top_op_space_is_chosen continue;
@@ -6540,14 +6561,12 @@ PushSetShaderColor(renderer_data.base_render_group, next_order);
 // PushShaderEntries(renderer_data.post_row_group, 10000, 0, S64_MAX);
 // PushSetShaderColor(renderer_data.row_group, next_order);
 //TODO Move this up to input if we process this on input later
-is_row_hovering : bool = false;
-rhi : RowHoverInfo;
 for row, row_index : render_mspace.all_music_lane_rows {
 	defer next_order += order_increment;
 	//NOTE : We cap the order since everything > 0 will be drawn on top of rows.
 	//We still have around 2^62 possible rows with 10 values in here. Could be 2^61 if we allow 100 render order indices per row.
 	//If this is too limited then we can use the row_group and post_row_group.
-	if next_order >= -30 {
+	if next_order >= MAX_ROW_RENDER_ORDER {
 		print("Too many rows!\n");
 		next_order = -10;
 		break;
@@ -6575,172 +6594,15 @@ for row, row_index : render_mspace.all_music_lane_rows {
 	section_to_row : [] SectionToRow = 
 		ArrayFindAllVarName(render_mspace.all_section_to_row, row.id, "row_id",, temp);
 	for section : section_to_row {
-		//TODO I think this can be efficiently fetched by id since it should remain the same for default tuning_systems.
-		tuning_system, found_tuning_system :=
-			ArrayFindFirstByNameId(perm.all_data.all_tuning_systems,
-				section.tuning_system_id, "id");
-		assert(found_tuning_system);
-		// tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
-
-		//NOTE : We use this whenever we need to adjust a size to the octave. This adjusts size both to the row's
-		//given octave_height AND also to the compass interval of the particular interval. So something
-		//with compass_interval > 2.0 (like bohlen-pierce) should be large and something < 2.0 (like wendy carlos)
-		//should be smaller (each space and music point should be proportional)
-		//TODO Can store this in tuning_system so we don't have to recompute OR
-		//we could store everything as cents and do all this with cents so we don't have to deal with ratios here.
-		octave_mult : float = row.octave_height * LogRatioToLinear(tuning_system.compass_interval, 2.0);
-
-		/*TODO I think it makes sense to split up equal linear and ratio cases into separate loops.
-		The equal would not need SpacePoint only color (which we would likely want to change to differentiate)
-		between tuning systems with the same size but different sounds. We could then make optimizations for equal
-		since we don't have to store anything besides color potentially and then only store for ratio proportional.
-		Right now we store both in dspace_pos but think of the optimizations for something like a cent scale
-		or something with 100 values but equal. Would not need any storage but how would the colors work?
-		*/
-		//NOTE : We use these SpacePoints for position and color now. So if we want to switch to having
-		//separate rendering cases for RATIO and EQUAL, remember we still need color for EQUAL stored somewhere.
-		//WE COULD JUST USE TUNING_PITCH DIRECTLY
-		section_points : [] SpacePoint = ArrayFindAllVarName(perm.all_data.all_space_points, 
-			section.dspace_id, "dspace_id", temp);
-
-		//row_cam is at the base so we draw from that octave to row/octave ratio above.
-		//TODO This is not efficient for non-octave-repeating scales. However it does work.
-		//Would need to do it based on point position but then we have to loop through it since we could have ratio proportional points.
-		//TODO This would be a case for splitting up ratio proportional and not but maybe this is fine.
-		//If it's non-octave repeating we could just print 1 octave or cap at max_octave anyways
-		//TODO Should store allowed octaves in row data as well.
-		current_octave : int = cast(int) (row.row_cam.y / octave_mult);
-		//TODO This allows for rendering negative octaves. I am trying it out with mod_index for neumes below
-		//but maybe it does not make sense. I think allowing negative neume values is interesting though.
-		//I will check in the literature later to see if negative note values are ever used mathematically
-		//AND also need to make sure it works with op linear rows and geometries.
-		if row.row_cam.y < 0 current_octave -= 1;
-		// print("row.row_cam.y=%, octave_mult=%\n", row.row_cam.y, octave_mult);
-		octaves_in_row : int = round_to_int(ceil(row.row_height / octave_mult));
-		if octaves_in_row < 1 octaves_in_row = 1;
-		// start_octave : int = current_octave - octaves_in_row;
-		// if start_octave < 0 start_octave = 0;
-		end_octave : int = current_octave + octaves_in_row;
-		for octave : current_octave..end_octave {
-		// for octave : current_octave-1..end_octave+1 for point : section_points {
-			//NOTE : To make negative octaves clearer we dim them a bit
-			//TODO I think putting the octave number somewhere on the side would also be helpful eventually.
-			alpha : float = 1.0;
-			if octave < 0 alpha = 0.9;
-			for point : section_points {
-				//TODO The rect_mesh allows us to have unequal points. 
-				// If we only have equal then we can use the position instead and make the rect here.
-				//TODO We could set the x here so we can change the width if we wanted to.
-				//Leaving like that for now but maybe just zooming is enough. This way we don't have recompute all the points
-				//rect_mesh if we change the x for everything.
-				// world_rect : Rectangle2 = RectMinCenterDim(point.world_pos, 
-				/*This relative positioning is better overall. Eventually, once we have 64 bit world, we can compute everything
-				with 32-bit relative position and 64-bit row_world_base_start until we get to camera. Then convert to 32-bit
-				after computing the camera and then storing into the renderer.
-				*/
-				/*NOTE : We store the row-relative position in dspace_pos.x and the relative base size of each point 
-				in dspace_pos.y. This allows the same system for both linear and proportional points where everything is
-				stored and computed only once per system and also can be octave_height adjusted at runtime here without
-				any recomputation of the points.
-
-				TODO IMPORTANT
-				TODO Right now we are using dspace_pos directly BUT we could just compute here without SpacePoint for
-				equal sized linear space since we only need octave_height point count for equal sized linear space.
-				This would make it easier to change between tuning systems to make them look linear or ratio
-				without having to do anything extra.
-				SO THEN we would make 2 loops one for equal size and one for proportional and only fetch the points
-				for proportional size otherwise we just compute directly.
-				*/
-				world_rect : Rectangle2 = RectMinCenterDim(Vector2F.{0, point.dspace_pos.x * octave_mult}, 
-					//TODO Could allow changing the x in op_space but not in world_space eventually. So we could set that
-					//in the row or possibly as a multiple here for consistency.
-					Vector2F.{perm.all_data.global_rules.memory_unit_width, point.dspace_pos.y * octave_mult});
-				// world_rect : Rectangle2 = point.rect_mesh;
-				//TODO We could offset this from the lane here and either accumulate the row or set the row
-				//to a lane relative position and the lane to be a world position... let's see how we use it eventually.
-				//LANE OFFSET here instead of row might be better for lane dropdowns to collapse lanes down to 1 row.
-				rect_diff : Vector2F = row.row_world_base_start;
-				rect_diff.x += section.start_x * perm.all_data.global_rules.memory_unit_width;
-				rect_diff.y += octave * octave_mult;
-				rect_diff -= row.row_cam;
-				MoveRect(rect_diff, *world_rect);
-				cam_rect : Rectangle2 = WorldRectToCamRect(world_rect, default_base_cam);
-				//TODO Might be best to do this on the world_rect
-				cam_rect.max.x += (section.end_x - section.start_x - 1) * perm.all_data.global_rules.memory_unit_width;
-				PushRectangle(cam_rect, alpha*point.color, renderer_data.base_render_group, order = next_order+5);
-				PushRectangleOutline(cam_rect, GREY_BLACKER_V, renderer_data.base_render_group, r = 1.0, order = next_order+6);
-
-				//This is being scissored so we draw text afterwards so we can see the hover box outside the scissored row.
-				//The problem is that we would have to check everything in the input if we did not want this here.
-				//It could be 1 frame off though and maybe people are ok with that and we set this in runtime_settings directly
-				is_hovering := ArrayFindFirstByNameId(frame_hover_entities, 
-					EntityType.LANE_ROW_WITH_SECTIONS, "entity_type");
-		   	if is_hovering && IsInRectangle(mouse_cam, coll_cam_rect) && IsInRectangle(mouse_cam, cam_rect) {
-		   		is_row_hovering = true;
-
-		   		rhi.tuning_system = tuning_system;
-	   			rhi.x_float = 0.5 + ((world_mouse.x - rect_diff.x) / perm.all_data.global_rules.memory_unit_width);
-	   			rhi.octave = octave;
-	   			rhi.pos_mod = cast(float64) point.int_pos.x;
-	   			rhi.render_order = next_order+9;
-		   	}
-			}
+		//TODO If section to row is not on screen then we could just continue here. Just need to check the x overlap not the rectangle
+		rsrl : RowSectionRectsLoop = BuildRSRLoop(section, row, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, perm.all_data.global_rules.memory_unit_width);
+		for rs_ret : rsrl {
+			// alpha : float = ifx rs_ret.octave < 0 then 0.9 else 1.0; //was multiplying color by this but we have hover now
+			cam_rect : Rectangle2 = WorldRectToCamRect(rs_ret.world_rect, default_base_cam);
+			PushRectangle(cam_rect, rs_ret.point.color, renderer_data.base_render_group, order = next_order+5);
+			PushRectangleOutline(cam_rect, GREY_BLACKER_V, renderer_data.base_render_group, r = 1.0, order = next_order+6);
 		}	
-
-		//TODO If we split equal and proportional this would also simplify to not needing the SpacePoint fetch.
-		//TODO This can be more efficient once we sort by row_index and x_start
-		//TODO We could reuse this with MusicPtSectionRect for the op linear rows below. Just need to make sure its the same
-		for music_pt : render_mspace.all_music_pts {
-			if music_pt.row_index == row_index && 
-				MusicPtStartInRange(section.start_x, music_pt, section.end_x)
-			{
-				music_pt_int := cast(int) music_pt.music_pt_float;
-				octave, point_index := ComputeQuotientAndRemainder2(music_pt_int, section_points.count);
-				#if 1 {
-				//TODO For now we allow negative values to see how this goes. Maybe we don' later,
-				//I am not sure this fully works with rendering so if not we can just compile this out and change point to use point_index directly. 
-				//Maybe there is a cleaner way if we keep it with compute quotient and remainder with negative values
-				mod_index : int = PosMod(point_index, section_points.count);
-				if point_index < 0 octave -= 1;
-				}
-				//TODO This is overkill for equal so maybe best to split it up.
-				//TODO Don't need this for equal either so maybe we should split this with equal and proportional.
-				point : SpacePoint = section_points[mod_index];
-				next_point : SpacePoint = section_points[(mod_index+1) % section_points.count];
-				next_rect_y_dim : float = next_point.dspace_pos.y * octave_mult;
-
-				//TODO Could make this the diff between this point and the next point instead
-				remainder := cast(float) (music_pt.music_pt_float - music_pt_int);
-
-				//TODO Add the remainder here based on the distance to the next point? I think no matter what this
-				//will be awkward in some cases with ratio proportional points.
-				rect_dim := Vector2F.{perm.all_data.global_rules.memory_unit_width, point.dspace_pos.y * octave_mult};
-				point_rect : Rectangle2 = RectMinCenterDim(
-					Vector2F.{0,point.dspace_pos.x * octave_mult + remainder * 0.5 * (next_rect_y_dim + rect_dim.y)}, 
-					rect_dim);
-				world_rect : Rectangle2 = point_rect;
-				//We are replacing the x diff with some shading
-				// world_rect.min += 0.1 * rect_dim;
-				// world_rect.max -= 0.1 * rect_dim;
-				world_rect.min.y += 0.2 * rect_dim.y;
-				world_rect.max.y -= 0.2 * rect_dim.y;
-
-				//TODO World is float32 right now so this works. When world is float64, we want to only cast to 32 after converting to camera rect.
-				world_rect.max.x += cast(float) (music_pt.x_end_float - music_pt.x_start_float - 1.0) * perm.all_data.global_rules.memory_unit_width;
-
-				// world_rect : Rectangle2 = point.rect_mesh;
-				rect_diff : Vector2F = row.row_world_base_start;
-				rect_diff.x += cast(float) music_pt.x_start_float * perm.all_data.global_rules.memory_unit_width;
-				rect_diff.y += octave * octave_mult;
-				rect_diff -= row.row_cam;
-				MoveRect(rect_diff, *world_rect);
-				cam_rect : Rectangle2 = WorldRectToCamRect(world_rect, default_base_cam);
-				//TODO Need to give the rectangle a bit of a shade so we can see where the edges/corners are
-				//TODO Might be best to do this on the world_rect
-				PushRectangle(cam_rect, FGREEN_V, renderer_data.base_render_group, order = next_order+7);
-				PushRectangleOutline(cam_rect, GREY_BLACKER_V, renderer_data.base_render_group, r = 1.0, order = next_order+8);
-			}
-		}
 
 		//TODO Technically we can pull this out and draw them all in one shot along the row since the x will always be the same
 		/*TODO A GOOD IDEA HERE is to allow a more flexible drawing where we draw rectangles as a float multiple (or fraction)
@@ -6761,51 +6623,27 @@ for row, row_index : render_mspace.all_music_lane_rows {
 			MoveRect(Vector2F.{it * perm.all_data.global_rules.memory_unit_width,0}, *next_rect);
 			PushRectangleOutline(next_rect, GREY_BLACKER_V, renderer_data.base_render_group, r = 1.0, order = next_order+6);
 		}
+
+		//TODO FROM HERE Use MusicPtSectionRect here and update it so it works
+		//REMOVE THE old commented out hover stuff AND the function pointer in the dynamic lib and update startup_dl example
+		for music_pt : render_mspace.all_music_pts {
+			if music_pt.row_index == row_index && 
+				MusicPtStartInRange(section.start_x, music_pt, section.end_x)
+			{
+				world_rect : Rectangle2 = MusicPtSectionRect(music_pt, rsrl.octave_mult, cast(float) music_pt.x_start_float, 
+					perm.all_data.global_rules.memory_unit_width, row, rsrl.section_points);
+				cam_rect : Rectangle2 = WorldRectToCamRect(world_rect, default_base_cam);
+				//TODO Could give the rectangle a bit of a shade so we can see where the edges/corners are
+				PushRectangle(cam_rect, FGREEN_V, renderer_data.base_render_group, order = next_order+7);
+				PushRectangleOutline(cam_rect, GREY_BLACKER_V, renderer_data.base_render_group, r = 1.0, order = next_order+8);
+			}
+		}	
 	}
 }
 //TODO We would have to reset the scissor to full viewport if we use base_render_group instead of a separate row_group like we are now.
 //TODO Should have post_scissor_order variable somewhere for everything that is not in scissor to draw on top
 // PushSetScissor(renderer_data.base_render_group.render_viewport, renderer_data.all_render_groups[0], order = next_order);
 PushSetScissor(renderer_data.base_render_group.render_viewport, renderer_data.base_render_group, order = next_order);
-// PushSetScissor(renderer_data.base_render_group.render_viewport, renderer_data.row_group, order = next_order);
-perm.all_data.shared_lib_data.is_row_hovering = false;
-if is_row_hovering {
-	//This makes this a frame off so we can just bring it up to the input above eventually if that's a problem
-	perm.all_data.shared_lib_data.is_row_hovering = true;
-	perm.all_data.shared_lib_data.row_hover_info = rhi;
-	if perm.all_data.runtime_settings.show_row_hover {
-		// perm.all_data.shared_lib_data.my_per_dl_data = dl.my_per_dl_data;
-		//TODO I really like this way for more complicated triggers. In general we can just write anything in the
-		//dl so we could copy paste the check here and do the check ourself, but this is simpler / more efficient
-		//for more complicated cases like row hovering here for example. BUT it's also more limited
-		//ACTUALLY BEST TO REMOVE THIS NOW we have an off by one frame row hover above and I think that's ok for now.
-		//We can pull out or duplicate the row hovering above if we are on a row and just set the date
-		if perm.all_data.runtime_settings.use_row_hover_string_func && perm.all_data.runtime_settings.row_hover_string_func != null {
-			//If we do this anywhere else then we update there as well.
-			//THIS IS AN EXPERIMENT. In general we shoudl just use ExternalPerFrame but because this data is more easily
-			//accessible here we are trying this out. We could just pass in row hover info through runtime settings directly
-			//and then have it be 1 frame off OR do duplicate the input code and make it into a function.
-			//This is fine for now if we are just customizing the hovering
-			AllDataToSharedLibraryData(*perm.all_data.shared_lib_data, null, renderer_data, audio_data, game_input, 
-				*frame_hover_entities, perm);
-			perm.all_data.runtime_settings.row_hover_string_func(rhi, *perm.all_data.shared_lib_data);
-		} else {
-			//TODO We could have a setting here to show the frequency as well or other info but customizable on top is the way to go
-			// music_pt_pos := cast(float64) (point.int_pos.x + octave*tuning_system.music_pt_count);
-			// frequency : float = MusicPtToFrequency(music_pt_pos, tuning_system, tuning_pitches);
-			// text := tprint("%,%,%", music_pt_pos, tuning_system.short_name, formatFloat(frequency,trailing_width=3,zero_removal=.NO));
-			text := tprint("%,%,%", rhi.pos_mod, rhi.octave, rhi.tuning_system.short_name);
-			hover_cam := mouse_cam + Vector2F.{1,0};
-			//TODO PULL THIS OUT TO HAVE TextBackgroundRect2D be reusable for all hovering text
-			//and then reuse in startup_dl
-			rect_dim := Vector2F.{text.count*perm.text_editor_data.code_font_1_char_width_world,
-				1.1*perm.text_editor_data.char_height / renderer_data.current_pixels_per_square};
-			hover_rect : Rectangle2 = RectMinDim(hover_cam - Vector2F.{0,0.65*rect_dim.y}, rect_dim);
-			PushRectangle(hover_rect, GREY_BLACKER_V, renderer_data.base_render_group, order = next_order+9);
-			PushText(hover_cam, text, GREY_DARK_V, renderer_data.base_render_group, order = next_order+10);
-		}
-	}
-}
 
 for * op_space : perm.all_data.all_open_op_spaces {
 if IsViewableOpSpace(op_space.*, perm.all_data.render_mspace_id, renderer_data.*, default_base_cam) {
@@ -7369,64 +7207,6 @@ if IsViewableOpSpace(op_space.*, perm.all_data.render_mspace_id, renderer_data.*
 
 					TODO We can pull this function out if we generate music_pts for op linear beforehand.
 					*/
-					MusicPtSectionRect :: inline (
-						music_pt : MusicPoint,
-						octave_mult : float,
-						x_offset : float,
-						//TODO Pass in row_size here so we can cut off music_pts if they're too long
-						row : MusicLaneRow,
-						section_points : [] SpacePoint) 
-					-> Rectangle2 
-					{
-						music_pt_int := cast(int) music_pt.music_pt_float;
-						octave, point_index := ComputeQuotientAndRemainder2(music_pt_int, section_points.count);
-						#if 1 {
-						//TODO For now we allow negative values to see how this goes. Maybe we don' later,
-						//I am not sure this fully works with rendering so if not we can just compile this out and change point to use point_index directly. 
-						//Maybe there is a cleaner way if we keep it with compute quotient and remainder with negative values
-						mod_index : int = PosMod(point_index, section_points.count);
-						if point_index < 0 octave -= 1;
-						}
-
-						//TODO This is overkill for equal so maybe best to split it up.
-						//TODO Don't need this for equal either so maybe we should split this with equal and proportional.
-						point : SpacePoint = section_points[mod_index];
-						next_point : SpacePoint = section_points[(mod_index+1) % section_points.count];
-						next_rect_y_dim : float = next_point.dspace_pos.y * octave_mult;
-
-						//TODO Could make this the diff between this point and the next point instead
-						remainder := cast(float) (music_pt.music_pt_float - music_pt_int);
-
-						//TODO Add the remainder here based on the distance to the next point? I think no matter what this
-						//will be awkward in some cases with ratio proportional points.
-						rect_dim := Vector2F.{row.x_point_width, point.dspace_pos.y * octave_mult};
-						point_rect : Rectangle2 = RectMinCenterDim(
-							Vector2F.{0,point.dspace_pos.x * octave_mult + remainder * 0.5 * (next_rect_y_dim + rect_dim.y)}, 
-								rect_dim);
-						world_rect : Rectangle2 = point_rect;
-						//We are replacing the x diff with some shading
-						// world_rect.min += 0.1 * rect_dim;
-						// world_rect.max -= 0.1 * rect_dim;
-						world_rect.min.y += 0.2 * rect_dim.y;
-						world_rect.max.y -= 0.2 * rect_dim.y;
-
-						music_pt_end : float64 = music_pt.x_end_float;
-						if music_pt.x_end_float >= cast(float64) row.row_size {
-							music_pt_end = cast(float64) row.row_size;
-						}
-						//TODO World is float32 right now so this works. When world is float64, we want to only cast to 32 after converting to camera rect.
-						world_rect.max.x += cast(float) (music_pt_end - music_pt.x_start_float - 1.0) * row.x_point_width;
-
-						rect_diff : Vector2F = row.row_world_base_start;
-						rect_diff.x += x_offset * row.x_point_width;
-						// rect_diff.x += cast(float) music_pt.x_start_float * row.x_point_width;
-						// rect_diff.x += cast(float) mem_to_dspace.x_grid_pos * row.x_point_width;
-						rect_diff.y += octave * octave_mult;
-						rect_diff -= row.row_cam;
-						MoveRect(rect_diff, *world_rect);
-
-						return world_rect;
-					}
 					if row.op_row_type == OpRowType.COPY_MUSIC_ROW {
 						//TODO Could grab the sections and do this afterwards in 1 shot. Also in music rows.
 						for music_pt : perm.all_data.all_mspace_data[0].all_music_pts {
@@ -7435,7 +7215,8 @@ if IsViewableOpSpace(op_space.*, perm.all_data.render_mspace_id, renderer_data.*
 								MusicPtStartInRange(section.start_x, music_pt, section.end_x)
 							{
 								//TODO Can bring MusicPtSectionRect code back in here if needed later if it's different or something.
-								world_rect := MusicPtSectionRect(music_pt, octave_mult, cast(float) music_pt.x_start_float, row, section_points);
+								world_rect := MusicPtSectionRect(music_pt, octave_mult, cast(float) music_pt.x_start_float, 
+									row.x_point_width, row, section_points);
 								cam_rect : Rectangle2 = OpRectToCamRect(world_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
 								//TODO The order here can be > 0 actually
 								PushRectangle(cam_rect, FGREEN_V, op_space.render_groups.scissor_group, order = op_linear_order+7);
@@ -7453,7 +7234,8 @@ if IsViewableOpSpace(op_space.*, perm.all_data.render_mspace_id, renderer_data.*
 									perm.all_data.all_mspace_data[0].all_music_pts, MusicPoint,,temp);
 								for music_pt : mem_music_pts {
 									//TODO Can bring MusicPtSectionRect code back in here if needed later if it's different or something.
-									world_rect := MusicPtSectionRect(music_pt, octave_mult, cast(float) mem_to_dspace.x_grid_pos, row, section_points);
+									world_rect := MusicPtSectionRect(music_pt, octave_mult, cast(float) mem_to_dspace.x_grid_pos, 
+										row.x_point_width, row, section_points);
 									cam_rect : Rectangle2 = OpRectToCamRect(world_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
 									//TODO The order here can be > 0 actually
 									PushRectangle(cam_rect, FGREEN_V, op_space.render_groups.scissor_group, order = op_linear_order+7);
@@ -7500,7 +7282,7 @@ if IsViewableOpSpace(op_space.*, perm.all_data.render_mspace_id, renderer_data.*
 								for music_pt : music_pts_in_range {
 									//TODO Can bring MusicPtSectionRect code back in here if needed later if it's different or something.
 									x_offset := cast(float) (mem_range.x_dspace_start + music_pt.x_start_float - mem_range.x_start);
-									world_rect := MusicPtSectionRect(music_pt, octave_mult, x_offset, row, section_points);
+									world_rect := MusicPtSectionRect(music_pt, octave_mult, x_offset, row.x_point_width, row, section_points);
 									cam_rect : Rectangle2 = OpRectToCamRect(world_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
 									//TODO The order here can be > 0 actually
 									PushRectangle(cam_rect, FGREEN_V, op_space.render_groups.scissor_group, order = op_linear_order+7);

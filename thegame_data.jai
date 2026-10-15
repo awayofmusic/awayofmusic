@@ -5853,23 +5853,6 @@ MakeMusicLane :: inline (
 }
 
 
-GetRowXStart :: inline (row : MusicLaneRow, memory_unit_width : float) -> float {
-	x_start : float = row.row_world_base_start.x - 0.5*memory_unit_width;
-	return x_start;
-}
-GetPlayPosWorldX :: inline (
-	row : MusicLaneRow,
-	x_float : float64,
-	memory_unit_width : float) 
--> float 
-{
-	play_pos_x : float = GetRowXStart(row, memory_unit_width);
-	play_pos_x += cast(float) (x_float * memory_unit_width);
-	return play_pos_x;
-}
-
-
-
 RowViewType :: enum {
 	ROW_VIEW_LINEAR;
 	//TODO This should only allow octave view

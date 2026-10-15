@@ -86,9 +86,6 @@ SharedLibraryData :: struct {
 	all_chosen_entities : [] ChosenEntity;
 	frame_hover_entities : [] HoverEntity;
 
-	is_row_hovering : bool;
-	row_hover_info : RowHoverInfo;
-
 	//TODO How should we pass this in? Or should we pass it in at all?
 	//I guess we need to pass it for each function that creates things as we add them.
 	//Is there a better way of generating ids?
@@ -784,25 +781,9 @@ RuntimeSettingsData :: struct {
 	//TODO Could also add default debug watch rows by name for example but not parsed so only from dl (or an array of strings for now)
 
 	show_row_hover : bool = true;
-	//TODO I think this should be removed now in favor of just running code in ExternalPerFrame
-	//I will leave here for now just as a reminder and update afterwards.
-	use_row_hover_string_func : bool = false;
-	row_hover_string_func : RowHoverStringFuncType;
 
 	//TODO Leaving here as a reminder in case used later for tests or educational purposes for some reason 
 	// update_music_while_running : bool = true;
-}
-RowHoverStringFuncType :: #type (rhi : RowHoverInfo, sld : *SharedLibraryData);
-//TODO Could use a default row hover instead for consistency or just hardcode it.
-// DefaultRowHover :: (pos : float64, octave : int, tuning_system : TuningSystem, tuning_pitches : [] TuningPitch) -> string {
-
-// }
-RowHoverInfo :: struct {
-	tuning_system : TuningSystem;
-	pos_mod : float64;
-	octave : int;
-	x_float : float64;
-	render_order : int;
 }
 
 //TODO We don't use most of the things in here anymore so we
@@ -2901,6 +2882,249 @@ AsmRowMidiData :: struct {
 	midi_velocity : int = 100;
 	midi_control_change : int;	
 } @LibraryAsmGen
+
+
+MAX_ROW_RENDER_ORDER :: -1000;
+RowSectionRectsLoop :: struct {
+	section : SectionToRow;
+	row : MusicLaneRow;
+	octave_mult : float;
+	tuning_system : TuningSystem;
+	section_points : [] SpacePoint;
+	x_unit_width : float;
+}
+BuildRSRLoop :: inline (
+	section : SectionToRow,
+	row : MusicLaneRow,
+	all_tuning_systems : [] TuningSystem,
+	all_space_points : [] SpacePoint,
+	memory_unit_width : float) 
+-> RowSectionRectsLoop
+{
+	rsrl : RowSectionRectsLoop = ---;
+	rsrl.section = section;
+	rsrl.row = row;
+	rsrl.x_unit_width = memory_unit_width;
+
+	//TODO I think this can be efficiently fetched by id since it should remain the same for default tuning_systems.
+	tuning_system, found_tuning_system := ArrayFindFirstByNameId(all_tuning_systems,
+		section.tuning_system_id, "id");
+	assert(found_tuning_system);
+	rsrl.tuning_system = tuning_system;
+	// tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
+
+	//NOTE : We use this whenever we need to adjust a size to the octave. This adjusts size both to the row's
+	//given octave_height AND also to the compass interval of the particular interval. So something
+	//with compass_interval > 2.0 (like bohlen-pierce) should be large and something < 2.0 (like wendy carlos)
+	//should be smaller (each space and music point should be proportional)
+	//TODO Can store this in tuning_system so we don't have to recompute OR
+	//we could store everything as cents and do all this with cents so we don't have to deal with ratios here.
+	//TODO Can pull this out as a function if needed
+	octave_mult : float = row.octave_height * LogRatioToLinear(tuning_system.compass_interval, 2.0);
+	rsrl.octave_mult = octave_mult;
+
+	/*TODO I think it makes sense to split up equal linear and ratio cases into separate loops.
+	The equal would not need SpacePoint only color (which we would likely want to change to differentiate)
+	between tuning systems with the same size but different sounds. We could then make optimizations for equal
+	since we don't have to store anything besides color potentially and then only store for ratio proportional.
+	Right now we store both in dspace_pos but think of the optimizations for something like a cent scale
+	or something with 100 values but equal. Would not need any storage but how would the colors work?
+	*/
+	//NOTE : We use these SpacePoints for position and color now. So if we want to switch to having
+	//separate rendering cases for RATIO and EQUAL, remember we still need color for EQUAL stored somewhere.
+	//WE COULD JUST USE TUNING_PITCH DIRECTLY
+	rsrl.section_points = ArrayFindAllVarName(all_space_points,
+		section.dspace_id, "dspace_id", temp);
+	return rsrl;
+}
+RowSectionRectsReturn :: struct {
+	world_rect : Rectangle2;
+	point : SpacePoint;
+	octave : int;
+}
+for_expansion :: (rsrl : RowSectionRectsLoop, body : Code, flags : For_Flags) #expand {
+	//row_cam is at the base so we draw from that octave to row/octave ratio above.
+	//TODO This is not efficient for non-octave-repeating scales. However it does work.
+	//Would need to do it based on point position but then we have to loop through it since we could have ratio proportional points.
+	//TODO This would be a case for splitting up ratio proportional and not but maybe this is fine.
+	//If it's non-octave repeating we could just print 1 octave or cap at max_octave anyways
+	//TODO Should store allowed octaves in row data as well.
+	current_octave : int = cast(int) (rsrl.row.row_cam.y / rsrl.octave_mult);
+	//TODO This allows for rendering negative octaves. I am trying it out with mod_index for neumes below
+	//but maybe it does not make sense. I think allowing negative neume values is interesting though.
+	//I will check in the literature later to see if negative note values are ever used mathematically
+	//AND also need to make sure it works with op linear rows and geometries.
+	if rsrl.row.row_cam.y < 0 current_octave -= 1;
+	// print("rsrl.row.row_cam.y=%, rsrl.octave_mult=%\n", rsrl.row.row_cam.y, rsrl.octave_mult);
+	octaves_in_row : int = round_to_int(ceil(rsrl.row.row_height / rsrl.octave_mult));
+	if octaves_in_row < 1 octaves_in_row = 1;
+	// start_octave : int = current_octave - octaves_in_row;
+	// if start_octave < 0 start_octave = 0;
+	end_octave : int = current_octave + octaves_in_row;
+	total_index : int = 0;
+	for octave : current_octave..end_octave {
+	// for octave : current_octave-1..end_octave+1 for point : section_points {
+		//NOTE : To make negative octaves clearer we dim them a bit
+		//TODO I think putting the octave number somewhere on the side would also be helpful eventually.
+		alpha : float = 1.0;
+		if octave < 0 alpha = 0.9;
+		for point : rsrl.section_points {
+			//TODO The rect_mesh allows us to have unequal points. 
+			// If we only have equal then we can use the position instead and make the rect here.
+			//TODO We could set the x here so we can change the width if we wanted to.
+			//Leaving like that for now but maybe just zooming is enough. This way we don't have recompute all the points
+			//rect_mesh if we change the x for everything.
+			// world_rect : Rectangle2 = RectMinCenterDim(point.world_pos, 
+			/*This relative positioning is better overall. Eventually, once we have 64 bit world, we can compute everything
+			with 32-bit relative position and 64-bit row_world_base_start until we get to camera. Then convert to 32-bit
+			after computing the camera and then storing into the renderer.
+			*/
+			/*NOTE : We store the row-relative position in dspace_pos.x and the relative base size of each point 
+			in dspace_pos.y. This allows the same system for both linear and proportional points where everything is
+			stored and computed only once per system and also can be octave_height adjusted at runtime here without
+			any recomputation of the points.
+
+			TODO IMPORTANT
+			TODO Right now we are using dspace_pos directly BUT we could just compute here without SpacePoint for
+			equal sized linear space since we only need octave_height point count for equal sized linear space.
+			This would make it easier to change between tuning systems to make them look linear or ratio
+			without having to do anything extra.
+			SO THEN we would make 2 loops one for equal size and one for proportional and only fetch the points
+			for proportional size otherwise we just compute directly.
+			*/
+			world_rect : Rectangle2 = RectMinCenterDim(Vector2F.{0, point.dspace_pos.x * rsrl.octave_mult}, 
+				//TODO Could allow changing the x in op_space but not in world_space eventually. So we could set that
+				//in the row or possibly as a multiple here for consistency.
+				Vector2F.{rsrl.x_unit_width, point.dspace_pos.y * rsrl.octave_mult});
+
+			//REMINDER : -1.0 here because the size is already 1.0
+			world_rect.max.x += (rsrl.section.end_x - rsrl.section.start_x - 1) * rsrl.x_unit_width;
+			// world_rect : Rectangle2 = point.rect_mesh;
+			//TODO We could offset this from the lane here and either accumulate the row or set the row
+			//to a lane relative position and the lane to be a world position... let's see how we use it eventually.
+			//LANE OFFSET here instead of row might be better for lane dropdowns to collapse lanes down to 1 row.
+			rect_diff : Vector2F = rsrl.row.row_world_base_start;
+			rect_diff.x += rsrl.section.start_x * rsrl.x_unit_width;
+			rect_diff.y += octave * rsrl.octave_mult;
+			rect_diff -= rsrl.row.row_cam;
+			MoveRect(rect_diff, *world_rect);
+
+			rs_ret : RowSectionRectsReturn = ---;
+			rs_ret.world_rect = world_rect;
+			rs_ret.point = point;
+			rs_ret.octave = octave;
+
+			`it := rs_ret;
+			`it_index := total_index;
+
+			#insert body;
+
+			total_index += 1;
+		}
+	}	
+}
+TextBackgroundRect2D :: inline (
+	text : string,
+	pos : Vector2F,
+	ted : TextEditorData,
+	pixels_per_square : float) 
+-> Rectangle2
+{
+	rect_dim := Vector2F.{text.count*ted.code_font_1_char_width_world,
+		1.1*ted.char_height / pixels_per_square};
+	rect : Rectangle2 = RectMinDim(pos - Vector2F.{0,0.65*rect_dim.y}, rect_dim);
+	return rect;
+}
+WorldXToRowXFloat :: inline (
+	world_x : float,
+	row : MusicLaneRow,
+	memory_unit_width : float)
+-> float
+{
+	row_x_start : float = GetRowXStart(row, memory_unit_width);
+	x_float : float = (world_x - row_x_start) / memory_unit_width;
+	return x_float;
+}
+GetRowXStart :: inline (row : MusicLaneRow, memory_unit_width : float) -> float {
+	//NOTE that row_world_base_start.x is always 0 anyways
+	x_start : float = row.row_world_base_start.x - 0.5*memory_unit_width;
+	return x_start;
+}
+GetPlayPosWorldX :: inline (
+	row : MusicLaneRow,
+	x_float : float64,
+	memory_unit_width : float) 
+-> float 
+{
+	play_pos_x : float = GetRowXStart(row, memory_unit_width);
+	play_pos_x += cast(float) (x_float * memory_unit_width);
+	return play_pos_x;
+}
+
+//TODO If we split equal and proportional this would also simplify to not needing the SpacePoint fetch.
+//TODO This can be more efficient once we sort by row_index and x_start
+//TODO We could reuse this with MusicPtSectionRect for the op linear rows below. Just need to make sure its the same
+MusicPtSectionRect :: inline (
+	music_pt : MusicPoint,
+	octave_mult : float,
+	x_offset : float,
+	x_point_width : float,
+	//TODO Pass in row_size here so we can cut off music_pts if they're too long
+	row : MusicLaneRow,
+	section_points : [] SpacePoint) 
+-> Rectangle2 
+{
+	music_pt_int := cast(int) music_pt.music_pt_float;
+	octave, point_index := ComputeQuotientAndRemainder2(music_pt_int, section_points.count);
+	#if 1 {
+	//TODO For now we allow negative values to see how this goes. Maybe we don' later,
+	//I am not sure this fully works with rendering so if not we can just compile this out and change point to use point_index directly. 
+	//Maybe there is a cleaner way if we keep it with compute quotient and remainder with negative values
+	mod_index : int = PosMod(point_index, section_points.count);
+	if point_index < 0 octave -= 1;
+	}
+	//TODO This is overkill for equal so maybe best to split it up.
+	//TODO Don't need this for equal either so maybe we should split this with equal and proportional.
+	point : SpacePoint = section_points[mod_index];
+	next_point : SpacePoint = section_points[(mod_index+1) % section_points.count];
+	next_rect_y_dim : float = next_point.dspace_pos.y * octave_mult;
+
+	//TODO Could make this the diff between this point and the next point instead
+	remainder := cast(float) (music_pt.music_pt_float - music_pt_int);
+
+	//TODO Add the remainder here based on the distance to the next point? I think no matter what this
+	//will be awkward in some cases with ratio proportional points.
+	rect_dim := Vector2F.{x_point_width, point.dspace_pos.y * octave_mult};
+	point_rect : Rectangle2 = RectMinCenterDim(
+		Vector2F.{0,point.dspace_pos.x * octave_mult + remainder * 0.5 * (next_rect_y_dim + rect_dim.y)}, 
+			rect_dim);
+	world_rect : Rectangle2 = point_rect;
+	//We are replacing the x diff with some shading
+	// world_rect.min += 0.1 * rect_dim;
+	// world_rect.max -= 0.1 * rect_dim;
+	world_rect.min.y += 0.2 * rect_dim.y;
+	world_rect.max.y -= 0.2 * rect_dim.y;
+
+	//This is not necessary because of scissor
+	// music_pt_end : float64 = music_pt.x_end_float;
+	// if music_pt.x_end_float >= cast(float64) row.row_size {
+	// 	music_pt_end = cast(float64) row.row_size;
+	// }
+	//TODO World is float32 right now so this works. When world is float64, we want to only cast to 32 after converting to camera rect.
+	//REMINDER : -1.0 here because the size is already 1.0
+	world_rect.max.x += cast(float) (music_pt.x_end_float - music_pt.x_start_float - 1.0) * x_point_width;
+
+	rect_diff : Vector2F = row.row_world_base_start;
+	rect_diff.x += x_offset * x_point_width;
+	// rect_diff.x += cast(float) music_pt.x_start_float * x_point_width;
+	// rect_diff.x += cast(float) mem_to_dspace.x_grid_pos * x_point_width;
+	rect_diff.y += octave * octave_mult;
+	rect_diff -= row.row_cam;
+	MoveRect(rect_diff, *world_rect);
+
+	return world_rect;
+}
+
 
 /*End of row data
 */
