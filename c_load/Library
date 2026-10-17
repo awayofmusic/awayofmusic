@@ -21,23 +21,23 @@ CreateTuningType :: enum {
 	LINEAR_FROM_START;
 	LINEAR_TO_NEXT;
 }
-AsmDeleteSimpleSynthData :: struct {
-	synth_id : int;
-}
 AsmClearMSpaceData :: struct {
 	mspace_id : int;
 }
 AsmDeleteMSpaceData :: struct {
 	mspace_id : int;
 }
-AsmClearOpData :: struct {
-	op_space_id : int;
-	clear_not_filter_3D : bool;
+AsmDeleteSimpleSynthData :: struct {
+	synth_id : int;
 }
 AsmRowMidiData :: struct {
 	midi_channel : int;
 	midi_velocity : int;
 	midi_control_change : int;
+}
+AsmClearOpData :: struct {
+	op_space_id : int;
+	clear_not_filter_3D : bool;
 }
 AsmGetTuningSystemData :: struct {
 	ret_tuning_system_id : int;
@@ -59,10 +59,6 @@ AsmGetOrCreateSimpleSynthData :: struct {
 	ret_synth_id : int;
 	synth_name : string;
 }
-CustomAudioType :: enum {
-	TUNING_SYSTEM;
-	PITCH_SET_AS_FREQUENCY;
-}
 DrawVLType :: enum {
 	NONE;
 	VL_LINE;
@@ -73,8 +69,25 @@ S3CamStartType :: enum {
 	USER_SET;
 	POINT_FOCUS;
 }
+SpiralType :: enum {
+	PROPER;
+	CONCENTRIC_CIRCLE;
+	BOOK;
+}
+AsmMapSpiralType :: enum {
+	CHORD;
+	INDEX;
+}
+AsmOpSpaceType :: enum {
+	space_2d;
+	space_3d;
+}
 AsmShapeType :: enum {
 	RECTANGLE;
+}
+CustomAudioType :: enum {
+	TUNING_SYSTEM;
+	PITCH_SET_AS_FREQUENCY;
 }
 ChordSpaceFilterType :: enum {
 	DEFAULT;
@@ -98,18 +111,13 @@ ChordSpaceFilterAggregate :: enum {
 	INTERSECTION;
 	UNION;
 }
-SpiralType :: enum {
-	PROPER;
-	CONCENTRIC_CIRCLE;
-	BOOK;
+OpRowType :: enum {
+	MULTI_SECTION;
+	COPY_MUSIC_ROW;
 }
-AsmMapSpiralType :: enum {
-	CHORD;
-	INDEX;
-}
-AsmOpSpaceType :: enum {
-	space_2d;
-	space_3d;
+LinearPitchSpaceView :: enum {
+	RATIO_PROPORTIONAL;
+	FORCE_EQUAL;
 }
 RowSystemType :: enum {
 	none;
@@ -118,10 +126,6 @@ RowSystemType :: enum {
 	midi_control_change;
 	midi_velocity;
 	midi_pitch;
-}
-LinearPitchSpaceView :: enum {
-	RATIO_PROPORTIONAL;
-	FORCE_EQUAL;
 }
 SimpleSynthMessageType :: enum {
 	VOLUME;
@@ -257,6 +261,7 @@ AsmCSFilter :: struct {
 	filter_type : ChordSpaceFilterType;
 }
 AsmCreateRowData :: struct {
+	ret_row_id : int;
 	mspace_id : int;
 	octave_height : float64;
 	row_height : float64;
@@ -280,6 +285,20 @@ AsmGeom2D :: struct {
 	use_set_zero_freq : bool;
 	pitch_zero_freq : float64;
 }
+AsmCreateOpRowData :: struct {
+	row_id : int;
+	octave_height : float64;
+	row_height : float64;
+	row_section_data : [] RowSectionData;
+	muted_row : bool;
+	op_space_id : int;
+	x_point_width : float64;
+	op_pos : Vector2;
+	op_row_type : OpRowType;
+	op_ref_row_id : int;
+	op_ref_mspace_id : int;
+	op_ref_start_x : int;
+}
 AsmText2D :: struct {
 	op_space_id : int;
 	text : string;
@@ -301,6 +320,18 @@ AsmShapeData :: struct {
 	type : AsmShapeType;
 	rect_pos : Vector2;
 	rect_dim : Vector2;
+}
+AsmShape3D :: struct {
+	op_space_id : int;
+	group_id : int;
+	rel_pos : Vector3;
+	fun_region : [] float64;
+	pitch_set : [] float64;
+	shape_text : string;
+	draw_wire_mesh : bool;
+	not_selectable : bool;
+	color : Vector4;
+	scale_value : float64;
 }
 AsmChordS2Data :: struct {
 	ret_dspace_id : int;
@@ -361,16 +392,4 @@ AsmCreateSpiral :: struct {
 	set_spiral_base : bool;
 	base_chord : [] float64;
 	base_index : int;
-}
-AsmShape3D :: struct {
-	op_space_id : int;
-	group_id : int;
-	rel_pos : Vector3;
-	fun_region : [] float64;
-	pitch_set : [] float64;
-	shape_text : string;
-	draw_wire_mesh : bool;
-	not_selectable : bool;
-	color : Vector4;
-	scale_value : float64;
 }

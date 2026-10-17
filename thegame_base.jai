@@ -726,6 +726,10 @@ if hovering_top_op_space && !found_moving_op_space {
 	}
 }
 
+//Use this to store all row section rects so we don't take a bunch of space every frame
+row_section_rects_array : [..] RowSectionRectsReturn;
+row_section_rects_array.allocator = temp;
+
 //TODO FROM HERE We want chosing and hovering to be both in here and check each chosen thing separately
 //and then update above to simplify to just check hover and chosen with colliders
 if frame_hover_entities.count > 0 {
@@ -1252,6 +1256,7 @@ if frame_hover_entities.count > 0 {
 			}
 		}
 		else if hover_entity.entity_type == EntityType.OP_CIRCLE_DSPACE {
+			//Maybe we can just check for top_op_space at the bottom for sound
 			if top_op_space_is_chosen {
 				op_spec_data, found_op_spec_data := ArrayFindFirstByNameId(perm.all_data.all_op_space_spec_data,
 					top_op_space.id, "op_space_id");
@@ -1464,40 +1469,218 @@ if frame_hover_entities.count > 0 {
 			//CUSTOM : Set show row hover = false and then this can be done the same way through a dynamic library
 			//and then the text can be set to anything or the hover and can do anything else as well.
 			if perm.all_data.runtime_settings.show_row_hover {
-				for section : mspace_for_input.all_section_to_row if section.row_id == row.id {
-					rsrl : RowSectionRectsLoop = BuildRSRLoop(section, row, perm.all_data.all_tuning_systems, 
-						perm.all_data.all_space_points, perm.all_data.global_rules.memory_unit_width);
-					for rs_ret : rsrl {
-						cam_rect : Rectangle2 = WorldRectToCamRect(rs_ret.world_rect, default_base_cam);
-				   	if IsInRectangle(mouse_cam, cam_rect) {
-			   			// x_float : float = WorldXToRowXFloat(world_mouse.x, row, perm.all_data.global_rules.memory_unit_width);
-			   			pos_mod : int = rs_ret.point.int_pos.x;
-							text := tprint("%,%,%", pos_mod, rs_ret.octave, rsrl.tuning_system.short_name);
-							hover_cam := mouse_cam + Vector2F.{1,0};
-							hover_rect : Rectangle2 = TextBackgroundRect2D(text, hover_cam, perm.text_editor_data, renderer_data.current_pixels_per_square);
-							PushRectangle(hover_rect, GREY_BLACKER_V, renderer_data.base_render_group, order = MAX_ROW_RENDER_ORDER);
-							PushText(hover_cam, text, GREY_DARK_V, renderer_data.base_render_group, order = MAX_ROW_RENDER_ORDER+1);
+   			mouse_x_float : float = WorldXToRowXFloat(world_mouse.x, row, perm.all_data.global_rules.memory_unit_width);
+				for section : mspace_for_input.all_section_to_row {
+					if section.row_id == row.id && 
+						InRange(cast(float64) section.start_x, mouse_x_float, cast(float64) section.end_x) 
+					{
+						rsrl : RowSectionRectsData = BuildRSRData(section, row, perm.all_data.all_tuning_systems,
+							perm.all_data.all_space_points, perm.all_data.global_rules.memory_unit_width);
+						ComputeRowSectionRects(rsrl, row, *row_section_rects_array);
+						// for rs_ret : rsrl {
+						for rs_ret : row_section_rects_array {
+							cam_rect : Rectangle2 = WorldRectToCamRect(rs_ret.world_rect, default_base_cam);
+					   	if IsInRectangle(mouse_cam, cam_rect) {
+				   			pos_mod : int = rs_ret.point.int_pos.x;
+								text := tprint("%,%,%", pos_mod, rs_ret.octave, rsrl.tuning_system.short_name);
+								hover_cam := mouse_cam + Vector2F.{1,0};
+								hover_rect : Rectangle2 = TextBackgroundRect2D(text, hover_cam, perm.text_editor_data, renderer_data.current_pixels_per_square);
+								PushRectangle(hover_rect, GREY_BLACKER_V, renderer_data.base_render_group, order = MAX_ROW_RENDER_ORDER);
+								PushText(hover_cam, text, GREY_DARK_V, renderer_data.base_render_group, order = MAX_ROW_RENDER_ORDER+1);
+								break section;
+							}
 						}
 					}
 				}
 			}
+
+			//TODO We can put sound output here for synth and midi
 		}
 		else if hover_entity.entity_type == EntityType.OP_LINEAR_ROW {
-			if !top_op_space_is_chosen continue;
+			//We could allow this to hover even if this is not chosen if that helps maybe
+			//Maybe only need to check top op space for sound in general
+			// if !top_op_space_is_chosen continue;
 
-			row, found_row := ArrayFindFirstByNameId(perm.all_data.all_op_linear_rows,
+			op_spec_data, found_op_spec_data := ArrayFindFirstByNameId(perm.all_data.all_op_space_spec_data,
+				top_op_space.id, "op_space_id");
+			assert(found_op_spec_data);
+
+			op_row, found_op_row := ArrayFindFirstByNameId(op_spec_data.all_op_linear_rows,
 				hover_entity.id, "id");
-			assert(found_row);
+			assert(found_op_row);
+
+			//We can't get hover but maybe we put an mspace we did not create yet...
+			mspace_data, found_mspace := ArrayFindFirstByNameId(perm.all_data.all_mspace_data, 
+				op_row.op_ref_mspace_id, "mspace_id");
+			if !found_mspace {
+				print("Op linear op_row % has op_ref_mspace_id=% which does not exist.\n", op_row.id, op_row.op_ref_mspace_id);
+				continue;
+			}
 
 			// if game_input.mouse_wheel != 0 {
 			if IsMouseWheelWithoutModifiers(game_input) {
-				//TODO Can adjust this rate of movement by a multiple if needed. Can store it in the row if needed.
+				//TODO Can adjust this rate of movement by a multiple if needed. Can store it in the op_row if needed.
 				//Could make it adjustable by user and then also default to smallest rect height.
 				rate : float = 0.5;
-				row.row_cam.y += rate * game_input.mouse_wheel;
+				op_row.row_cam.y += rate * game_input.mouse_wheel;
 				//TODO How should we max the top out? Should it be based on frequencies or just allow the user to place it?
-				row.row_cam.y = Clamp(0.0, row.row_cam.y, 9 * row.octave_height);
+				// op_row.row_cam.y = Clamp(0.0, op_row.row_cam.y, 9 * op_row.octave_height);
+				op_row.row_cam.y = Clamp(-9 * op_row.octave_height, op_row.row_cam.y, 9 * op_row.octave_height);
 			}	
+
+			op_space, found_op_space :=
+				ArrayFindFirstByNameId(perm.all_data.all_open_op_spaces, op_spec_data.op_space_id, "id");
+			assert(found_op_space);
+
+			op_mouse : Vector2F = WorldSpaceToOpSpace(world_mouse, op_space, op_space.op_2D_cam.world_pos);
+			mouse_x_float : float = WorldXToRowXFloat(op_mouse.x, op_row, op_row.x_point_width);
+			// if perm.all_data.runtime_settings.show_row_hover {
+			row_section_check_id : int;
+			current_section_to_row : [] SectionToRow;
+			if op_row.op_row_type == {
+			case OpRowType.MULTI_SECTION; {
+				row_section_check_id = op_row.id;
+				current_section_to_row = op_spec_data.all_op_section_to_row;
+			}
+			case OpRowType.COPY_MUSIC_ROW; {
+				//TODO Could also allow a specific sections to be copied between a given x_start and x_end
+				row_section_check_id = op_row.op_ref_row_id;
+				current_section_to_row = mspace_data.all_section_to_row;
+			} 
+			}
+			// mouse_rsrl : RowSectionRectsData;
+			hover_text : string;
+			show_hover_text : bool = false;
+			for section : current_section_to_row {
+				if section.row_id == row_section_check_id && 
+					InRange(cast(float64) section.start_x, mouse_x_float, cast(float64) section.end_x) 
+				{
+					op_row.mouse_rsrl = BuildRSRData(section, op_row, perm.all_data.all_tuning_systems, 
+						perm.all_data.all_space_points, op_row.x_point_width);
+					ComputeRowSectionRects(op_row.mouse_rsrl, op_row, *row_section_rects_array);
+					// for rs_ret : op_row.mouse_rsrl {
+					for rs_ret : row_section_rects_array {
+						cam_rect : Rectangle2 = OpRectToCamRect(rs_ret.world_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
+				   	if IsInRectangle(mouse_cam, cam_rect) {
+			   			pos_mod : int = rs_ret.point.int_pos.x;
+							hover_text = tprint("%,%,%", pos_mod, rs_ret.octave, op_row.mouse_rsrl.tuning_system.short_name);
+							show_hover_text = true;
+							break section;
+						}
+					}
+				}
+			}
+			// }
+
+			//TODO Could make a function that let's use check input map is down. Would have to check modifier keys separately
+			//If this row is muted AND no show hover, then we don't process. This can then be fully processed in a dynamic lib
+			if op_row.is_muted_row || perm.all_data.runtime_settings.show_op_row_hover {
+				array_reset_keeping_memory(*op_row.row_hover_rects);
+				//TODO FROM HERE Make this a shortcut and pull this out to reuse with base rows
+				//maybe push this commit first
+				if IsKeyboardPress(.MOUSE_BUTTON_LEFT, .DOWN_THIS_FRAME, game_input) {
+					perm.all_data.play_row_chords = !perm.all_data.play_row_chords;
+				}
+				play_row_audio : bool = false;
+				base_row, found_base_row := ArrayFindFirstByNameId(mspace_data.all_music_lane_rows,
+					op_row.op_ref_row_id, "id");
+				if found_base_row && base_row.row_system_type == .internal_pitch {
+					synth, found_synth := ArrayFindFirstByNameId(perm.all_data.all_simple_synths, 
+						base_row.system_id, "synth_id");
+					if found_synth {
+						if IsKeyboardPress(.MOUSE_BUTTON_LEFT, .DOWN_THIS_FRAME, game_input) {
+							//TODO We could put an extra synth in each row if that helps
+							//If we just pressed the mouse then copy the synth and reset the waves
+							op_row.extra_hover_synth = synth.*;
+							array_reset_keeping_memory(*op_row.extra_hover_synth.simple_waves);
+						}
+
+						ref_freq : float64 = perm.all_data.runtime_settings.default_zero_pitch_frequency;
+						// if circle.use_set_zero_freq ref_freq = circle.pitch_zero_freq;
+
+						tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, op_row.mouse_rsrl.tuning_system.id, "tuning_system_id", temp);
+						total_x_float : float = mouse_x_float + op_row.op_ref_start_x;
+						hover_chord : [] MusicPoint = GetAllMusicPtPosByPosition(base_row.total_row_index, total_x_float, 
+							mspace_data.all_music_pts, type=MusicPoint,,temp);
+						if perm.all_data.play_row_chords && op_row.extra_hover_synth.simple_waves.count != hover_chord.count {
+							array_reset_keeping_memory(*op_row.extra_hover_synth.simple_waves);
+							for 0..hover_chord.count-1 {
+								AddSimpleWaveFromFrequency(0, *op_row.extra_hover_synth, audio_data);
+							}
+						}
+
+						for mp : hover_chord {
+							x_offset := cast(float) (mp.x_start_float - op_row.op_ref_start_x);
+							//TODO FROM HERE Could have an option here that plays the alternate music pts or chords on the other tuning system
+							//By just not doing this loop check
+							if !InEpsilonRangeLeft(x_offset, cast(float64) op_row.mouse_rsrl.section.start_x, cast(float64) op_row.mouse_rsrl.section.end_x) {
+								//TODO Make a function here get row section based on row id and x
+								for section : current_section_to_row {
+									if section.row_id == row_section_check_id && 
+										InEpsilonRangeLeft(x_offset, cast(float64) section.start_x, cast(float64) section.end_x) 
+									{
+										op_row.mouse_rsrl = BuildRSRData(section, op_row, perm.all_data.all_tuning_systems, 
+											perm.all_data.all_space_points, op_row.x_point_width);
+										break;
+									}
+								}
+							}
+
+							op_rect := MusicPtRowSectionRect(mp, op_row.mouse_rsrl.octave_mult, x_offset, 
+								op_row.x_point_width, op_row, op_row.mouse_rsrl.section_points);
+							cam_rect : Rectangle2 = OpRectToCamRect(op_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
+							if perm.all_data.play_row_chords {
+								frequency := MusicPtToFrequency(mp.music_pt_float, op_row.mouse_rsrl.tuning_system, tuning_pitches, ref_freq);
+								UpdateWaveFrequency(frequency, *op_row.extra_hover_synth.simple_waves[it_index], audio_data.*);
+								array_add(*op_row.row_hover_rects, cam_rect);
+								op_row.render_row_hovering = true;
+								play_row_audio = true;
+							} else if IsInRectangle(mouse_cam, cam_rect) {
+								if op_row.extra_hover_synth.simple_waves.count != 1 {
+									array_reset_keeping_memory(*op_row.extra_hover_synth.simple_waves);
+									AddSimpleWaveFromFrequency(0, *op_row.extra_hover_synth, audio_data);
+								}
+								frequency := MusicPtToFrequency(mp.music_pt_float, op_row.mouse_rsrl.tuning_system, tuning_pitches, ref_freq);
+								UpdateWaveFrequency(frequency, *op_row.extra_hover_synth.simple_waves[0], audio_data.*);
+								play_row_audio = true;
+
+								hover_text = tprint("%-%", mp.music_pt_float, op_row.mouse_rsrl.tuning_system.short_name);
+								show_hover_text = true;
+								op_row.render_row_hovering = true;
+								array_add(*op_row.row_hover_rects, cam_rect);
+								break;
+							}
+						}
+						if perm.all_data.play_row_chords {
+							sb : String_Builder;
+							sb.allocator = temp;
+							append(*sb, "[");
+							for hover_chord {
+								print_to_builder(*sb, "%", it.music_pt_float);
+								if it_index < hover_chord.count-1 append(*sb, ",");
+							}
+							append(*sb, "]");
+							append(*sb, op_row.mouse_rsrl.tuning_system.short_name);
+							hover_text = builder_to_string(*sb,,temp);
+							show_hover_text = true;
+
+						}
+						if !op_row.is_muted_row && play_row_audio {
+							GenerateSimpleSynthSamples(*op_row.extra_hover_synth, audio_data.float_buffer, audio_data);
+						}
+					}
+				}
+			}
+
+			if show_hover_text && perm.all_data.runtime_settings.show_op_row_hover {
+				hover_cam := mouse_cam + Vector2F.{1,0};
+				hover_rect : Rectangle2 = TextBackgroundRect2D(hover_text, hover_cam, perm.text_editor_data, renderer_data.current_pixels_per_square);
+				PushRectangle(hover_rect, GREY_BLACKER_V, op_space.render_groups.scissor_group, order = MAX_ROW_RENDER_ORDER+2);
+				PushText(hover_cam, hover_text, GREY_DARK_V, op_space.render_groups.scissor_group, order = MAX_ROW_RENDER_ORDER+3);
+			}
+			//else if input down this frame and base_row is midi then send midi on and right click is midi off
+			//TODO We can put sound output here for synth and midi
+			//Or just hover on the music_pt and add that here maybe
 		}
 		else if hover_entity.entity_type == EntityType.OP_SPACE {
 			if top_op_space_is_chosen continue;
@@ -5329,7 +5512,7 @@ GENERATED_INPUT_MAPPINGS_REL_PATH);
 							found_mspace = false;
 							print_to_builder(*sb, "mspace % is not integer value.\n", command_tokens[2].token);
 						} else {
-							mspace, mspace_err := FindMSpace(mspace_input, perm.all_data.all_mspace_data, perm.all_data.all_register_memory);
+							mspace, mspace_err := FindMSpace(mspace_input, perm.all_data.all_mspace_data);
 							if mspace_err.is_error {
 								found_mspace = false;
 								append(*sb, mspace_err.msg);
@@ -6568,7 +6751,7 @@ for row, row_index : render_mspace.all_music_lane_rows {
 	//If this is too limited then we can use the row_group and post_row_group.
 	if next_order >= MAX_ROW_RENDER_ORDER {
 		print("Too many rows!\n");
-		next_order = -10;
+		next_order = MAX_ROW_RENDER_ORDER-10;
 		break;
 	}
 
@@ -6590,47 +6773,30 @@ for row, row_index : render_mspace.all_music_lane_rows {
 
 	PushSetScissor(pixel_rect, renderer_data.base_render_group, order = next_order+4);
 
+	//TODO If section x_range not within screen bounds then we can skip over rendering that section here
+	music_pt_index : int = 0;
 	//TODO Should we do this fetch by index or row_id
 	section_to_row : [] SectionToRow = 
 		ArrayFindAllVarName(render_mspace.all_section_to_row, row.id, "row_id",, temp);
 	for section : section_to_row {
 		//TODO If section to row is not on screen then we could just continue here. Just need to check the x overlap not the rectangle
-		rsrl : RowSectionRectsLoop = BuildRSRLoop(section, row, perm.all_data.all_tuning_systems, 
+		rsrl : RowSectionRectsData = BuildRSRData(section, row, perm.all_data.all_tuning_systems, 
 			perm.all_data.all_space_points, perm.all_data.global_rules.memory_unit_width);
-		for rs_ret : rsrl {
+		ComputeRowSectionRects(rsrl, row, *row_section_rects_array);
+		// for rs_ret : rsrl {
+		for rs_ret : row_section_rects_array {
 			// alpha : float = ifx rs_ret.octave < 0 then 0.9 else 1.0; //was multiplying color by this but we have hover now
 			cam_rect : Rectangle2 = WorldRectToCamRect(rs_ret.world_rect, default_base_cam);
 			PushRectangle(cam_rect, rs_ret.point.color, renderer_data.base_render_group, order = next_order+5);
 			PushRectangleOutline(cam_rect, GREY_BLACKER_V, renderer_data.base_render_group, r = 1.0, order = next_order+6);
 		}	
 
-		//TODO Technically we can pull this out and draw them all in one shot along the row since the x will always be the same
-		/*TODO A GOOD IDEA HERE is to allow a more flexible drawing where we draw rectangles as a float multiple (or fraction)
-		of a number of memory units. Then we could overlay rectangles so that we can change what the rhythm looks like for each row
-		or even for each section. Then we could not put the base one or dim the color of the base memory rectangle
-		and this allows the user to manage how they want to do rhythm while keeping the rendering aspect generalized.
-		*/
-		world_rect : Rectangle2 = RectMinCenterDim(row.row_world_base_start, 
-			Vector2F.{perm.all_data.global_rules.memory_unit_width, row.row_height});
-		// world_rect.max.y = world_rect.min.y + row.row_height;
-		// MoveRect(row.row_world_base_start, *world_rect);
-		vert_rect : Rectangle2 = WorldRectToCamRect(world_rect, default_base_cam);
-		//TODO Can store bottom left point in MusicLaneRow instead or just grab from collider
-		// vert_rect : Rectangle2 = WorldRectToCamRect(section_points[0].rect_mesh, default_base_cam);
-		for section.start_x..section.end_x-1 {
-			//TODO Could just accumulate the translation and not create a new rect each time.
-			next_rect : Rectangle2 = vert_rect;
-			MoveRect(Vector2F.{it * perm.all_data.global_rules.memory_unit_width,0}, *next_rect);
-			PushRectangleOutline(next_rect, GREY_BLACKER_V, renderer_data.base_render_group, r = 1.0, order = next_order+6);
-		}
-
-		//TODO FROM HERE Use MusicPtSectionRect here and update it so it works
-		//REMOVE THE old commented out hover stuff AND the function pointer in the dynamic lib and update startup_dl example
-		for music_pt : render_mspace.all_music_pts {
-			if music_pt.row_index == row_index && 
-				MusicPtStartInRange(section.start_x, music_pt, section.end_x)
-			{
-				world_rect : Rectangle2 = MusicPtSectionRect(music_pt, rsrl.octave_mult, cast(float) music_pt.x_start_float, 
+		//TODO We should be pre-processing these whenever we finish an instruction pass and sort the neumes.
+		//So make a render_music_pts array and sort that by row and start_x and then just go through 
+		//each row and section only once. Then build an rsrl like above for each section
+		for mp : render_mspace.all_music_pts {
+			if MusicPtInRowSection(mp, row_index, section) {
+				world_rect : Rectangle2 = MusicPtRowSectionRect(mp, rsrl.octave_mult, cast(float) mp.x_start_float, 
 					perm.all_data.global_rules.memory_unit_width, row, rsrl.section_points);
 				cam_rect : Rectangle2 = WorldRectToCamRect(world_rect, default_base_cam);
 				//TODO Could give the rectangle a bit of a shade so we can see where the edges/corners are
@@ -6638,6 +6804,27 @@ for row, row_index : render_mspace.all_music_lane_rows {
 				PushRectangleOutline(cam_rect, GREY_BLACKER_V, renderer_data.base_render_group, r = 1.0, order = next_order+8);
 			}
 		}	
+	}
+
+	//TODO If we don't draw sections that are not on the screen, then we can put this back in and draw per section
+	/*TODO A GOOD IDEA HERE is to allow a more flexible drawing where we draw rectangles as a float multiple (or fraction)
+	of a number of memory units. Then we could overlay rectangles so that we can change what the rhythm looks like for each row
+	or even for each section. Then we could not put the base one or dim the color of the base memory rectangle
+	and this allows the user to manage how they want to do rhythm while keeping the rendering aspect generalized.
+	*/
+	world_rect : Rectangle2 = RectMinCenterDim(row.row_world_base_start, 
+		Vector2F.{perm.all_data.global_rules.memory_unit_width, row.row_height});
+	// world_rect.max.y = world_rect.min.y + row.row_height;
+	// MoveRect(row.row_world_base_start, *world_rect);
+	vert_rect : Rectangle2 = WorldRectToCamRect(world_rect, default_base_cam);
+	//TODO Can store bottom left point in MusicLaneRow instead or just grab from collider
+	// vert_rect : Rectangle2 = WorldRectToCamRect(section_points[0].rect_mesh, default_base_cam);
+	// for section.start_x..section.end_x-1 {
+	for 0..row.row_size-1 {
+		//TODO Could just accumulate the translation and not create a new rect each time.
+		next_rect : Rectangle2 = vert_rect;
+		MoveRect(Vector2F.{it * perm.all_data.global_rules.memory_unit_width,0}, *next_rect);
+		PushRectangleOutline(next_rect, GREY_BLACKER_V, renderer_data.base_render_group, r = 1.0, order = next_order+6);
 	}
 }
 //TODO We would have to reset the scissor to full viewport if we use base_render_group instead of a separate row_group like we are now.
@@ -6829,6 +7016,171 @@ if IsViewableOpSpace(op_space.*, perm.all_data.render_mspace_id, renderer_data.*
 				previous_point_cam_pos = cam_pos;
 			}
 		}
+
+		order_increment : int = 10; //TODO Can make this 20 or more later if needed.
+		op_linear_order : int = S64_MIN+order_increment;
+		for * op_row : op_spec_data.all_op_linear_rows {
+			//NOTE : Keeping in scissor_group in case we want to allow any overlap for various geometries.
+			//Can put in pre_scissor_group later if needed for some other reason.
+			//SWITCH TO pre_scissor_group later if there are issues with the black rectangle or overlapping geometries...
+			//TODO This is not necessary with pre_scissor_group. Leaving here just in case.
+			op_linear_order += order_increment;
+			if op_linear_order >= MAX_ROW_RENDER_ORDER {
+				print("Too many rows!\n");
+				op_linear_order = MAX_ROW_RENDER_ORDER-10;
+				break;
+			}
+
+			PushSetShaderColor(op_space.render_groups.scissor_group, op_linear_order);
+
+			coll := ArrayFindFirstByAndOp(op_spec_data.all_op_collision_entities, 
+				EntityType.OP_LINEAR_ROW, "entity_type",
+				op_row.id, "entity_id");
+			cam_rect := OpRectToCamRect(coll.rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
+			pixel_rect := CamRectToPixelRect(cam_rect, op_space.render_groups.scissor_group, renderer_data.current_pixels_per_square);
+			if RectanglesIntersect(pixel_rect, op_space.render_groups.scissor_group.render_viewport) {
+				inter : Rectangle2 = ComputeRectIntersect(pixel_rect, op_space.render_groups.scissor_group.render_viewport);
+				PushSetScissor(inter, op_space.render_groups.scissor_group, order = op_linear_order);
+			} else if ContainsRectangle(op_space.render_groups.scissor_group.render_viewport, pixel_rect) {
+				PushSetScissor(pixel_rect, op_space.render_groups.scissor_group, order = op_linear_order);
+			} else { //if the op_row is outside the op_space rectangle then we don't need to draw it at all
+				continue;
+				// PushSetScissor(op_space.render_groups.scissor_group.render_viewport, op_space.render_groups.scissor_group, order = op_linear_order);
+			}
+
+			mspace_data, found_mspace := ArrayFindFirstByNameId(perm.all_data.all_mspace_data, 
+				op_row.op_ref_mspace_id, "mspace_id");
+			if !found_mspace {
+				// print("Op linear op_row % has op_ref_mspace_id=% which does not exist.\n", op_row.id, op_row.op_ref_mspace_id);
+				continue;
+			}
+
+			base_row, found_base_row := ArrayFindFirstByNameId(mspace_data.all_music_lane_rows,
+				op_row.op_ref_row_id, "id");
+			if !found_base_row {
+				// print("Mspace linear op_row id % in mspace id % not found.\n", op_row.op_ref_mspace_id, op_row.op_ref_row_id);
+				continue;
+			}
+
+			row_section_check_id : int;
+			current_section_to_row : [] SectionToRow;
+			if op_row.op_row_type == {
+			case OpRowType.MULTI_SECTION; {
+				row_section_check_id = op_row.id;
+				current_section_to_row = op_spec_data.all_op_section_to_row;
+			}
+			case OpRowType.COPY_MUSIC_ROW; {
+				//TODO Could also allow a specific sections to be copied between a given x_start and x_end
+				row_section_check_id = op_row.op_ref_row_id;
+				current_section_to_row = mspace_data.all_section_to_row;
+			} 
+			}
+
+			music_pt_index : int = 0;
+			for section : current_section_to_row if row_section_check_id == section.row_id {
+				rsrl : RowSectionRectsData = BuildRSRData(section, op_row, perm.all_data.all_tuning_systems, 
+					perm.all_data.all_space_points, op_row.x_point_width);
+				ComputeRowSectionRects(rsrl, op_row, *row_section_rects_array);
+				// for rs_ret : rsrl {
+				for rs_ret : row_section_rects_array {
+					// alpha : float = ifx rs_ret.octave < 0 then 0.9 else 1.0; //was multiplying color by this but we have hover now
+					cam_rect : Rectangle2 = OpRectToCamRect(rs_ret.world_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
+					PushRectangle(cam_rect, rs_ret.point.color, op_space.render_groups.scissor_group, order = op_linear_order+1);
+					PushRectangleOutline(cam_rect, GREY_BLACKER_V, op_space.render_groups.scissor_group, r = 1.0, order = op_linear_order+2);
+				}
+
+				/*TODO THIS IS THE GENERAL CASE AND IS NOT EFFICIENT
+				We could have 2 cases which are implemented more efficiently.
+				Case 1) 
+					copying an entire op_row or a range which could technically be a separate case altogether.
+				Case 2) 
+					IF we only have 1 section in the op_row, then we don't need any of the section portion
+				
+				IN GENERAL we want to consider how this will be used. So maybe we only allow the above 2 cases.
+				Currently the benefit of op_linear_rows is to take some points and put them on a separate linear
+				system and then be able to quickly see and hear. Also to be able to compare rows that are very far apart.
+				Is there any other reason why? If this is the case, then we can have 2 op rows which optimize these
+				cases specifically and allow them to be chosen from the asm and/or based on specifically chosen settings.
+				This forces the player to have to have to manage the linear systems but I think that might make more sense
+				from the op_linear perspective. So we could leave the general slow case and then have those 2 cases
+				be the mostly used cases and reuse whatever code we need.
+
+				all_music_pts is sorted by x_start so we could binary search for x_start here and the grab the music pts
+				in range after that which would be O(logn + m) instead of O(n) where m is the size of the range and n is all music pts.
+				*/
+				if op_row.op_row_type == {
+				case OpRowType.MULTI_SECTION; {
+					row_base_start_x := op_row.op_ref_start_x + section.start_x;
+					row_base_end_x := op_row.op_ref_start_x + section.end_x;
+					for mp : mspace_data.all_music_pts {
+						if MusicPtInRowSection(mp, base_row.total_row_index, row_base_start_x, row_base_end_x) {
+							//TODO Can bring MusicPtRowSectionRect code back in here if needed later if it's different or something.
+							x_offset := cast(float) (mp.x_start_float - op_row.op_ref_start_x);
+							world_rect := MusicPtRowSectionRect(mp, rsrl.octave_mult, x_offset, 
+								op_row.x_point_width, op_row, rsrl.section_points);
+							cam_rect : Rectangle2 = OpRectToCamRect(world_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
+							PushRectangle(cam_rect, FGREEN_V, op_space.render_groups.scissor_group, order = op_linear_order+5);
+							PushRectangleOutline(cam_rect, GREY_BLACKER_V, op_space.render_groups.scissor_group, r = 1.0, order = op_linear_order+6);
+						}
+					}
+				}
+				case OpRowType.COPY_MUSIC_ROW; {
+					for mp : mspace_data.all_music_pts {
+						if MusicPtInRowSection(mp, base_row.total_row_index, section) {
+							//TODO Can bring MusicPtRowSectionRect code back in here if needed later if it's different or something.
+							world_rect := MusicPtRowSectionRect(mp, rsrl.octave_mult, cast(float) mp.x_start_float, 
+								op_row.x_point_width, op_row, rsrl.section_points);
+							cam_rect : Rectangle2 = OpRectToCamRect(world_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
+							//TODO The order here can be > 0 actually
+							PushRectangle(cam_rect, FGREEN_V, op_space.render_groups.scissor_group, order = op_linear_order+5);						
+							PushRectangleOutline(cam_rect, GREY_BLACKER_V, op_space.render_groups.scissor_group, r = 1.0, order = op_linear_order+6);
+						}
+					}
+				}
+				}
+			}	
+
+			world_rect : Rectangle2 = RectMinCenterDim(op_row.row_world_base_start, 
+				Vector2F.{op_row.x_point_width, op_row.row_height});
+			// world_rect.max.y = world_rect.min.y + op_row.row_height;
+			// MoveRect(op_row.row_world_base_start, *world_rect);
+			vert_rect : Rectangle2 = OpRectToCamRect(world_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
+			//TODO Can store bottom left point in MusicLaneRow instead or just grab from collider
+			// vert_rect : Rectangle2 = WorldRectToCamRect(section_points[0].rect_mesh, default_base_cam);
+			// for section.start_x..section.end_x-1 {
+			for 0..op_row.row_size-1 {
+				//TODO Could just accumulate the translation and not create a new rect each time.
+				next_rect : Rectangle2 = vert_rect;
+				MoveRect(Vector2F.{it * op_row.x_point_width,0}, *next_rect);
+				PushRectangleOutline(next_rect, GREY_BLACKER_V, op_space.render_groups.scissor_group, r = 1.0, order = op_linear_order+2);
+			}
+
+			if op_row.render_row_hovering {
+				// op_mouse : Vector2F = WorldSpaceToOpSpace(world_mouse, op_space, op_space.op_2D_cam.world_pos);
+				// mouse_x_float : float = WorldXToRowXFloat(op_mouse.x, op_row, op_row.x_point_width);
+				// total_x_float : float = mouse_x_float + op_row.op_ref_start_x;
+				// hover_mps : [] MusicPoint = GetAllMusicPtPosByPosition(base_row.total_row_index, total_x_float, 
+				// 	mspace_for_input.all_music_pts, type=MusicPoint);
+				for op_row.row_hover_rects {
+					// x_offset := cast(float) (mp.x_start_float - op_row.op_ref_start_x);
+					// op_rect := MusicPtRowSectionRect(mp, op_row.mouse_rsrl.octave_mult, x_offset, 
+					// 	op_row.x_point_width, op_row, op_row.mouse_rsrl.section_points);
+					// cam_rect : Rectangle2 = OpRectToCamRect(op_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
+					// if perm.all_data.play_row_chords {
+						PushRectangle(it, LBLUE_V, op_space.render_groups.scissor_group, order = op_linear_order+7);
+						PushRectangleOutline(it, GREY_BLACKER_V, op_space.render_groups.scissor_group, r = 1.0, order = op_linear_order+8);
+					// } else if IsInRectangle(mouse_cam, cam_rect) {
+					// 	PushRectangle(cam_rect, LBLUE_V, op_space.render_groups.scissor_group, order = op_linear_order+7);
+					// 	PushRectangleOutline(cam_rect, GREY_BLACKER_V, op_space.render_groups.scissor_group, r = 1.0, order = op_linear_order+8);
+					// 	break;
+					// }
+				}
+			}
+			op_row.render_row_hovering = false;
+
+			last_order : int = op_linear_order + order_increment - 1;
+			PushSetScissor(op_space.render_groups.scissor_group.render_viewport, op_space.render_groups.scissor_group, order = last_order);
+		}
 		//TODO I pulled this out from below to draw the axes but I'm not sure it's useful anymore.
 		//I've compiled it out for now since the cs2 works without the object anyways for rendering and input
 		//so we can just keep it for updating if we add/remove points and values later.
@@ -6865,6 +7217,10 @@ if IsViewableOpSpace(op_space.*, perm.all_data.render_mspace_id, renderer_data.*
 		}
 		}
 
+		//TODO This is no longer used at all so I will leave it here for reference in case but could compile it out
+		//The pitch s2 is being rendered in there but it's not used anyways soo... maybe i can remove everything and just
+		//leave that eventually if we relaly want it since there is also input for the pitch s2 which was somewhat interesting
+		#if 1 {
 		//TODO Turn this into a function pointer in ExternalDataToOpSpace along with all other 
 		//rendering so we can generalize it and then also use it in external code.
 		//TODO Can reuse DSpaceToOpSpaceIndex for other dspace types and then have
@@ -6902,8 +7258,8 @@ if IsViewableOpSpace(op_space.*, perm.all_data.render_mspace_id, renderer_data.*
 		*/
 		// PushSetShaderColor(op_space.render_groups.scissor_group, order = -5);
 		// PushSetScissor(op_space.render_groups.scissor_group.render_viewport, op_space.render_groups.scissor_group, order = -10);
-		order_increment : int = 10; //TODO Can make this 20 or more later if needed.
-		op_linear_order : int = S64_MIN+order_increment;
+		old_order_increment : int = 10; //TODO Can make this 20 or more later if needed.
+		old_op_linear_order : int = S64_MIN+old_order_increment;
 		for dspace_to_op_space : array_dspace_to_op_space_id {
 			if OpDSpaceType.CIRCLE == dspace_to_op_space.op_dspace_type {
 				circle : CircleSpace = ArrayFindFirstConstByNameId(perm.all_data.all_new_circle_spaces,
@@ -7049,15 +7405,15 @@ if IsViewableOpSpace(op_space.*, perm.all_data.render_mspace_id, renderer_data.*
 				//Can put in pre_scissor_group later if needed for some other reason.
 				//SWITCH TO pre_scissor_group later if there are issues with the black rectangle or overlapping geometries...
 				//TODO This is not necessary with pre_scissor_group. Leaving here just in case.
-				op_linear_order += order_increment;
-				if op_linear_order >= -30 {
+				old_op_linear_order += old_order_increment;
+				if old_op_linear_order >= -30 {
 					print("Too many rows!\n");
-					op_linear_order = -10;
+					old_op_linear_order = -10;
 					break;
 				}
 
-				PushSetShaderColor(op_space.render_groups.scissor_group, op_linear_order);
-				row : MusicLaneRow = ArrayFindFirstByNameId(perm.all_data.all_op_linear_rows,
+				PushSetShaderColor(op_space.render_groups.scissor_group, old_op_linear_order);
+				row : OpLinearRow = ArrayFindFirstByNameId(perm.all_data.all_op_linear_rows,
 					dspace_to_op_space.dspace_id, "id");
 
 				coll := ArrayFindFirstByAndOp(perm.all_data.all_op_collision_entities, 
@@ -7067,12 +7423,12 @@ if IsViewableOpSpace(op_space.*, perm.all_data.render_mspace_id, renderer_data.*
 				pixel_rect := CamRectToPixelRect(cam_rect, op_space.render_groups.scissor_group, renderer_data.current_pixels_per_square);
 				if RectanglesIntersect(pixel_rect, op_space.render_groups.scissor_group.render_viewport) {
 					inter : Rectangle2 = ComputeRectIntersect(pixel_rect, op_space.render_groups.scissor_group.render_viewport);
-					PushSetScissor(inter, op_space.render_groups.scissor_group, order = op_linear_order);
+					PushSetScissor(inter, op_space.render_groups.scissor_group, order = old_op_linear_order);
 				} else if ContainsRectangle(op_space.render_groups.scissor_group.render_viewport, pixel_rect) {
-					PushSetScissor(pixel_rect, op_space.render_groups.scissor_group, order = op_linear_order);
+					PushSetScissor(pixel_rect, op_space.render_groups.scissor_group, order = old_op_linear_order);
 				} else { //if the row is outside the op_space rectangle then we don't need to draw it at all
 					continue;
-					// PushSetScissor(op_space.render_groups.scissor_group.render_viewport, op_space.render_groups.scissor_group, order = op_linear_order);
+					// PushSetScissor(op_space.render_groups.scissor_group.render_viewport, op_space.render_groups.scissor_group, order = old_op_linear_order);
 				}
 
 				memory_to_row : [] MemoryUnitToDSpace = 
@@ -7086,10 +7442,22 @@ if IsViewableOpSpace(op_space.*, perm.all_data.render_mspace_id, renderer_data.*
 				//I am not sure yet but that may be a clearer and more efficient option
 				if row.op_row_type == OpRowType.COPY_MUSIC_ROW {
 					//TODO Could also allow a specific sections to be copied between a given x_start and x_end
-					row_check_id = row.copy_music_row_id;
+					row_check_id = row.op_ref_row_id;
 					current_section_to_row = perm.all_data.all_mspace_data[0].all_section_to_row;
 				} 
 				for section : current_section_to_row if row_check_id == section.row_id {
+					//TODO FROM HERE Just copy this all out and then also move the asm instruction out and then
+					//update the tests and just do it all in 1 shot
+					#if 0 {
+					rsrl : RowSectionRectsData = BuildRSRData(section, row, perm.all_data.all_tuning_systems, 
+						perm.all_data.all_space_points, row.x_point_width);
+					for rs_ret : rsrl {
+						// alpha : float = ifx rs_ret.octave < 0 then 0.9 else 1.0; //was multiplying color by this but we have hover now
+						cam_rect : Rectangle2 = OpRectToCamRect(rs_ret.world_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
+						PushRectangle(cam_rect, rs_ret.point.color, op_space.render_groups.scissor_group, order = old_op_linear_order+1);
+						PushRectangleOutline(cam_rect, GREY_BLACKER_V, op_space.render_groups.scissor_group, r = 1.0, order = old_op_linear_order+2);
+					}
+					} else {
 					//TODO I think this can be efficiently fetched by id since it should remain the same for default tuning_systems.
 					tuning_system, found_tuning_system :=
 						ArrayFindFirstByNameId(perm.all_data.all_tuning_systems,
@@ -7168,8 +7536,9 @@ if IsViewableOpSpace(op_space.*, perm.all_data.render_mspace_id, renderer_data.*
 						cam_rect : Rectangle2 = OpRectToCamRect(world_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
 						//TODO Might be best to do this on the world_rect
 						cam_rect.max.x += (section.end_x - section.start_x - 1) * row.x_point_width;
-						PushRectangle(cam_rect, point.color, op_space.render_groups.scissor_group, order = op_linear_order+1);
-						PushRectangleOutline(cam_rect, GREY_BLACKER_V, op_space.render_groups.scissor_group, r = 1.0, order = op_linear_order+2);
+						PushRectangle(cam_rect, point.color, op_space.render_groups.scissor_group, order = old_op_linear_order+1);
+						PushRectangleOutline(cam_rect, GREY_BLACKER_V, op_space.render_groups.scissor_group, r = 1.0, order = old_op_linear_order+2);
+					}
 					}
 
 					/*TODO THIS IS THE GENERAL CASE AND IS NOT EFFICIENT
@@ -7214,13 +7583,13 @@ if IsViewableOpSpace(op_space.*, perm.all_data.render_mspace_id, renderer_data.*
 							if music_pt.row_index == row.total_row_index && 
 								MusicPtStartInRange(section.start_x, music_pt, section.end_x)
 							{
-								//TODO Can bring MusicPtSectionRect code back in here if needed later if it's different or something.
-								world_rect := MusicPtSectionRect(music_pt, octave_mult, cast(float) music_pt.x_start_float, 
+								//TODO Can bring MusicPtRowSectionRect code back in here if needed later if it's different or something.
+								world_rect := MusicPtRowSectionRect(music_pt, octave_mult, cast(float) music_pt.x_start_float, 
 									row.x_point_width, row, section_points);
 								cam_rect : Rectangle2 = OpRectToCamRect(world_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
 								//TODO The order here can be > 0 actually
-								PushRectangle(cam_rect, FGREEN_V, op_space.render_groups.scissor_group, order = op_linear_order+7);
-								PushRectangleOutline(cam_rect, GREY_BLACKER_V, op_space.render_groups.scissor_group, r = 1.0, order = op_linear_order+3);
+								PushRectangle(cam_rect, FGREEN_V, op_space.render_groups.scissor_group, order = old_op_linear_order+7);
+								PushRectangleOutline(cam_rect, GREY_BLACKER_V, op_space.render_groups.scissor_group, r = 1.0, order = old_op_linear_order+3);
 							}
 						}
 					} else {
@@ -7233,13 +7602,13 @@ if IsViewableOpSpace(op_space.*, perm.all_data.render_mspace_id, renderer_data.*
 								mem_music_pts := GetAllMusicPtPosByPosition(mem_to_dspace.row_index, mem_to_dspace.x_index,
 									perm.all_data.all_mspace_data[0].all_music_pts, MusicPoint,,temp);
 								for music_pt : mem_music_pts {
-									//TODO Can bring MusicPtSectionRect code back in here if needed later if it's different or something.
-									world_rect := MusicPtSectionRect(music_pt, octave_mult, cast(float) mem_to_dspace.x_grid_pos, 
+									//TODO Can bring MusicPtRowSectionRect code back in here if needed later if it's different or something.
+									world_rect := MusicPtRowSectionRect(music_pt, octave_mult, cast(float) mem_to_dspace.x_grid_pos, 
 										row.x_point_width, row, section_points);
 									cam_rect : Rectangle2 = OpRectToCamRect(world_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
 									//TODO The order here can be > 0 actually
-									PushRectangle(cam_rect, FGREEN_V, op_space.render_groups.scissor_group, order = op_linear_order+7);
-									PushRectangleOutline(cam_rect, GREY_BLACKER_V, op_space.render_groups.scissor_group, r = 1.0, order = op_linear_order+3);
+									PushRectangle(cam_rect, FGREEN_V, op_space.render_groups.scissor_group, order = old_op_linear_order+7);
+									PushRectangleOutline(cam_rect, GREY_BLACKER_V, op_space.render_groups.scissor_group, r = 1.0, order = old_op_linear_order+3);
 								}
 							}
 						}
@@ -7280,13 +7649,13 @@ if IsViewableOpSpace(op_space.*, perm.all_data.render_mspace_id, renderer_data.*
 								music_pts_in_range := GetAllMemoryMusicPtsInRange(mp_x_start, mp_x_end,
 									mem_range.row_index, perm.all_data.all_mspace_data[0].all_music_pts,,test_alloc);
 								for music_pt : music_pts_in_range {
-									//TODO Can bring MusicPtSectionRect code back in here if needed later if it's different or something.
+									//TODO Can bring MusicPtRowSectionRect code back in here if needed later if it's different or something.
 									x_offset := cast(float) (mem_range.x_dspace_start + music_pt.x_start_float - mem_range.x_start);
-									world_rect := MusicPtSectionRect(music_pt, octave_mult, x_offset, row.x_point_width, row, section_points);
+									world_rect := MusicPtRowSectionRect(music_pt, octave_mult, x_offset, row.x_point_width, row, section_points);
 									cam_rect : Rectangle2 = OpRectToCamRect(world_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
 									//TODO The order here can be > 0 actually
-									PushRectangle(cam_rect, FGREEN_V, op_space.render_groups.scissor_group, order = op_linear_order+7);
-									PushRectangleOutline(cam_rect, GREY_BLACKER_V, op_space.render_groups.scissor_group, r = 1.0, order = op_linear_order+3);
+									PushRectangle(cam_rect, FGREEN_V, op_space.render_groups.scissor_group, order = old_op_linear_order+7);
+									PushRectangleOutline(cam_rect, GREY_BLACKER_V, op_space.render_groups.scissor_group, r = 1.0, order = old_op_linear_order+3);
 								}
 							}
 						}
@@ -7304,10 +7673,10 @@ if IsViewableOpSpace(op_space.*, perm.all_data.render_mspace_id, renderer_data.*
 						//TODO Could just accumulate the translation and not create a new rect each time.
 						next_rect : Rectangle2 = vert_rect;
 						MoveRect(Vector2F.{it * row.x_point_width,0}, *next_rect);
-						PushRectangleOutline(next_rect, GREY_BLACKER_V, op_space.render_groups.scissor_group, r = 1.0, order = op_linear_order+2);
+						PushRectangleOutline(next_rect, GREY_BLACKER_V, op_space.render_groups.scissor_group, r = 1.0, order = old_op_linear_order+2);
 					}
 				}	
-				last_order : int = op_linear_order + order_increment - 1;
+				last_order : int = old_op_linear_order + old_order_increment - 1;
 				PushSetScissor(op_space.render_groups.scissor_group.render_viewport, op_space.render_groups.scissor_group, order = last_order);
 			} else if OpDSpaceType.PITCH_S2 == dspace_to_op_space.op_dspace_type {
 				//TODO Should we just merge this with CHORD_S2 and reuse the vl eventually as well or will it be substantially different?
@@ -7392,6 +7761,7 @@ if IsViewableOpSpace(op_space.*, perm.all_data.render_mspace_id, renderer_data.*
 				}
 				}
 			}
+		}
 		}
 	}
 	else if OpSpaceExternalType.txt == op_space.op_space_external_type {

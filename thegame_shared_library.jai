@@ -737,6 +737,61 @@ ClearMusicSpace :: (mspace_data : *MusicSpaceData, reset_camera : bool = false) 
 	mspace_data.mspace_audio_x_start = 0;
 }
 
+FindMSpace :: inline (
+	mspace_index : int,
+	all_mspace_data : [] MusicSpaceData) 
+-> *MusicSpaceData, err : CPUError
+{
+	if InRange(0, mspace_index, all_mspace_data.count-1) {
+		return *all_mspace_data[mspace_index], NO_CPU_ERROR;
+	}
+	return null, CPUErr("MSpace index % not found.");
+}
+FindMusicRow :: inline (
+	row_index : int,
+	//TODO Could just pass in rows but this gives us id as well
+	mspace : MusicSpaceData) 
+-> *MusicLaneRow, CPUError
+{
+	if !InRange(0, row_index, mspace.all_music_lane_rows.count-1) {
+		return null, CPUErr(tprint("Row index % not found in mspace %.", row_index, mspace.mspace_id));
+	} 
+	return *mspace.all_music_lane_rows[row_index], NO_CPU_ERROR;
+}
+ValidateMSpaceRowAndX :: inline (
+	row_index : int,
+	x_index : float64,
+	mspace : MusicSpaceData)
+-> CPUError
+{
+	row, row_err := FindMusicRow(row_index, mspace);
+	if row_err.is_error return row_err;
+	if !InRange(0, round_to_int(x_index), row.row_size) {
+		return CPUErr(tprint("x index % not found for row % in mspace %.", x_index, row_index, mspace.mspace_id));
+	}	
+	return NO_CPU_ERROR;
+}
+NO_CPU_ERROR :: CPUError.{is_error=false};
+//TODO Can rename this to RuntimeError if that's clearer but CPUError seems more general.
+CPUError :: struct {
+	is_error : bool;
+	//TODO Can reuse this if we need both
+	// instr_index : int;
+	error_index : int;
+	msg : string;
+}
+
+CPUErr :: MakeCPUErr;
+MakeCPUErr :: inline (msg : string, instr_index : int=0) -> CPUError {
+	err : CPUError;
+	err.is_error = true;
+	err.error_index = instr_index;
+	err.msg = msg;
+	return err;
+}
+
+
+
 MUSIC_ROW_UNITS_PER_SECOND_DEFAULT :: 1.0;
 MUSIC_ROW_UNIT_WIDTH_DEFAULT :: 1.75;
 OP_SPACE_DEFAULT_SIZE :: Vector2F.{40,30};
@@ -781,6 +836,7 @@ RuntimeSettingsData :: struct {
 	//TODO Could also add default debug watch rows by name for example but not parsed so only from dl (or an array of strings for now)
 
 	show_row_hover : bool = true;
+	show_op_row_hover : bool = true;
 
 	//TODO Leaving here as a reminder in case used later for tests or educational purposes for some reason 
 	// update_music_while_running : bool = true;
@@ -1596,6 +1652,16 @@ GetAllMusicPtPosByPosition :: inline (
 	return music_pt_poses;
 }
 
+MusicPtInRowSection :: inline (mp : MusicPoint, row_index : int, section : SectionToRow, EPSILON : float64 = DEFAULT_MP_EPSILON) -> bool {
+	in_row_section : bool = MusicPtInRowSection(mp, row_index, section.start_x, section.end_x, EPSILON);
+	return in_row_section;
+}
+MusicPtInRowSection :: inline (mp : MusicPoint, row_index : int, x_start : $T, x_end : T, EPSILON : float64 = DEFAULT_MP_EPSILON) -> bool {
+	in_row_section : bool = mp.row_index == row_index && 
+		MusicPtStartInRange(x_start, mp, x_end, EPSILON);
+	return in_row_section;
+}
+
 MusicPtStartInRange :: inline (x_start : $T, mp : MusicPoint, x_end : T, EPSILON : float64 = DEFAULT_MP_EPSILON) -> bool {
 #assert(T == float64 || T == int);
 	//x_start = 1 and x_end = 2 then we want a point starting on 1 to be valid but a point starting on 2 not to be within epsilon
@@ -2194,6 +2260,9 @@ LinearPitchSpace :: struct {
 }
 //Asm specific create row data
 AsmCreateRowData :: struct {
+	//Return values
+	ret_row_id : int;
+
 	mspace_id : int;
 	octave_height : float64;
 	row_height : float64;
@@ -2233,12 +2302,16 @@ CreateMusicRow :: inline (
 	all_linear_to_tuning_system : *[..] LinearToTuningSystem,
 	all_linear_pitch_spaces : *[..] LinearPitchSpace,
 	all_space_points : *[..] SpacePoint) 
--> MusicLaneRow {
+-> *MusicLaneRow, CPUError
+{
 	mspace_data, found_mspace := ArrayFindFirstByNameId(all_mspace_data,
 		create_row_data.mspace_id, "mspace_id");
 	//TODO We should either check this externally or return this as an error.
 	//Probably an error is best for dynamic libraries eventually.
-	assert(found_mspace);
+	// assert(found_mspace);
+	if !found_mspace {
+		return null, CPUErr(tprint("mspace_id % not found when creating row %.", create_row_data.mspace_id, create_row_data));
+	}
 
 	//TODO Should we push this halfway down row_height here or leave it to the player to decide and just 
 	//have the lowest point be what the player inputs be default?
@@ -2288,6 +2361,10 @@ CreateMusicRow :: inline (
 
 	last_section_x : int = 0;
 	for row_section : create_row_data.row_section_data {
+		if row_section.x_length <= 0 {
+			return null, CPUErr(tprint("Row section length % <= 0.", row_section.x_length));
+		}
+
 		// linear_tuning : LinearToTuningSystem = 
 		// 	GetOrCreateLinearTuning(row_section.tuning_system_id, row_section.linear_view, all_data);
 		linear_tuning : LinearToTuningSystem = GetOrCreateLinearTuning(
@@ -2341,7 +2418,7 @@ CreateMusicRow :: inline (
 	// coll.rect = RectCenterDim(linear_world_center, linear_grid_dim);
 	coll.rect = ComputeRowCollRect(row, global_rules.memory_unit_width);
 
-	return row;
+	return row, NO_CPU_ERROR;
 }
 //TODO Could pass in settings here if we use more later
 ComputeRowCollRect :: inline (
@@ -2652,10 +2729,12 @@ CreateRowData :: struct {
 
 	//op_row specific data
 	//TODO We can separate this if needed but keeping in here for convenience for now.
-	op_world_pos : Vector2F;
 	x_point_width : float;
+	op_world_pos : Vector2F;
 	op_row_type : OpRowType;
-	copy_music_row_id : int;
+	op_ref_row_id : int;
+	op_ref_mspace_id : int;
+	op_ref_start_x : int;
 }
 
 /*TODO if we implement MusicLaneRow based on type, then we
@@ -2739,22 +2818,39 @@ MusicLaneRow :: struct {
 	*/
 	music_lane_type : MusicLaneType;
 
+	row_size : int; 
+	//only used for op linear row now but we could set it everywhere. I prefer having consistent memory unit width for now though.
+	x_point_width : float; 
+
+	render_row_hovering : bool = false;
+	mouse_rsrl : RowSectionRectsData;
+	row_hover_rects : [..] Rectangle2;
+
 	//op-specific data
+	//TODO PULL THIS OUT NOW and put in OpLinearRow struct with a MusicLaneRow
 	//TODO We can separate this out if needed later. Leaving here for now for convenience.
 	//TODO Might be worth having a completely separate OpLinearRow struct
 	//since there will likely be more differences long term.
 	//TODO Could update the CreateRowData also to CreateOpRowData for asm
-	row_size : int; 
-	x_point_width : float;
+	//op_ref for op reference since this is used by op rows to reference the base music space and row
+	// op_row_type : OpRowType;
+	// op_ref_row_id : int; //rename op_ref_music_row_id for clarity
+	// op_ref_mspace_id : int;
+	// op_ref_start_x : int;
+	// //TODO We can put this as an id instead and just put it in the synth array as well
+	// extra_hover_synth : SimpleSynth;
+}
+OpLinearRow :: struct {
+	#as using row : MusicLaneRow;
+
 	op_row_type : OpRowType;
-	copy_music_row_id : int;
+	op_ref_row_id : int; //rename op_ref_music_row_id for clarity
+	op_ref_mspace_id : int;
+	op_ref_start_x : int;
+	//TODO We can put this as an id instead and just put it in the synth array as well
+	extra_hover_synth : SimpleSynth;	
 }
 
-OpRowType :: enum {
-	MULTI_SECTION;
-	SINGLE_SECTION;
-	COPY_MUSIC_ROW;
-}
 /*New system for associating systems to rows so we can
 tell when it changes and how many there are.
 */
@@ -2769,6 +2865,7 @@ SectionToRow :: struct {
 	//NOTE : This is used for points but there is no dspace stored anywhere
 	//since all the info is in the row right now.
 	//ACTUALLY we do store a linear space for convenience but it does not do anything other than keep the dspace_id
+	//This is the linear_tuning_pitch_dspace_id, maybe we should rename it that for clarity
 	dspace_id : int;
 	start_x : int;
 	end_x : int;
@@ -2885,25 +2982,23 @@ AsmRowMidiData :: struct {
 
 
 MAX_ROW_RENDER_ORDER :: -1000;
-RowSectionRectsLoop :: struct {
+RowSectionRectsData :: struct {
 	section : SectionToRow;
-	row : MusicLaneRow;
 	octave_mult : float;
 	tuning_system : TuningSystem;
 	section_points : [] SpacePoint;
 	x_unit_width : float;
 }
-BuildRSRLoop :: inline (
+BuildRSRData :: inline (
 	section : SectionToRow,
 	row : MusicLaneRow,
 	all_tuning_systems : [] TuningSystem,
 	all_space_points : [] SpacePoint,
 	memory_unit_width : float) 
--> RowSectionRectsLoop
+-> RowSectionRectsData
 {
-	rsrl : RowSectionRectsLoop = ---;
+	rsrl : RowSectionRectsData = ---;
 	rsrl.section = section;
-	rsrl.row = row;
 	rsrl.x_unit_width = memory_unit_width;
 
 	//TODO I think this can be efficiently fetched by id since it should remain the same for default tuning_systems.
@@ -2942,21 +3037,25 @@ RowSectionRectsReturn :: struct {
 	point : SpacePoint;
 	octave : int;
 }
-for_expansion :: (rsrl : RowSectionRectsLoop, body : Code, flags : For_Flags) #expand {
+//TODO One problem with this is that debugging may not be possible
+//so if that's the case then we can make a function to grab the points into an array for debugging
+// for_expansion :: (rsrl : RowSectionRectsData, body : Code, flags : For_Flags) #expand {
+ComputeRowSectionRects :: inline (rsrl : RowSectionRectsData, row : MusicLaneRow, ret_array : *[..] RowSectionRectsReturn) {
+	array_reset_keeping_memory(ret_array);
 	//row_cam is at the base so we draw from that octave to row/octave ratio above.
 	//TODO This is not efficient for non-octave-repeating scales. However it does work.
 	//Would need to do it based on point position but then we have to loop through it since we could have ratio proportional points.
 	//TODO This would be a case for splitting up ratio proportional and not but maybe this is fine.
 	//If it's non-octave repeating we could just print 1 octave or cap at max_octave anyways
 	//TODO Should store allowed octaves in row data as well.
-	current_octave : int = cast(int) (rsrl.row.row_cam.y / rsrl.octave_mult);
+	current_octave : int = cast(int) (row.row_cam.y / rsrl.octave_mult);
 	//TODO This allows for rendering negative octaves. I am trying it out with mod_index for neumes below
 	//but maybe it does not make sense. I think allowing negative neume values is interesting though.
 	//I will check in the literature later to see if negative note values are ever used mathematically
 	//AND also need to make sure it works with op linear rows and geometries.
-	if rsrl.row.row_cam.y < 0 current_octave -= 1;
-	// print("rsrl.row.row_cam.y=%, rsrl.octave_mult=%\n", rsrl.row.row_cam.y, rsrl.octave_mult);
-	octaves_in_row : int = round_to_int(ceil(rsrl.row.row_height / rsrl.octave_mult));
+	if row.row_cam.y < 0 current_octave -= 1;
+	// print("row.row_cam.y=%, rsrl.octave_mult=%\n", row.row_cam.y, rsrl.octave_mult);
+	octaves_in_row : int = round_to_int(ceil(row.row_height / rsrl.octave_mult));
 	if octaves_in_row < 1 octaves_in_row = 1;
 	// start_octave : int = current_octave - octaves_in_row;
 	// if start_octave < 0 start_octave = 0;
@@ -2966,8 +3065,8 @@ for_expansion :: (rsrl : RowSectionRectsLoop, body : Code, flags : For_Flags) #e
 	// for octave : current_octave-1..end_octave+1 for point : section_points {
 		//NOTE : To make negative octaves clearer we dim them a bit
 		//TODO I think putting the octave number somewhere on the side would also be helpful eventually.
-		alpha : float = 1.0;
-		if octave < 0 alpha = 0.9;
+		// alpha : float = 1.0;
+		// if octave < 0 alpha = 0.9;
 		for point : rsrl.section_points {
 			//TODO The rect_mesh allows us to have unequal points. 
 			// If we only have equal then we can use the position instead and make the rect here.
@@ -3003,21 +3102,16 @@ for_expansion :: (rsrl : RowSectionRectsLoop, body : Code, flags : For_Flags) #e
 			//TODO We could offset this from the lane here and either accumulate the row or set the row
 			//to a lane relative position and the lane to be a world position... let's see how we use it eventually.
 			//LANE OFFSET here instead of row might be better for lane dropdowns to collapse lanes down to 1 row.
-			rect_diff : Vector2F = rsrl.row.row_world_base_start;
+			rect_diff : Vector2F = row.row_world_base_start;
 			rect_diff.x += rsrl.section.start_x * rsrl.x_unit_width;
 			rect_diff.y += octave * rsrl.octave_mult;
-			rect_diff -= rsrl.row.row_cam;
+			rect_diff -= row.row_cam;
 			MoveRect(rect_diff, *world_rect);
 
-			rs_ret : RowSectionRectsReturn = ---;
+			rs_ret : *RowSectionRectsReturn = array_add(ret_array);
 			rs_ret.world_rect = world_rect;
 			rs_ret.point = point;
 			rs_ret.octave = octave;
-
-			`it := rs_ret;
-			`it_index := total_index;
-
-			#insert body;
 
 			total_index += 1;
 		}
@@ -3063,8 +3157,9 @@ GetPlayPosWorldX :: inline (
 
 //TODO If we split equal and proportional this would also simplify to not needing the SpacePoint fetch.
 //TODO This can be more efficient once we sort by row_index and x_start
-//TODO We could reuse this with MusicPtSectionRect for the op linear rows below. Just need to make sure its the same
-MusicPtSectionRect :: inline (
+//TODO We could reuse this with MusicPtRowSectionRect for the op linear rows below. Just need to make sure its the same
+//TODO Could have a version where we pass in rsrl if that is more convenient now
+MusicPtRowSectionRect :: inline (
 	music_pt : MusicPoint,
 	octave_mult : float,
 	x_offset : float,
@@ -3124,6 +3219,143 @@ MusicPtSectionRect :: inline (
 
 	return world_rect;
 }
+
+CreateOpLinearRow :: inline (
+	create_row_data : CreateRowData,
+	op_spec_data : *OpSpaceSpecData,
+	all_mspace_data : [] MusicSpaceData,
+	all_tuning_systems : [] TuningSystem,
+	all_tuning_pitches : [] TuningPitch,
+	all_linear_to_tuning_system : *[..] LinearToTuningSystem,
+	all_linear_pitch_spaces : *[..] LinearPitchSpace,
+	all_space_points : *[..] SpacePoint) 
+-> *OpLinearRow, CPUError
+{
+	mspace_data, mspace_err := FindMSpace(create_row_data.op_ref_mspace_id, all_mspace_data);
+	if mspace_err.is_error return null, mspace_err;
+
+	base_row, found_base_row := ArrayFindFirstByNameId(mspace_data.all_music_lane_rows, 
+		create_row_data.op_ref_row_id, "id");
+	if !found_base_row {
+		return null, CPUErr("Music row with id % not found.");
+	}
+
+	//TODO Remove this once the new way is working.
+	// row : MusicLaneRow = MakeMusicLaneRow(DEFAULT_MUSIC_LANE_ID, RowSystemType.internal_pitch, MusicLaneType.MEMORY, 
+	// 	next_row_world_base_pos, next_row_index, create_row_data.row_height, use_create_row_data = true, create_row_data);
+	row : *OpLinearRow = array_add(*op_spec_data.all_op_linear_rows);
+	row.id = context.ALL_NEXT_IDS.NEXT_OP_LINEAR_ROW_ID;
+	context.ALL_NEXT_IDS.NEXT_OP_LINEAR_ROW_ID += 1;
+	//TODO We could make this one struct so we only have to copy once
+	//and we can then reuse it everywhere.
+	row.row_world_base_start = create_row_data.op_world_pos;
+	row.row_height = create_row_data.row_height;
+	row.octave_height = create_row_data.octave_height;
+	row.x_point_width = create_row_data.x_point_width;
+	row.op_row_type = create_row_data.op_row_type;
+	row.op_ref_row_id = create_row_data.op_ref_row_id;
+	row.op_ref_mspace_id = create_row_data.op_ref_mspace_id;
+	row.op_ref_start_x = create_row_data.op_ref_start_x;
+	// row.music_lane_id = music_lane_id;
+	//TODO If we want to be able to play a linear row directly (maybe with mouse-hover or mouse-hover and click)
+	//then we can use something like this to set how we want the row to sound. This could be a good idea for hearing
+	//different notes with specific sounds for example either with midi or internal pitch.
+	row.row_system_type = create_row_data.row_system_type;
+	//We don't store midi data here since we use the base row as a reference so if it updates then we use that update here
+	// row.row_midi_data = create_row_data.row_midi_data;
+	// row.sound_on = create_row_data.sound_on;
+	row.is_muted_row = create_row_data.muted_row;
+
+	if row.op_row_type == {
+	case OpRowType.COPY_MUSIC_ROW; {
+		//We just use the reference anyways but just in case i guess
+		row.total_row_index = base_row.total_row_index;
+		row.row_size = base_row.row_size;
+		row.op_ref_start_x = 0;
+	}
+	case OpRowType.MULTI_SECTION; {
+		last_section_x : int = 0;
+		for row_section : create_row_data.row_section_data {
+			// linear_tuning : LinearToTuningSystem = 
+			// 	GetOrCreateLinearTuning(row_section.tuning_system_id, row_section.linear_view, all_data);
+			linear_tuning : LinearToTuningSystem = GetOrCreateLinearTuning(
+				row_section.tuning_system_id, 
+				row_section.linear_view, 
+				all_tuning_systems, 
+				all_tuning_pitches,
+				all_linear_to_tuning_system,
+				all_linear_pitch_spaces,
+				all_space_points);
+
+			section : *SectionToRow = array_add(*op_spec_data.all_op_section_to_row);
+			//TODO Should this be index or id? Id would allow row movement without having to update this section.
+			section.row_id = row.id;
+			section.dspace_id = linear_tuning.dspace_id;
+			section.start_x = last_section_x;
+			section.end_x = last_section_x + row_section.x_length;
+			section.tuning_system_id = linear_tuning.tuning_system_id;
+
+			//TODO Should check that last_section_x == global row_size after this loop i think.
+			//So we would have to set the row_size beforehand OR take the first row or something like that.
+			last_section_x = section.end_x;
+		}
+
+		row.row_size = last_section_x;
+	}
+	}
+
+	#if 0 {
+	linear_grid_dim : Vector2F = ---;
+	linear_grid_dim.x = row.x_point_width * last_section_x;
+	linear_grid_dim.y = row.row_height;
+	//TODO We could store this rectangle in a separate linear space for op space struct with grid_size etc...
+	// world_min_pos : Vector2F = points_in_space[0].rect_mesh.min + row.row_world_base_start;
+	//row.row_world_base_start is the min_center so we subtract half the width the get the bottom left
+	//without having to use the space_points so we can compute this anywhere instead.
+	world_min_pos : Vector2F = row.row_world_base_start - Vector2F.{0.5*row.x_point_width,0};
+	linear_grid_rect : Rectangle2 = RectMinDim(world_min_pos, linear_grid_dim);
+	linear_world_center : Vector2F = GetCenter(linear_grid_rect);
+	}
+
+	coll : *CollisionEntity = array_add(*op_spec_data.all_op_collision_entities);
+	coll.entity_id = row.id;
+	coll.entity_type = EntityType.OP_LINEAR_ROW;
+	coll.shape = CollisionShape.RECTANGLE;
+	coll.rect = ComputeRowCollRect(row, row.x_point_width);
+
+	return row, NO_CPU_ERROR;
+}
+AsmCreateOpRowData :: struct {
+	//Return values
+	row_id : int;
+
+	octave_height : float64;
+	row_height : float64;
+
+	row_section_data : AsmArray(RowSectionData);
+
+	//TODO We might want to make this different for op_rows since we will play them differently
+	// sound_on : int; //bool in asm
+	muted_row : AsmBool;
+	// row_system_type : RowSystemType;
+	//TODO We can add midi specific data here if we want custom midi data for the op row
+	// row_midi_data : RowMidiData;
+	//AND we can do the same thing with a custom synth instead of grabbing the op ref row one.
+	// synth : SimpleSynth;
+
+	op_space_id : int;
+
+	x_point_width : float64;
+	op_pos : Vector2F64;
+	op_row_type : OpRowType;
+	op_ref_row_id : int;
+	op_ref_mspace_id : int;
+	op_ref_start_x : int;
+} @LibraryAsmGen
+OpRowType :: enum {
+	MULTI_SECTION;
+	COPY_MUSIC_ROW;
+} @LibraryAsmGen
 
 
 /*End of row data
@@ -4372,6 +4604,8 @@ OpSpaceSpecData :: struct {
 	//TODO We could maybe pull the arrays out from here eventually
 	//if we only have it in the op space
 	ass : AllSpaceShapes;
+	all_op_linear_rows : [..] OpLinearRow;
+	all_op_section_to_row : [..] SectionToRow;
 	all_op_circle_spaces : [..] CircleSpace;
 	all_op_chord_s2 : [..] ChordSpace2;
 	all_op_collision_entities : [..] CollisionEntity;

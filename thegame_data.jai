@@ -3144,7 +3144,7 @@ AllData :: struct #type_info_no_size_complaint {
 
 	//TODO Eventually I think we can have a different struct if needed
 	//since the op rows will likely be different from the base rows.
-	all_op_linear_rows : [..] MusicLaneRow;
+	all_op_linear_rows : [..] OpLinearRow;
 	//TODO We can change this as well. Possibly even remove it if we only
 	//allow single section for op rows. Let's see how we use the op linear rows.
 	all_op_section_to_row : [..] SectionToRow;
@@ -3185,6 +3185,8 @@ AllData :: struct #type_info_no_size_complaint {
 	free_simple_synth_pool : [..] SimpleSynth;
 	// all_subtractive_synths : [..] SubtractiveSynth;
 	// all_hover_simple_synths : [..] SimpleSynth;
+
+	play_row_chords : bool;
 }
 
 //TODO If we set all this in AllData as 1 struct then we can just have 1 move
@@ -3326,41 +3328,6 @@ GetNextNonMutedMSpace :: inline (
 	return start_index, true;
 }
 
-FindMSpace :: inline (
-	mspace_index : int,
-	all_mspace_data : [] MusicSpaceData,
-	all_register_memory : [] MemoryValue) 
--> *MusicSpaceData, err : CPUError
-{
-	if InRange(0, mspace_index, all_mspace_data.count-1) {
-		return *all_mspace_data[mspace_index], NO_CPU_ERROR;
-	}
-	return null, CPUErr("MSpace index % not found.");
-}
-FindMusicRow :: inline (
-	row_index : int,
-	//TODO Could just pass in rows but this gives us id as well
-	mspace : MusicSpaceData) 
--> *MusicLaneRow, CPUError
-{
-	if !InRange(0, row_index, mspace.all_music_lane_rows.count-1) {
-		return null, CPUErr(tprint("Row index % not found in mspace %.", row_index, mspace.mspace_id));
-	} 
-	return *mspace.all_music_lane_rows[row_index], NO_CPU_ERROR;
-}
-ValidateMSpaceRowAndX :: inline (
-	row_index : int,
-	x_index : float64,
-	mspace : MusicSpaceData)
--> CPUError
-{
-	row, row_err := FindMusicRow(row_index, mspace);
-	if row_err.is_error return row_err;
-	if !InRange(0, round_to_int(x_index), row.row_size) {
-		return CPUErr(tprint("x index % not found for row % in mspace %.", x_index, row_index, mspace.mspace_id));
-	}	
-	return NO_CPU_ERROR;
-}
 
 MoveFixedCameraOpSpaces :: inline (
 	new_cam_pos : Vector2F,
@@ -5866,8 +5833,8 @@ RowViewType :: enum {
 //since we would just have to update all the music_pt indices from there.
 //TODO FROM HERE ADd mspace_id to this and then also get_or_create_mspace by name so it's unique to the string
 //and we can recreate when recompiling and then either do clear or not
-CreateMusicRow :: inline (create_row_data : CreateRowData, all_data : *AllData) -> MusicLaneRow {
-	return CreateMusicRow(
+CreateMusicRow :: inline (create_row_data : CreateRowData, all_data : *AllData) -> MusicLaneRow, CPUError {
+	row, err := CreateMusicRow(
 		create_row_data,
 		all_data.all_mspace_data,
 		all_data.global_rules,
@@ -5876,13 +5843,14 @@ CreateMusicRow :: inline (create_row_data : CreateRowData, all_data : *AllData) 
 		*all_data.all_linear_to_tuning_system,
 		*all_data.all_linear_pitch_spaces,
 		*all_data.all_space_points); 
+	return row, err;
 }
 
-CreateOpLinearRow :: inline (create_row_data : CreateRowData, all_data : *AllData) -> MusicLaneRow {
+OLDCreateOpLinearRow :: inline (create_row_data : CreateRowData, all_data : *AllData) -> OpLinearRow {
 	//TODO Remove this once the new way is working.
-	// row : MusicLaneRow = MakeMusicLaneRow(DEFAULT_MUSIC_LANE_ID, RowSystemType.internal_pitch, MusicLaneType.MEMORY, 
+	// row : OpLinearRow = MakeMusicLaneRow(DEFAULT_MUSIC_LANE_ID, RowSystemType.internal_pitch, MusicLaneType.MEMORY, 
 	// 	next_row_world_base_pos, next_row_index, create_row_data.row_height, use_create_row_data = true, create_row_data);
-	row : *MusicLaneRow = array_add(*all_data.all_op_linear_rows);
+	row : *OpLinearRow = array_add(*all_data.all_op_linear_rows);
 	row.id = context.ALL_NEXT_IDS.NEXT_OP_LINEAR_ROW_ID;
 	context.ALL_NEXT_IDS.NEXT_OP_LINEAR_ROW_ID += 1;
 	//TODO We could make this one struct so we only have to copy once
@@ -5892,7 +5860,7 @@ CreateOpLinearRow :: inline (create_row_data : CreateRowData, all_data : *AllDat
 	row.octave_height = create_row_data.octave_height;
 	row.x_point_width = create_row_data.x_point_width;
 	row.op_row_type = create_row_data.op_row_type;
-	row.copy_music_row_id = create_row_data.copy_music_row_id;
+	row.op_ref_row_id = create_row_data.op_ref_row_id;
 	// row.music_lane_id = music_lane_id;
 	//TODO If we want to be able to play a linear row directly (maybe with mouse-hover or mouse-hover and click)
 	//then we can use something like this to set how we want the row to sound. This could be a good idea for hearing
@@ -5905,11 +5873,11 @@ CreateOpLinearRow :: inline (create_row_data : CreateRowData, all_data : *AllDat
 	last_section_x : int = 0;
 	if row.op_row_type == OpRowType.COPY_MUSIC_ROW {
 		music_row : MusicLaneRow = ArrayFindFirstByNameId(all_data.all_mspace_data[0].all_music_lane_rows, 
-			row.copy_music_row_id, "id");
+			row.op_ref_row_id, "id");
 		row.total_row_index = music_row.total_row_index;
 
 		//Need to find last section for the collision rect width
-		for all_data.all_mspace_data[0].all_section_to_row if it.row_id == row.copy_music_row_id {
+		for all_data.all_mspace_data[0].all_section_to_row if it.row_id == row.op_ref_row_id {
 			if it.end_x > last_section_x {
 				last_section_x = it.end_x;
 			}
@@ -5962,7 +5930,6 @@ CreateOpLinearRow :: inline (create_row_data : CreateRowData, all_data : *AllDat
 
 	return row.*;
 }
-
 
 MakeMusicLaneRow :: inline (
 	music_lane_id : int,
@@ -6369,7 +6336,8 @@ MapLinearData :: struct {
 }
 
 //TODO Should this be collapsed with AsmCreateRowData?
-AsmOpRowData :: struct {
+//TODO Rename this OldOldAsmOpRowData and then use this name for the new one
+OldAsmOpRowData :: struct {
 	//Return values
 	row_id : int;
 
@@ -6391,7 +6359,7 @@ AsmOpRowData :: struct {
 	x_op_pos : float64;
 	y_op_pos : float64;
 	is_music_row_copy : int; //bool in asm
-	copy_music_row_id : int;
+	op_ref_row_id : int;
 }
 
 //TODO Could do a version with input params for non-default
@@ -6921,25 +6889,6 @@ ValueToOp :: inline (v : MusicOperandValue) -> MusicOperand {
 	return MakeMusicOperand(operand_type, v);
 }
 
-NO_CPU_ERROR :: CPUError.{is_error=false};
-//TODO Can rename this to RuntimeError if that's clearer but CPUError seems more general.
-CPUError :: struct {
-	is_error : bool;
-	//TODO Can reuse this if we need both
-	// instr_index : int;
-	error_index : int;
-	msg : string;
-}
-
-CPUErr :: MakeCPUErr;
-MakeCPUErr :: inline (msg : string, instr_index : int=0) -> CPUError {
-	err : CPUError;
-	err.is_error = true;
-	err.error_index = instr_index;
-	err.msg = msg;
-	return err;
-}
-
 /*END OF NEW OPERAND STUFF
 */
 
@@ -7231,6 +7180,8 @@ OpCode :: enum u8 {
 
 	get_or_create_op_space;
 	clear_op_space;
+
+	create_op_row;
 
 	create_circle;
 	map_circle;
@@ -8062,7 +8013,7 @@ GetMSpaceNeumes :: inline (mspace_index : int, ad : *AllData) -> *[..] MusicPoin
 		return *ad.tano_stack_music_pts, NO_CPU_ERROR;
 	}
 
-	mspace, mspace_err := FindMSpace(mspace_index, ad.all_mspace_data, ad.all_register_memory); 
+	mspace, mspace_err := FindMSpace(mspace_index, ad.all_mspace_data); 
 	if mspace_err.is_error {
 		return null, mspace_err;
 	}

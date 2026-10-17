@@ -5385,7 +5385,9 @@ VisitStatementNode :: inline (node : *BinaryNode, cd : *CompilationData) -> is_v
 			stack_op := PushStack(it.code_ir.t_info.runtime_size, cd);
 			success := MovWithAutocast(it, array_element_info, stack_op, cd);
 			if !success {
-				CreateCompErr(cd, .EVALUATION, node, sprint("Invalid array literal value %.\n", node.*));
+				CreateCompErr(cd, .EVALUATION, it, sprint(
+				"Array literal value not of type %.",
+				TypeToString(array_element_info)));
 				return false;
 			}
 		}
@@ -12238,6 +12240,7 @@ GenerateAsmInstructionManual :: () -> AsmInstructionManual {
 	case OpCode.map_cs3; #through;
 	case OpCode.create_cs2; #through;
 	case OpCode.map_cs2; #through;
+	case OpCode.create_op_row; #through;
 	case OpCode.create_circle; #through;
 	case OpCode.map_circle; #through;
 	case OpCode.create_spiral; #through;
@@ -13257,7 +13260,7 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 	if err.is_error return err;
 
 	dfms_int : int = ad.all_register_memory[RegDef.dfms].int_value;
-	df_mspace, mspace_err := FindMSpace(dfms_int, ad.all_mspace_data, ad.all_register_memory);
+	df_mspace, mspace_err := FindMSpace(dfms_int, ad.all_mspace_data);
 	if mspace_err.is_error return mspace_err;
 
 	for op, op_index : ci.operands {
@@ -13401,7 +13404,7 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 				mspace_index = ComputeOperandInt(ci.operands[2], ad.all_register_memory, ad.ram_memory);
 			}
 			if set_mspace_index {
-				mspace, mspace_err := FindMSpace(mspace_index, ad.all_mspace_data, ad.all_register_memory);
+				mspace, mspace_err := FindMSpace(mspace_index, ad.all_mspace_data);
 				if mspace_err.is_error return mspace_err;
 				rm_mspace = mspace;				
 			}
@@ -15130,7 +15133,10 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		crd.row_midi_data.midi_channel = cast(u8) asm_data.row_midi_data.midi_channel;
 		crd.row_midi_data.midi_velocity = cast(u8) asm_data.row_midi_data.midi_velocity;
 		crd.row_midi_data.midi_control_change = cast(u8) asm_data.row_midi_data.midi_control_change;
-		CreateMusicRow(crd, ad);
+		row, row_err := CreateMusicRow(crd, ad);
+		if row_err.is_error return row_err;
+
+		asm_data.ret_row_id = row.id;
 	}
 	case OpCode.get_or_create_mspace; {
 		mem_address : int = ComputeRAMLocation(ci.operands[0], ad.all_register_memory, ad.ram_memory);
@@ -15258,6 +15264,49 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 			ad.all_closed_op_spaces,
 			ad.all_op_space_spec_data,
 			ad.all_op_spec_data_3D);
+	}
+	case OpCode.create_op_row; {
+		mem_address : int = ComputeRAMLocation(ci.operands[0], ad.all_register_memory, ad.ram_memory);
+		asm_data, err := GetMemPtr(mem_address, AsmCreateOpRowData, ad.ram_memory);
+		if err.is_error return err;
+
+		op_spec_data, found_op_spec_data := ArrayFindFirstByNameId(ad.all_op_space_spec_data,
+			asm_data.op_space_id, "op_space_id");
+		if !found_op_spec_data {
+			return CPUErr(sprint("2d op space id % not found.\n", asm_data.op_space_id));
+		}
+
+		//TODO Should this be separate for CreateOpRowData as well? Maybe yes since the op will likely
+		// have different options from the base. We could also just have MusicLaneRow in it with some added fields.
+		crd : CreateRowData;
+		//TODO Should we make these float64 instead so we don't lose information?
+		crd.octave_height = cast(float) asm_data.octave_height;
+		crd.row_height = cast(float) asm_data.row_height;
+		crd.muted_row = AsmBoolToBool(asm_data.muted_row);
+		// crd.row_system_type = asm_data.row_system_type;
+		crd.op_world_pos = MakeV2FFrom64(asm_data.op_pos);
+		crd.x_point_width = cast(float) asm_data.x_point_width;
+		crd.op_ref_row_id = asm_data.op_ref_row_id;
+		crd.op_ref_mspace_id = asm_data.op_ref_mspace_id;
+		crd.op_ref_start_x = asm_data.op_ref_start_x;
+		crd.op_row_type = asm_data.op_row_type;
+		if asm_data.op_row_type == .MULTI_SECTION {
+			row_sections, array_err := GetAsmArray(asm_data.row_section_data, ad.ram_memory);
+			if array_err.is_error return array_err;
+			crd.row_section_data = row_sections;
+		}
+
+		row, row_err := CreateOpLinearRow(crd, op_spec_data,
+			ad.all_mspace_data,
+			ad.all_tuning_systems,
+			ad.all_tuning_pitches,
+			*ad.all_linear_to_tuning_system,
+			*ad.all_linear_pitch_spaces,
+			*ad.all_space_points);
+		if row_err.is_error return row_err;
+
+		//We set the row return values here
+		asm_data.row_id = row.id;
 	}
 	//TODO FROM HERE put circle data and shapes in op space specific data 
 	case OpCode.create_circle; {
@@ -16108,6 +16157,10 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 	would depend on the muscall type.
 	If we did it this way, then we could remove the muscall specific registers and just use ram_memory directly.
 	But maybe the muscall registers simplifies certain things so let's see as we make them.
+
+	TODO WE CAN REMOVE THIS NOW, maybe once the op rows and everything are a bit more tested we can remove this
+	and any associated tests (which have been compiled out) and also all the old geometry rendering code which
+	i can probably compile out as well
 	*/
 	case OpCode.muscall; {
 		//TODO Depending on the call we would fetch from specific registers and memory appropriately.
@@ -16153,7 +16206,7 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 			//TODO Should this asm data be different from MusicRow since it will likely have different values?
 			//Maybe can do a subset here or just different altogether probably since we will have different
 			//types of op rows, copy_music_row, single_system_row and multi_system_row
-			asm_data, err := GetMemPtr(mem_address, AsmOpRowData, ad.ram_memory);
+			asm_data, err := GetMemPtr(mem_address, OldAsmOpRowData, ad.ram_memory);
 			if err.is_error return err;
 			//TODO Should this be separate for CreateOpRowData as well? Maybe yes since the op will likely
 			// have different options from the base. We could also just have MusicLaneRow in it with some added fields.
@@ -16169,7 +16222,7 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 			if asm_data.is_music_row_copy {
 				//NOTE : No need to create the row sections here if it is copy_row
 				crd.op_row_type = OpRowType.COPY_MUSIC_ROW;
-				crd.copy_music_row_id = asm_data.copy_music_row_id;
+				crd.op_ref_row_id = asm_data.op_ref_row_id;
 			} else {
 				//TODO I am not sure if we need this single_section but could be an optimization later
 				// crd.op_row_type = OpRowType.SINGLE_SECTION;
@@ -16183,7 +16236,7 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 				}
 			}
 
-			row : MusicLaneRow = CreateOpLinearRow(crd, ad);
+			row : MusicLaneRow = OLDCreateOpLinearRow(crd, ad);
 
 			//We set the row return values here
 			asm_data.row_id = row.id;
@@ -16482,7 +16535,7 @@ ExecMov :: inline (ci : MusicInstruction, df_mspace : *MusicSpaceData, ad : *All
 			if ci.operands[2].operand_type == .RAM_ARRAY {
 				x_range = cast(float64) ComputeMusicOperandValue(ci.operands[2].values[1], ad.all_register_memory);
 				from_mspace_index : int = ComputeMusicOperandValue(ci.operands[2].values[0], ad.all_register_memory);
-				mspace, mspace_err := FindMSpace(from_mspace_index, ad.all_mspace_data, ad.all_register_memory);
+				mspace, mspace_err := FindMSpace(from_mspace_index, ad.all_mspace_data);
 				if mspace_err.is_error return mspace_err;
 				from_mspace = mspace;
 			}

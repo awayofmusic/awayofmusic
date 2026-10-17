@@ -331,6 +331,7 @@ UpdateRuntimeSettings :: inline (
 	perm.all_data.runtime_settings.max_asm_instructions = Clamp(1, new_rs.max_asm_instructions, S64_MAX);
 
 	perm.all_data.runtime_settings.show_row_hover = new_rs.show_row_hover;
+	perm.all_data.runtime_settings.show_op_row_hover = new_rs.show_op_row_hover;
 }
 
 ParsedInputMapping :: struct {

@@ -3198,8 +3198,344 @@ asm_row_address,
 
 } @ITest
 
+Test_CreateOpRows :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	perm : *Persist = GetPermanentStorage(game_memory);
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+		perm.all_data = InitAllData();
+		ResetAllRendererData(renderer_data);
+
+		//TODO Should we just create generally in here? I guess this makes things consistent across tests.
+		text_file := CreateTestTextFile(*ALL_NEXT_IDS, *perm.all_data.all_text_files);
+		WriteFileString(text_file,
+#string DONE
+#load "c_load/Library";
+main :: () {
+	rs : [3] RowSectionData;
+	rs[0].tuning_system_id = 13;
+	rs[0].x_length = 4;
+	rs[1].tuning_system_id = 0;
+	rs[1].x_length = 4;
+	rs[2].tuning_system_id = 1;
+	rs[2].x_length = 4;
+	rd : AsmCreateRowData;
+	rd.octave_height = 12.0;
+	rd.row_height = 12.0;
+	rd.muted_row = false;
+	rd.row_sections = rs;
+	rd.row_system_type = RowSystemType.internal_pitch;
+	// rd.row_system_id = synth.ret_synth_id;
+	#asm{ create_row rd; }
+
+	tano(0,0) ~= 3;
+	tano(0,2) ~= int.[0,4];
+	tano(0,3) ~= int.[2,7];
+	tano(0,6..8.5) ~= int.[8,10,12];
+
+	csd : AsmOpSpaceData;
+	csd.op_space_type = AsmOpSpaceType.space_2d;
+	csd.op_space_name = "test_op_rows";
+	#asm{ get_or_create_op_space csd; }
+
+	clear : AsmClearOpData;
+	clear.op_space_id = csd.ret_op_space_id;
+	#asm{ clear_op_space clear; }
+
+	rs_2 : [2] RowSectionData;
+	rs_2[0].tuning_system_id = 1;
+	rs_2[0].x_length = 3;
+	rs_2[1].tuning_system_id = 13;
+	rs_2[1].x_length = 3;
+	acord : AsmCreateOpRowData;
+	acord.octave_height = 12.0;
+	acord.row_height = 12.0;
+	acord.row_section_data = rs_2;
+	// acord.muted_row = false;
+	acord.x_point_width = 1.5;
+	acord.op_pos = Vector2.{2,3};
+	acord.op_row_type = OpRowType.MULTI_SECTION;
+	acord.op_ref_row_id = rd.ret_row_id;
+	acord.op_ref_mspace_id = 0;
+	acord.op_ref_start_x = 2;
+	acord.op_space_id = csd.ret_op_space_id;
+	#asm{ create_op_row acord; }
+
+	a2 : AsmCreateOpRowData;
+	a2.octave_height = 12.0;
+	a2.row_height = 10.0;
+	// a2.muted_row = false;
+	a2.x_point_width = 1.25;
+	a2.op_pos = Vector2.{-10,-10};
+	a2.op_row_type = OpRowType.COPY_MUSIC_ROW;
+	a2.op_ref_row_id = rd.ret_row_id;
+	a2.op_ref_mspace_id = 0;
+	a2.op_space_id = csd.ret_op_space_id;
+	#asm{ create_op_row a2; }
+}
+DONE);
+		text_op := CreateTextOpSpace(text_file.id, perm.text_editor_data, 
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
+	
+		array_resize(*perm.test_data.all_sub_tests, 5+1);
+	} 
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	text_op : *TextOpSpaceData;
+	if perm.all_data.all_text_op_space_data.count > 0 {
+		text_op = *perm.all_data.all_text_op_space_data[0];
+	}
+
+
+	if perm.test_data.sub_test_index == {
+	case 0; {
+		open_test := MakeTerminalEvent(.open_op, TEST_TEXT_NAME);
+		array_add(*perm.all_data.all_terminal_events, open_test);
+	}
+	case 1; DownUpInputMap(.TEXT_DEBUG_TOGGLE, game_input);
+	case 2; DownUpInputMap(.TEXT_COMPILE, game_input);
+	case 3; {
+		comp_success : bool = AssertEquals(false, IsCompilationFail(text_op.text_comp_data));
+		if !comp_success {
+			EndTest(*perm.test_data);
+		} else {
+			// AddWatchDataForTest(.["x ", "y", "xp", "yp", "xyp", "x1p", "xpp", "*y", "*xp", "*xpp"], text_op);
+			// CodeBPForTest(7, *text_op.exec_info.debug_info, text_op.text_comp_data);
+			DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+		}
+	}
+	case 4; {
+		open_test_2d := MakeTerminalEvent(.open_op, "test_op_rows");
+		array_add(*perm.all_data.all_terminal_events, open_test_2d);
+	}
+	case 5; {
+		AssertEquals(2, perm.all_data.all_open_op_spaces.count);
+		count_equal := AssertEquals(1, perm.all_data.all_mspace_data.count);
+		count_equal &&= AssertEquals(1, perm.all_data.all_op_space_spec_data.count);
+		if count_equal {
+			mspace_data : *MusicSpaceData = *perm.all_data.all_mspace_data[0];
+			AssertEquals(1, mspace_data.all_music_lane_rows.count);
+			AssertEquals(3, mspace_data.all_section_to_row.count);			
+
+			op_spec_data : *OpSpaceSpecData = *perm.all_data.all_op_space_spec_data[0];
+			count_equal = AssertEquals(2, op_spec_data.all_op_linear_rows.count);
+			if count_equal {
+				AssertEquals(12.0, op_spec_data.all_op_linear_rows[0].octave_height);
+				AssertEquals(12.0, op_spec_data.all_op_linear_rows[0].row_height);
+				AssertEquals(1.5, op_spec_data.all_op_linear_rows[0].x_point_width);
+				AssertEquals(2.0, op_spec_data.all_op_linear_rows[0].row_world_base_start.x);
+				AssertEquals(3.0, op_spec_data.all_op_linear_rows[0].row_world_base_start.y);
+				AssertEquals(0, op_spec_data.all_op_linear_rows[0].op_ref_row_id);
+				AssertEquals(0, op_spec_data.all_op_linear_rows[0].op_ref_mspace_id);
+				AssertEquals(2, op_spec_data.all_op_linear_rows[0].op_ref_start_x);
+
+				AssertEquals(12.0, op_spec_data.all_op_linear_rows[1].octave_height);
+				AssertEquals(10.0, op_spec_data.all_op_linear_rows[1].row_height);
+				AssertEquals(1.25, op_spec_data.all_op_linear_rows[1].x_point_width);
+				AssertEquals(-10.0, op_spec_data.all_op_linear_rows[1].row_world_base_start.x);
+				AssertEquals(-10.0, op_spec_data.all_op_linear_rows[1].row_world_base_start.y);
+				AssertEquals(0, op_spec_data.all_op_linear_rows[1].op_ref_row_id);
+				AssertEquals(0, op_spec_data.all_op_linear_rows[1].op_ref_mspace_id);
+				AssertEquals(0, op_spec_data.all_op_linear_rows[1].op_ref_start_x);
+
+
+				count_equal = AssertEquals(2, op_spec_data.all_op_section_to_row.count);
+				if count_equal {
+					AssertEquals(1, op_spec_data.all_op_section_to_row[0].tuning_system_id);
+					AssertEquals(0, op_spec_data.all_op_section_to_row[0].start_x);
+					AssertEquals(3, op_spec_data.all_op_section_to_row[0].end_x);
+					AssertEquals(13, op_spec_data.all_op_section_to_row[1].tuning_system_id);
+					AssertEquals(3, op_spec_data.all_op_section_to_row[1].start_x);
+					AssertEquals(6, op_spec_data.all_op_section_to_row[1].end_x);
+				}
+			}
+		}
+	}
+	}
+
+	ContinueTest(*perm.test_data);
+
+} @ITest
+
+Test_CreateOpRowsMSpace :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	perm : *Persist = GetPermanentStorage(game_memory);
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+		perm.all_data = InitAllData();
+		ResetAllRendererData(renderer_data);
+
+		gcmd : GetOrCreateMSpaceData;
+		gcmd.mspace_name = "test";
+		mspace_1 := GetOrCreateMusicSpace(gcmd, perm.all_data.runtime_settings, *perm.all_data.all_mspace_data,
+			*perm.all_data.free_mspace_data_pool);
+		for TWO_ROWS {
+			crd : CreateRowData = it;
+			crd.mspace_id = mspace_1.mspace_id;
+			CreateMusicRow(crd, perm.all_data);
+		}
+
+		CreateManyMusicPtsInMemory(float64.[3], 1, 0, 1, *mspace_1.all_music_pts);
+		CreateManyMusicPtsInMemory(float64.[0,2], 1, 2, 3, *mspace_1.all_music_pts);
+		CreateManyMusicPtsInMemory(float64.[2,7], 1, 3, 4, *mspace_1.all_music_pts);
+		CreateManyMusicPtsInMemory(float64.[8,10,12], 1, 6., 8.5, *mspace_1.all_music_pts);
+
+		cosd : CreateOpSpaceData;
+		cosd.op_space_external_type = OpSpaceExternalType.space_2d;
+		cosd.op_space_name = "test_op_rows";
+		op_space : OperationSpace = CreateClosedOpSpace(cosd,
+			*perm.all_data.all_closed_op_spaces, 
+			*perm.all_data.all_op_space_spec_data, 
+			*perm.all_data.all_op_spec_data_3D);
+
+
+		//TODO Should we just create generally in here? I guess this makes things consistent across tests.
+		text_file := CreateTestTextFile(*ALL_NEXT_IDS, *perm.all_data.all_text_files);
+		WriteFileString(text_file, 
+sprint(
+#string DONE
+#load "c_load/Library";
+main :: () {
+	rs_2 : [2] RowSectionData;
+	rs_2[0].tuning_system_id = 1;
+	rs_2[0].x_length = 3;
+	rs_2[1].tuning_system_id = 13;
+	rs_2[1].x_length = 3;
+	acord : AsmCreateOpRowData;
+	acord.octave_height = 12.0;
+	acord.row_height = 12.0;
+	acord.row_section_data = rs_2;
+	// acord.muted_row = false;
+	acord.x_point_width = 1.5;
+	acord.op_pos = Vector2.{2,3};
+	acord.op_row_type = OpRowType.MULTI_SECTION;
+	acord.op_ref_row_id = 1;
+	acord.op_ref_mspace_id = %;
+	acord.op_ref_start_x = 2;
+	acord.op_space_id = %;
+	#asm{ create_op_row acord; }
+
+	a2 : AsmCreateOpRowData;
+	a2.octave_height = 12.0;
+	a2.row_height = 10.0;
+	// a2.muted_row = false;
+	a2.x_point_width = 1.25;
+	a2.op_pos = Vector2.{-10,-10};
+	a2.op_row_type = OpRowType.COPY_MUSIC_ROW;
+	a2.op_ref_row_id = 1;
+	a2.op_ref_mspace_id = %;
+	a2.op_space_id = %;
+	#asm{ create_op_row a2; }
+}
+DONE,
+mspace_1.mspace_id, op_space.id, 
+mspace_1.mspace_id, op_space.id));
+		text_op := CreateTextOpSpace(text_file.id, perm.text_editor_data, 
+			renderer_data.current_pixels_per_square, perm.all_data, renderer_data);
+	
+		array_resize(*perm.test_data.all_sub_tests, 6+1);
+	} 
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	text_op : *TextOpSpaceData;
+	if perm.all_data.all_text_op_space_data.count > 0 {
+		text_op = *perm.all_data.all_text_op_space_data[0];
+	}
+
+
+	if perm.test_data.sub_test_index == {
+	case 0; DownUpInputMap(.NEXT_MUSIC_SPACE, game_input);
+	case 1; {
+		open_test := MakeTerminalEvent(.open_op, TEST_TEXT_NAME);
+		array_add(*perm.all_data.all_terminal_events, open_test);
+	}
+	case 2; DownUpInputMap(.TEXT_DEBUG_TOGGLE, game_input);
+	case 3; DownUpInputMap(.TEXT_COMPILE, game_input);
+	case 4; {
+		comp_success : bool = AssertEquals(false, IsCompilationFail(text_op.text_comp_data));
+		if !comp_success {
+			EndTest(*perm.test_data);
+		} else {
+			// AddWatchDataForTest(.["x ", "y", "xp", "yp", "xyp", "x1p", "xpp", "*y", "*xp", "*xpp"], text_op);
+			// CodeBPForTest(7, *text_op.exec_info.debug_info, text_op.text_comp_data);
+			DownUpInputMap(.TEXT_RUN_CONTINUE, game_input);
+		}
+	}
+	case 5; {
+		open_test_2d := MakeTerminalEvent(.open_op, "test_op_rows");
+		array_add(*perm.all_data.all_terminal_events, open_test_2d);
+	}
+	case 6; {
+		AssertEquals(1, perm.all_data.render_mspace_id);
+		AssertEquals(2, perm.all_data.all_open_op_spaces.count);
+		count_equal := AssertEquals(2, perm.all_data.all_mspace_data.count);
+		count_equal &&= AssertEquals(1, perm.all_data.all_op_space_spec_data.count);
+		if count_equal {
+			mspace_data : *MusicSpaceData = *perm.all_data.all_mspace_data[1];
+			AssertEquals(2, mspace_data.all_music_lane_rows.count);
+			AssertEquals(2, mspace_data.all_section_to_row.count);			
+
+			op_spec_data : *OpSpaceSpecData = *perm.all_data.all_op_space_spec_data[0];
+			count_equal = AssertEquals(2, op_spec_data.all_op_linear_rows.count);
+			if count_equal {
+				AssertEquals(12.0, op_spec_data.all_op_linear_rows[0].octave_height);
+				AssertEquals(12.0, op_spec_data.all_op_linear_rows[0].row_height);
+				AssertEquals(1.5, op_spec_data.all_op_linear_rows[0].x_point_width);
+				AssertEquals(2.0, op_spec_data.all_op_linear_rows[0].row_world_base_start.x);
+				AssertEquals(3.0, op_spec_data.all_op_linear_rows[0].row_world_base_start.y);
+				AssertEquals(1, op_spec_data.all_op_linear_rows[0].op_ref_row_id);
+				AssertEquals(mspace_data.mspace_id, op_spec_data.all_op_linear_rows[0].op_ref_mspace_id);
+				AssertEquals(2, op_spec_data.all_op_linear_rows[0].op_ref_start_x);
+
+				AssertEquals(12.0, op_spec_data.all_op_linear_rows[1].octave_height);
+				AssertEquals(10.0, op_spec_data.all_op_linear_rows[1].row_height);
+				AssertEquals(1.25, op_spec_data.all_op_linear_rows[1].x_point_width);
+				AssertEquals(-10.0, op_spec_data.all_op_linear_rows[1].row_world_base_start.x);
+				AssertEquals(-10.0, op_spec_data.all_op_linear_rows[1].row_world_base_start.y);
+				AssertEquals(1, op_spec_data.all_op_linear_rows[1].op_ref_row_id);
+				AssertEquals(mspace_data.mspace_id, op_spec_data.all_op_linear_rows[1].op_ref_mspace_id);
+				AssertEquals(0, op_spec_data.all_op_linear_rows[1].op_ref_start_x);
+
+
+				count_equal = AssertEquals(2, op_spec_data.all_op_section_to_row.count);
+				if count_equal {
+					AssertEquals(1, op_spec_data.all_op_section_to_row[0].tuning_system_id);
+					AssertEquals(0, op_spec_data.all_op_section_to_row[0].start_x);
+					AssertEquals(3, op_spec_data.all_op_section_to_row[0].end_x);
+					AssertEquals(13, op_spec_data.all_op_section_to_row[1].tuning_system_id);
+					AssertEquals(3, op_spec_data.all_op_section_to_row[1].start_x);
+					AssertEquals(6, op_spec_data.all_op_section_to_row[1].end_x);
+				}
+			}
+		}
+	}
+	}
+
+	ContinueTest(*perm.test_data);
+
+} @ITest
+
+DEFAULT_RAM_DATA : int = 100;
+
+//TODO Leaving here in case we want to check old rows
+//otherwise just remove this and then we can remove muscalls as well
+#if 0 {
 //TODO In code we could just muscall directly with the memory value of the passed in row cause its already on the function stack
-ASM_OP_ROW :: inline (row : AsmOpRowData, row_sections : [] RowSectionData) -> string {
+ASM_OP_ROW :: inline (row : OldAsmOpRowData, row_sections : [] RowSectionData) -> string {
 	sb : String_Builder;
 	append(*sb, "mov ax, scp;\n");
 	for section : row_sections {
@@ -3267,7 +3603,6 @@ formatFloat(ld.x_end_index,zero_removal=.ONE_ZERO_AFTER_DECIMAL),
 cast(int) MusCallType.map_linear
 ,,context.allocator);
 }
-DEFAULT_RAM_DATA : int = 100;
 Test_AsmOpRows :: (
 	test_name : string,
 	game_memory : *GameMemory, 
@@ -3282,7 +3617,7 @@ Test_AsmOpRows :: (
 	SetupMusicAndRows(perm.all_data, TWO_ROWS);
 	CreateManyMusicPtsInMemory(float64.[0,4,7], 0, 0, 1, *perm.all_data.all_mspace_data[0].all_music_pts);
 
-	section_ram_loc : int = DEFAULT_RAM_DATA + size_of(AsmOpRowData);
+	section_ram_loc : int = DEFAULT_RAM_DATA + size_of(OldAsmOpRowData);
 	et12 := RowSectionData.{0,0,6};
 	et24 := RowSectionData.{0,1,6};
 	asm_sections := RowSectionData.[et12, et24];
@@ -3292,12 +3627,12 @@ Test_AsmOpRows :: (
 	}
 
 	//TODO I think storing this directly in memory is more worth it here
-	asm_row : AsmOpRowData;
+	asm_row : OldAsmOpRowData;
 	asm_row.octave_height = 12;
 	asm_row.row_height = 12;
 	asm_row.op_space_id = 0;
 	asm_row.x_point_width = 1.75;
-	asm_row.is_music_row_copy = cast(int) 0;
+	// asm_row.is_music_row_copy = cast(int) 0;
 	asm_row.x_op_pos = 0;
 	asm_row.y_op_pos = 0;
 	asm_row.row_section_memory_index = section_ram_loc;
@@ -3378,7 +3713,7 @@ Test_AsmOpLinearRange :: (
 	CreateManyMusicPtsInMemory(float64.[0,4,7], 0, 1, 2, *perm.all_data.all_mspace_data[0].all_music_pts);
 	CreateManyMusicPtsInMemory(float64.[0,3,7], 0, 7.5, 8.5, *perm.all_data.all_mspace_data[0].all_music_pts);
 
-	section_ram_loc : int = DEFAULT_RAM_DATA + size_of(AsmOpRowData);
+	section_ram_loc : int = DEFAULT_RAM_DATA + size_of(OldAsmOpRowData);
 	et12 := RowSectionData.{0,0,6};
 	et24 := RowSectionData.{0,1,6};
 	asm_sections := RowSectionData.[et12, et24];
@@ -3387,7 +3722,7 @@ Test_AsmOpLinearRange :: (
 			it, *perm.all_data.ram_memory);
 	}
 
-	asm_row : AsmOpRowData;
+	asm_row : OldAsmOpRowData;
 	asm_row.octave_height = 12;
 	asm_row.row_height = 12;
 	asm_row.op_space_id = 0;
@@ -3463,13 +3798,13 @@ Test_AsmOpCopyRow :: (
 	CreateManyMusicPtsInMemory(float64.[0,4,7], 1, 0, 1, *perm.all_data.all_mspace_data[0].all_music_pts);
 	CreateManyMusicPtsInMemory(float64.[0,3,7,10], 1, 2.5, 4.25, *perm.all_data.all_mspace_data[0].all_music_pts);
 
-	asm_row : AsmOpRowData;
+	asm_row : OldAsmOpRowData;
 	asm_row.octave_height = 12;
 	asm_row.row_height = 12;
 	asm_row.op_space_id = 0;
 	asm_row.x_point_width = 1.75;
 	asm_row.is_music_row_copy = cast(int) true;
-	asm_row.copy_music_row_id = perm.all_data.all_mspace_data[0].all_music_lane_rows[1].id;
+	asm_row.op_ref_row_id = perm.all_data.all_mspace_data[0].all_music_lane_rows[1].id;
 	SetRAMValue(DEFAULT_RAM_DATA, asm_row, *perm.all_data.ram_memory);
 
 	cd : *CompilationData = CompileCode(.{},
@@ -3500,7 +3835,7 @@ DEFAULT_RAM_DATA
 		AssertFloatEquals(cast(float) asm_row.row_height, row.row_height);
 		AssertFloatEquals(cast(float) asm_row.x_point_width, row.x_point_width);
 		AssertEquals(OpRowType.COPY_MUSIC_ROW, row.op_row_type);
-		AssertEquals(perm.all_data.all_mspace_data[0].all_music_lane_rows[1].id, row.copy_music_row_id);
+		AssertEquals(perm.all_data.all_mspace_data[0].all_music_lane_rows[1].id, row.op_ref_row_id);
 		AssertEquals(perm.all_data.all_mspace_data[0].all_music_lane_rows[1].total_row_index, row.total_row_index);
 	}	
 
@@ -3508,7 +3843,7 @@ DEFAULT_RAM_DATA
 
 } @ITest
 
-Test_OpLinearRow :: (
+Test_OLDOpLinearRow :: (
 	test_name : string,
 	game_memory : *GameMemory, 
 	renderer_data : *RendererData, 
@@ -3536,7 +3871,7 @@ Test_OpLinearRow :: (
 	// rows[0].x_point_width = perm.all_data.global_rules.memory_unit_width;
 	rows[0].x_point_width = 1.75;
 	// rows[0].op_row_type = OpRowType.COPY_MUSIC_ROW;
-	rows[0].copy_music_row_id = perm.all_data.all_mspace_data[0].all_music_lane_rows[0].id;
+	rows[0].op_ref_row_id = perm.all_data.all_mspace_data[0].all_music_lane_rows[0].id;
 	rows[0].row_section_data = RowSectionData.[
 		MakeRowSectionData(perm.all_data.all_tuning_systems[13].id, 2),
 		MakeRowSectionData(perm.all_data.all_tuning_systems[0].id, 2),
@@ -3563,7 +3898,7 @@ Test_OpLinearRow :: (
 	}
 
 	for rows {
-		row : MusicLaneRow = CreateOpLinearRow(it, perm.all_data);
+		row : MusicLaneRow = OLDCreateOpLinearRow(it, perm.all_data);
 
 		//TODO I think we should put this in the above so it remains consistent everywhere.
 		dspace_to_op : *DSpaceToOpSpaceIndex = array_add(*perm.all_data.all_dspace_to_op_space_id);
@@ -3586,6 +3921,97 @@ Test_OpLinearRow :: (
 	mem_to_dspace.op_dspace_type = OpDSpaceType.LINEAR;
 	mem_to_dspace.dspace_id = perm.all_data.all_op_linear_rows[0].id;
 	mem_to_dspace.x_grid_pos = 2;
+
+} //@ITest
+}
+
+Test_OpLinearRow :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput) 
+{
+	perm : *Persist = GetPermanentStorage(game_memory);
+	perm.all_data = InitAllData();
+	ResetAllRendererData(renderer_data);
+
+	SetupMusicAndRows(perm.all_data, TWO_ROWS);
+
+	cosd : CreateOpSpaceData;
+	cosd.op_space_external_type = OpSpaceExternalType.space_2d;
+	cosd.op_space_name = "test";
+	op_space : OperationSpace = CreateClosedOpSpace(cosd,
+		*perm.all_data.all_closed_op_spaces, 
+		*perm.all_data.all_op_space_spec_data, 
+		*perm.all_data.all_op_spec_data_3D);
+
+	mspace_data : *MusicSpaceData = *perm.all_data.all_mspace_data[0];
+
+	rows : [2] CreateRowData;
+	rows[0].octave_height = 12;
+	rows[0].row_height = 19;
+	rows[0].op_world_pos = Vector2F.{0,5};
+	// rows[0].x_point_width = perm.all_data.global_rules.memory_unit_width;
+	rows[0].x_point_width = 1.75;
+	// rows[0].op_row_type = OpRowType.COPY_MUSIC_ROW;
+	rows[0].op_ref_mspace_id = 0;
+	rows[0].op_ref_start_x = 0;
+	rows[0].op_ref_row_id = mspace_data.all_music_lane_rows[0].id;
+	rows[0].row_section_data = RowSectionData.[
+		MakeRowSectionData(perm.all_data.all_tuning_systems[13].id, 2),
+		MakeRowSectionData(perm.all_data.all_tuning_systems[0].id, 2),
+		MakeRowSectionData(perm.all_data.all_tuning_systems[1].id, 2),
+		// MakeRowSectionData(perm.all_data.all_tuning_systems[1].id, 2),
+		// MakeRowSectionData(perm.all_data.all_tuning_systems[2].id, 4),
+		// MakeRowSectionData(perm.all_data.all_tuning_systems[1].id, 12, .FORCE_EQUAL)
+		// MakeRowSectionData(perm.all_data.all_tuning_systems[0].id, 12)
+	];
+
+	#if 1 {
+	// rows[1].tuning_system_type = .EQUAL_TEMPERAMENT;
+	// rows[1].tuning_system_count = 12;
+	rows[1].octave_height = 16;
+	rows[1].row_height = 12;
+	rows[1].x_point_width = 1.5;
+	rows[1].op_world_pos = Vector2F.{1,-10};
+	rows[1].op_ref_mspace_id = 0;
+	rows[1].op_ref_start_x = 2;
+	rows[1].op_ref_row_id = mspace_data.all_music_lane_rows[0].id;
+	rows[1].row_section_data = RowSectionData.[
+		MakeRowSectionData(perm.all_data.all_tuning_systems[2].id, 3),
+		MakeRowSectionData(perm.all_data.all_tuning_systems[1].id, 2)
+		// MakeRowSectionData(perm.all_data.all_tuning_systems[1].id, 12)
+	];
+	}
+
+	count_equal := AssertEquals(1, perm.all_data.all_op_space_spec_data.count);
+	op_spec_data : *OpSpaceSpecData;
+	if count_equal {
+		op_spec_data = *perm.all_data.all_op_space_spec_data[0];
+	}
+
+	for rows {
+		row := CreateOpLinearRow(it, op_spec_data,
+			perm.all_data.all_mspace_data,
+			perm.all_data.all_tuning_systems,
+			perm.all_data.all_tuning_pitches,
+			*perm.all_data.all_linear_to_tuning_system,
+			*perm.all_data.all_linear_pitch_spaces,
+			*perm.all_data.all_space_points);
+	}
+
+	AssertEquals(2, op_spec_data.all_op_linear_rows.count);
+	AssertEquals(5, op_spec_data.all_op_section_to_row.count);
+
+	c1 := float64.[0,2.5];
+	c2 := float64.[1.25,4.5];
+	CreateManyMusicPtsInMemory(c1, 0, 0, 1, *perm.all_data.all_mspace_data[0].all_music_pts);
+	CreateManyMusicPtsInMemory(c2, 0, 2, 4, *perm.all_data.all_mspace_data[0].all_music_pts);
+	CreateManyMusicPtsInMemory(c2, 0, 4.0, 5.5, *perm.all_data.all_mspace_data[0].all_music_pts);
+
+	// c3 := float64.[0,2];
+	// CreateManyMusicPtsInMemory(c3, 0, 4, 6, *perm.all_data.all_mspace_data[0].all_music_pts);
 
 } @ITest
 
