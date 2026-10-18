@@ -74,6 +74,8 @@ RenderGroup :: struct {
     //TODO Not sure we should be using this instead of screen_half_idm * pixels_per_square...
     half_monitor_squares : Vector2F;
     //TODO This allows us to continue using half_monitor_square for convenience
+    //TODO This should be stored in the operation_space now otherwise we will 
+    //reuse it when we close an op space and reopen
     zoom_factor : float = 1.0;
 
     //TODO there is a Plane3 in Plane.jai

@@ -837,6 +837,8 @@ RuntimeSettingsData :: struct {
 
 	show_row_hover : bool = true;
 	show_op_row_hover : bool = true;
+	use_row_hover_mouse_tuning_system : bool = false;
+	use_op_row_hover_mouse_tuning_system : bool = false;
 
 	//TODO Leaving here as a reminder in case used later for tests or educational purposes for some reason 
 	// update_music_while_running : bool = true;
@@ -2822,8 +2824,11 @@ MusicLaneRow :: struct {
 	//only used for op linear row now but we could set it everywhere. I prefer having consistent memory unit width for now though.
 	x_point_width : float; 
 
+
 	render_row_hovering : bool = false;
-	mouse_rsrl : RowSectionRectsData;
+	// mouse_rsrl : RowSectionRectsData;
+	//TODO Should we rename to row_hover_cam_rects?
+	//Or maybe stopre op rects and then transform at rendering
 	row_hover_rects : [..] Rectangle2;
 
 	//op-specific data
@@ -2973,11 +2978,14 @@ RowMidiData :: struct {
 	midi_channel : u8;
 	midi_velocity : u8 = 100;
 	midi_control_change : u8;
+	//midi note value that == 0 internal pos for convenient midi note offset
+	midi_zero_note : u8 = 12*4;
 }
 AsmRowMidiData :: struct {
 	midi_channel : int;
 	midi_velocity : int = 100;
 	midi_control_change : int;	
+	midi_zero_note : int = 12*4;
 } @LibraryAsmGen
 
 

@@ -15130,9 +15130,11 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		crd.row_sub_system_id = asm_data.row_sub_system_id;
 		crd.row_section_data, err = GetAsmArray(asm_data.row_sections, ad.ram_memory);
 		if err.is_error return err;
+		//TODO Could make a function for this once we reuse in other geometries
 		crd.row_midi_data.midi_channel = cast(u8) asm_data.row_midi_data.midi_channel;
 		crd.row_midi_data.midi_velocity = cast(u8) asm_data.row_midi_data.midi_velocity;
 		crd.row_midi_data.midi_control_change = cast(u8) asm_data.row_midi_data.midi_control_change;
+		crd.row_midi_data.midi_zero_note = cast(u8) asm_data.row_midi_data.midi_zero_note;
 		row, row_err := CreateMusicRow(crd, ad);
 		if row_err.is_error return row_err;
 

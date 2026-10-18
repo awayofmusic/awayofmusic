@@ -3217,6 +3217,10 @@ Test_CreateOpRows :: (
 #string DONE
 #load "c_load/Library";
 main :: () {
+	clear_m0 : AsmClearMSpaceData;
+	clear_m0.mspace_id = 0;
+	#asm{ clear_mspace clear_m0; }
+
 	rs : [3] RowSectionData;
 	rs[0].tuning_system_id = 13;
 	rs[0].x_length = 4;
@@ -3230,6 +3234,10 @@ main :: () {
 	rd.muted_row = false;
 	rd.row_sections = rs;
 	rd.row_system_type = RowSystemType.internal_pitch;
+	//rd.row_system_type = RowSystemType.midi_pitch;
+	rd.row_midi_data.midi_channel = 0;
+	rd.row_midi_data.midi_velocity = 100;
+	rd.row_midi_data.midi_zero_note = 12*3;
 	// rd.row_system_id = synth.ret_synth_id;
 	#asm{ create_row rd; }
 
@@ -3937,6 +3945,11 @@ Test_OpLinearRow :: (
 	ResetAllRendererData(renderer_data);
 
 	SetupMusicAndRows(perm.all_data, TWO_ROWS);
+	row_0 : *MusicLaneRow = *perm.all_data.all_mspace_data[0].all_music_lane_rows[0];
+	row_0.row_system_type = RowSystemType.midi_pitch;
+	row_0.row_midi_data.midi_channel = 0;
+	row_0.row_midi_data.midi_velocity = 100;
+	row_0.row_midi_data.midi_zero_note = 12*3;
 
 	cosd : CreateOpSpaceData;
 	cosd.op_space_external_type = OpSpaceExternalType.space_2d;
@@ -4008,7 +4021,9 @@ Test_OpLinearRow :: (
 	c2 := float64.[1.25,4.5];
 	CreateManyMusicPtsInMemory(c1, 0, 0, 1, *perm.all_data.all_mspace_data[0].all_music_pts);
 	CreateManyMusicPtsInMemory(c2, 0, 2, 4, *perm.all_data.all_mspace_data[0].all_music_pts);
-	CreateManyMusicPtsInMemory(c2, 0, 4.0, 5.5, *perm.all_data.all_mspace_data[0].all_music_pts);
+	CreateMusicPtInMemory(1.24, 0, 4.0, 5.5, *perm.all_data.all_mspace_data[0].all_music_pts);
+	CreateMusicPtInMemory(4.5, 0, 4.0, 6.0, *perm.all_data.all_mspace_data[0].all_music_pts);
+	CreateMusicPtInMemory(2.4, 0, 5.0, 6.0, *perm.all_data.all_mspace_data[0].all_music_pts);
 
 	// c3 := float64.[0,2];
 	// CreateManyMusicPtsInMemory(c3, 0, 4, 6, *perm.all_data.all_mspace_data[0].all_music_pts);

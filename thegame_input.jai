@@ -741,6 +741,12 @@ InputMapType :: enum {
 	STOP_MUSIC;
 	STOP_MUSIC_AT_AUDIO_MSPACE;
 
+
+	ROW_HOVER_CHORDS;
+	MIDI_PRESS_NOTE_ON;
+	MIDI_PRESS_NOTE_OFF;
+
+
 	RUN_EXTERNAL_UPDATE;
 
 	DEV_TEST_MODE;
@@ -1117,6 +1123,21 @@ DEFAULT_INPUT_MAPPINGS, IM_DESCRIPTIONS :: #run () ->
 	case .STOP_MUSIC_AT_AUDIO_MSPACE; {
 		k_maps := NewArray(1, KeyboardMap);
 		k_maps[0] = .{xx #char "P", .{ctrl_pressed=true,alt_pressed=true}};
+		d[it] = .{it, k_maps};		
+	}
+	case .ROW_HOVER_CHORDS; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{xx #char "Q", .{ctrl_pressed=true}};
+		d[it] = .{it, k_maps};		
+	}
+	case .MIDI_PRESS_NOTE_ON; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{.MOUSE_BUTTON_LEFT,.{}};
+		d[it] = .{it, k_maps};		
+	}
+	case .MIDI_PRESS_NOTE_OFF; {
+		k_maps := NewArray(1, KeyboardMap);
+		k_maps[0] = .{.MOUSE_BUTTON_RIGHT,.{}};
 		d[it] = .{it, k_maps};		
 	}
 	case .RUN_EXTERNAL_UPDATE; {

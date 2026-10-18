@@ -1528,159 +1528,221 @@ if frame_hover_entities.count > 0 {
 				op_row.row_cam.y = Clamp(-9 * op_row.octave_height, op_row.row_cam.y, 9 * op_row.octave_height);
 			}	
 
-			op_space, found_op_space :=
-				ArrayFindFirstByNameId(perm.all_data.all_open_op_spaces, op_spec_data.op_space_id, "id");
-			assert(found_op_space);
-
-			op_mouse : Vector2F = WorldSpaceToOpSpace(world_mouse, op_space, op_space.op_2D_cam.world_pos);
-			mouse_x_float : float = WorldXToRowXFloat(op_mouse.x, op_row, op_row.x_point_width);
-			// if perm.all_data.runtime_settings.show_row_hover {
-			row_section_check_id : int;
-			current_section_to_row : [] SectionToRow;
-			if op_row.op_row_type == {
-			case OpRowType.MULTI_SECTION; {
-				row_section_check_id = op_row.id;
-				current_section_to_row = op_spec_data.all_op_section_to_row;
+			if IsInputMapPress(.ROW_HOVER_CHORDS, .DOWN_THIS_FRAME, game_input) {
+				perm.all_data.play_row_chords = !perm.all_data.play_row_chords;
 			}
-			case OpRowType.COPY_MUSIC_ROW; {
-				//TODO Could also allow a specific sections to be copied between a given x_start and x_end
-				row_section_check_id = op_row.op_ref_row_id;
-				current_section_to_row = mspace_data.all_section_to_row;
-			} 
-			}
-			// mouse_rsrl : RowSectionRectsData;
-			hover_text : string;
-			show_hover_text : bool = false;
-			for section : current_section_to_row {
-				if section.row_id == row_section_check_id && 
-					InRange(cast(float64) section.start_x, mouse_x_float, cast(float64) section.end_x) 
-				{
-					op_row.mouse_rsrl = BuildRSRData(section, op_row, perm.all_data.all_tuning_systems, 
-						perm.all_data.all_space_points, op_row.x_point_width);
-					ComputeRowSectionRects(op_row.mouse_rsrl, op_row, *row_section_rects_array);
-					// for rs_ret : op_row.mouse_rsrl {
-					for rs_ret : row_section_rects_array {
-						cam_rect : Rectangle2 = OpRectToCamRect(rs_ret.world_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
-				   	if IsInRectangle(mouse_cam, cam_rect) {
-			   			pos_mod : int = rs_ret.point.int_pos.x;
-							hover_text = tprint("%,%,%", pos_mod, rs_ret.octave, op_row.mouse_rsrl.tuning_system.short_name);
-							show_hover_text = true;
-							break section;
-						}
-					}
-				}
-			}
-			// }
 
 			//TODO Could make a function that let's use check input map is down. Would have to check modifier keys separately
 			//If this row is muted AND no show hover, then we don't process. This can then be fully processed in a dynamic lib
-			if op_row.is_muted_row || perm.all_data.runtime_settings.show_op_row_hover {
-				array_reset_keeping_memory(*op_row.row_hover_rects);
-				//TODO FROM HERE Make this a shortcut and pull this out to reuse with base rows
-				//maybe push this commit first
-				if IsKeyboardPress(.MOUSE_BUTTON_LEFT, .DOWN_THIS_FRAME, game_input) {
-					perm.all_data.play_row_chords = !perm.all_data.play_row_chords;
+			array_reset_keeping_memory(*op_row.row_hover_rects);
+			is_interactive_row : bool = !op_row.is_muted_row || perm.all_data.runtime_settings.show_op_row_hover;
+			if is_interactive_row {
+				op_space, found_op_space :=
+					ArrayFindFirstByNameId(perm.all_data.all_open_op_spaces, op_spec_data.op_space_id, "id");
+				assert(found_op_space);
+
+				op_mouse : Vector2F = WorldSpaceToOpSpace(world_mouse, op_space, op_space.op_2D_cam.world_pos);
+				mouse_x_float : float = WorldXToRowXFloat(op_mouse.x, op_row, op_row.x_point_width);
+				// if perm.all_data.runtime_settings.show_row_hover {
+				row_section_check_id : int;
+				current_section_to_row : [] SectionToRow;
+				if op_row.op_row_type == {
+				case OpRowType.MULTI_SECTION; {
+					row_section_check_id = op_row.id;
+					current_section_to_row = op_spec_data.all_op_section_to_row;
 				}
-				play_row_audio : bool = false;
-				base_row, found_base_row := ArrayFindFirstByNameId(mspace_data.all_music_lane_rows,
-					op_row.op_ref_row_id, "id");
-				if found_base_row && base_row.row_system_type == .internal_pitch {
-					synth, found_synth := ArrayFindFirstByNameId(perm.all_data.all_simple_synths, 
-						base_row.system_id, "synth_id");
-					if found_synth {
-						if IsKeyboardPress(.MOUSE_BUTTON_LEFT, .DOWN_THIS_FRAME, game_input) {
-							//TODO We could put an extra synth in each row if that helps
-							//If we just pressed the mouse then copy the synth and reset the waves
-							op_row.extra_hover_synth = synth.*;
-							array_reset_keeping_memory(*op_row.extra_hover_synth.simple_waves);
-						}
-
-						ref_freq : float64 = perm.all_data.runtime_settings.default_zero_pitch_frequency;
-						// if circle.use_set_zero_freq ref_freq = circle.pitch_zero_freq;
-
-						tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, op_row.mouse_rsrl.tuning_system.id, "tuning_system_id", temp);
-						total_x_float : float = mouse_x_float + op_row.op_ref_start_x;
-						hover_chord : [] MusicPoint = GetAllMusicPtPosByPosition(base_row.total_row_index, total_x_float, 
-							mspace_data.all_music_pts, type=MusicPoint,,temp);
-						if perm.all_data.play_row_chords && op_row.extra_hover_synth.simple_waves.count != hover_chord.count {
-							array_reset_keeping_memory(*op_row.extra_hover_synth.simple_waves);
-							for 0..hover_chord.count-1 {
-								AddSimpleWaveFromFrequency(0, *op_row.extra_hover_synth, audio_data);
-							}
-						}
-
-						for mp : hover_chord {
-							x_offset := cast(float) (mp.x_start_float - op_row.op_ref_start_x);
-							//TODO FROM HERE Could have an option here that plays the alternate music pts or chords on the other tuning system
-							//By just not doing this loop check
-							if !InEpsilonRangeLeft(x_offset, cast(float64) op_row.mouse_rsrl.section.start_x, cast(float64) op_row.mouse_rsrl.section.end_x) {
-								//TODO Make a function here get row section based on row id and x
-								for section : current_section_to_row {
-									if section.row_id == row_section_check_id && 
-										InEpsilonRangeLeft(x_offset, cast(float64) section.start_x, cast(float64) section.end_x) 
-									{
-										op_row.mouse_rsrl = BuildRSRData(section, op_row, perm.all_data.all_tuning_systems, 
-											perm.all_data.all_space_points, op_row.x_point_width);
-										break;
-									}
-								}
-							}
-
-							op_rect := MusicPtRowSectionRect(mp, op_row.mouse_rsrl.octave_mult, x_offset, 
-								op_row.x_point_width, op_row, op_row.mouse_rsrl.section_points);
-							cam_rect : Rectangle2 = OpRectToCamRect(op_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
-							if perm.all_data.play_row_chords {
-								frequency := MusicPtToFrequency(mp.music_pt_float, op_row.mouse_rsrl.tuning_system, tuning_pitches, ref_freq);
-								UpdateWaveFrequency(frequency, *op_row.extra_hover_synth.simple_waves[it_index], audio_data.*);
-								array_add(*op_row.row_hover_rects, cam_rect);
-								op_row.render_row_hovering = true;
-								play_row_audio = true;
-							} else if IsInRectangle(mouse_cam, cam_rect) {
-								if op_row.extra_hover_synth.simple_waves.count != 1 {
-									array_reset_keeping_memory(*op_row.extra_hover_synth.simple_waves);
-									AddSimpleWaveFromFrequency(0, *op_row.extra_hover_synth, audio_data);
-								}
-								frequency := MusicPtToFrequency(mp.music_pt_float, op_row.mouse_rsrl.tuning_system, tuning_pitches, ref_freq);
-								UpdateWaveFrequency(frequency, *op_row.extra_hover_synth.simple_waves[0], audio_data.*);
-								play_row_audio = true;
-
-								hover_text = tprint("%-%", mp.music_pt_float, op_row.mouse_rsrl.tuning_system.short_name);
+				case OpRowType.COPY_MUSIC_ROW; {
+					//TODO Could also allow a specific sections to be copied between a given x_start and x_end
+					row_section_check_id = op_row.op_ref_row_id;
+					current_section_to_row = mspace_data.all_section_to_row;
+				} 
+				}
+				mouse_rsrl : RowSectionRectsData;
+				hover_text : string;
+				show_hover_text : bool = false;
+				//TODO FROM HERE Pull this out into a function and get section to row by x value.
+				//Then pull things out below for general reuse in base rows 
+				//and then pull them both out and put multi tuning system case into dynamic library.
+				//These can be sorted/indexed by row for efficiency
+				for section : current_section_to_row {
+					if section.row_id == row_section_check_id && 
+						InRange(cast(float64) section.start_x, mouse_x_float, cast(float64) section.end_x) 
+					{
+						mouse_rsrl = BuildRSRData(section, op_row, perm.all_data.all_tuning_systems, 
+							perm.all_data.all_space_points, op_row.x_point_width);
+						ComputeRowSectionRects(mouse_rsrl, op_row, *row_section_rects_array);
+						// for rs_ret : mouse_rsrl {
+						for rs_ret : row_section_rects_array {
+							cam_rect : Rectangle2 = OpRectToCamRect(rs_ret.world_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
+					   	if IsInRectangle(mouse_cam, cam_rect) {
+				   			pos_mod : int = rs_ret.point.int_pos.x;
+								hover_text = tprint("%,%,%", pos_mod, rs_ret.octave, mouse_rsrl.tuning_system.short_name);
 								show_hover_text = true;
-								op_row.render_row_hovering = true;
-								array_add(*op_row.row_hover_rects, cam_rect);
-								break;
+								break section;
 							}
-						}
-						if perm.all_data.play_row_chords {
-							sb : String_Builder;
-							sb.allocator = temp;
-							append(*sb, "[");
-							for hover_chord {
-								print_to_builder(*sb, "%", it.music_pt_float);
-								if it_index < hover_chord.count-1 append(*sb, ",");
-							}
-							append(*sb, "]");
-							append(*sb, op_row.mouse_rsrl.tuning_system.short_name);
-							hover_text = builder_to_string(*sb,,temp);
-							show_hover_text = true;
-
-						}
-						if !op_row.is_muted_row && play_row_audio {
-							GenerateSimpleSynthSamples(*op_row.extra_hover_synth, audio_data.float_buffer, audio_data);
 						}
 					}
 				}
-			}
+				// }
 
-			if show_hover_text && perm.all_data.runtime_settings.show_op_row_hover {
-				hover_cam := mouse_cam + Vector2F.{1,0};
-				hover_rect : Rectangle2 = TextBackgroundRect2D(hover_text, hover_cam, perm.text_editor_data, renderer_data.current_pixels_per_square);
-				PushRectangle(hover_rect, GREY_BLACKER_V, op_space.render_groups.scissor_group, order = MAX_ROW_RENDER_ORDER+2);
-				PushText(hover_cam, hover_text, GREY_DARK_V, op_space.render_groups.scissor_group, order = MAX_ROW_RENDER_ORDER+3);
+				audio_float_poses : [..] float64;
+				audio_float_poses.allocator = temp;
+				mp_tuning_systems : [..] TuningSystem;
+				mp_tuning_systems.allocator = temp;
+				play_row_audio : bool = false;
+
+				base_row, found_base_row := ArrayFindFirstByNameId(mspace_data.all_music_lane_rows,
+					op_row.op_ref_row_id, "id");
+				if found_base_row {
+					total_x_float : float = mouse_x_float + op_row.op_ref_start_x;
+					hover_chord : [] MusicPoint = GetAllMusicPtPosByPosition(base_row.total_row_index, total_x_float, 
+						mspace_data.all_music_pts, type=MusicPoint,,temp);
+
+					for mp : hover_chord {
+						mp_start_rsrl : RowSectionRectsData = mouse_rsrl;
+						x_offset := cast(float) (mp.x_start_float - op_row.op_ref_start_x);
+						//TODO FROM HERE Could have an option here that plays the alternate music pts or chords on the other tuning system
+						//By just not doing this loop check
+						if !InEpsilonRangeLeft(x_offset, cast(float64) mouse_rsrl.section.start_x, cast(float64) mouse_rsrl.section.end_x) {
+							//TODO Make a function here get row section based on row id and x
+							for section : current_section_to_row {
+								if section.row_id == row_section_check_id && 
+									InEpsilonRangeLeft(x_offset, cast(float64) section.start_x, cast(float64) section.end_x) 
+								{
+									mp_start_rsrl = BuildRSRData(section, op_row, perm.all_data.all_tuning_systems, 
+										perm.all_data.all_space_points, op_row.x_point_width);
+									break;
+								}
+							}
+						}
+
+						op_rect := MusicPtRowSectionRect(mp, mp_start_rsrl.octave_mult, x_offset, 
+							op_row.x_point_width, op_row, mp_start_rsrl.section_points);
+						cam_rect : Rectangle2 = OpRectToCamRect(op_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
+						if !op_row.is_muted_row && 
+							//If in rectangle then we break out when rendering below and only add pts for this rectangle
+							//if play row chords is true then we would add each one
+							(perm.all_data.play_row_chords || IsInRectangle(mouse_cam, cam_rect)) 
+						{
+							array_add(*audio_float_poses, mp.music_pt_float);
+							array_add(*mp_tuning_systems, mp_start_rsrl.tuning_system);
+							play_row_audio = true;
+						}
+
+						if perm.all_data.play_row_chords {
+							array_add(*op_row.row_hover_rects, cam_rect);
+							op_row.render_row_hovering = true;
+							show_hover_text = true;
+						} else if IsInRectangle(mouse_cam, cam_rect) {
+							array_add(*op_row.row_hover_rects, cam_rect);
+							op_row.render_row_hovering = true;
+							show_hover_text = true;
+							break;
+						}
+					}
+				}
+
+				//If we don't play row audio then there are no tuning systems to check
+				all_same_tunings : bool = true;
+				if play_row_audio {
+					first_ts_id := mp_tuning_systems[0].id;
+					for mp_tuning_systems if it.id != first_ts_id {
+						all_same_tunings = false;
+						break;
+					}
+					if base_row.row_system_type == {
+					case .internal_pitch; {
+						synth, found_synth := ArrayFindFirstByNameId(perm.all_data.all_simple_synths, 
+							base_row.system_id, "synth_id");
+						if found_synth {
+							//TODO Add a pitch_zero_freq for each row
+							ref_freq : float64 = perm.all_data.runtime_settings.default_zero_pitch_frequency;
+							// if circle.use_set_zero_freq ref_freq = circle.pitch_zero_freq;
+							if op_row.extra_hover_synth.simple_waves.count != audio_float_poses.count {
+								op_row.extra_hover_synth = synth.*;
+								array_reset_keeping_memory(*op_row.extra_hover_synth.simple_waves);
+								for 0..audio_float_poses.count-1 {
+									AddSimpleWaveFromFrequency(0, *op_row.extra_hover_synth, audio_data);
+								}
+							}
+							if all_same_tunings {
+								ts : TuningSystem = mp_tuning_systems[0];
+								tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, ts.id, "tuning_system_id", temp);
+								for audio_float_poses {
+									frequency := MusicPtToFrequency(it, ts, tuning_pitches, ref_freq);
+									UpdateWaveFrequency(frequency, *op_row.extra_hover_synth.simple_waves[it_index], audio_data.*);
+								}									
+							} else {
+								for audio_float_poses {
+									ts : TuningSystem = mp_tuning_systems[it_index];
+									tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, mp_tuning_systems[it_index].id, "tuning_system_id", temp);
+									frequency := MusicPtToFrequency(it, ts, tuning_pitches, ref_freq);
+									UpdateWaveFrequency(frequency, *op_row.extra_hover_synth.simple_waves[it_index], audio_data.*);
+								}
+							}
+							GenerateSimpleSynthSamples(*op_row.extra_hover_synth, audio_data.float_buffer, audio_data);
+						} 
+						else {
+							//Maybe this is a helpful log message, maybe not and we remove it.
+							print("No synth found for row id % with synth id %.\n", base_row.id, base_row.system_id);
+						}
+					}
+					case .midi_pitch; {
+		        		m_channel : u8 = base_row.row_midi_data.midi_channel;
+						if IsInputMapPress(.MIDI_PRESS_NOTE_ON, .DOWN_THIS_FRAME, game_input) {
+							velocity : u8 = base_row.row_midi_data.midi_velocity;
+							for audio_float_poses {
+								note := (cast(u8) round_to_int(it)) + base_row.row_midi_data.midi_zero_note;
+								note_on : MIDI_Message = create_midi_message(.Note_On, note, velocity, m_channel);
+				        		send_midi_message(game_memory.midi_output, note_on);
+							}
+			        	} else if IsInputMapPress(.MIDI_PRESS_NOTE_OFF, .DOWN_THIS_FRAME, game_input) {
+							for audio_float_poses {
+								note := (cast(u8) round_to_int(it)) + base_row.row_midi_data.midi_zero_note;
+								note_off : MIDI_Message = create_midi_message(.Note_Off, note, channel = m_channel);
+				        		send_midi_message(game_memory.midi_output, note_off);
+							}
+						}
+					}
+					}
+				}
+				if show_hover_text && perm.all_data.runtime_settings.show_op_row_hover {
+					if play_row_audio {
+						if audio_float_poses.count == 1 || !all_same_tunings {
+							for audio_float_poses {
+								hover_text = tprint("%-%", it, mp_tuning_systems[it_index].short_name);
+								text_y : float = it_index*perm.text_editor_data.char_height/renderer_data.current_pixels_per_square;
+								hover_cam := mouse_cam + Vector2F.{1,text_y};
+								hover_rect : Rectangle2 = TextBackgroundRect2D(hover_text, hover_cam, perm.text_editor_data, renderer_data.current_pixels_per_square);
+								PushRectangle(hover_rect, GREY_BLACKER_V, op_space.render_groups.scissor_group, order = MAX_ROW_RENDER_ORDER+2);
+								PushText(hover_cam, hover_text, GREY_DARK_V, op_space.render_groups.scissor_group, order = MAX_ROW_RENDER_ORDER+3);
+							}
+						} else if all_same_tunings {
+							sb : String_Builder;
+							sb.allocator = temp;
+							append(*sb, "[");
+							for audio_float_poses {
+								print_to_builder(*sb, "%", it);
+								if it_index < audio_float_poses.count-1 append(*sb, ",");
+							}
+							append(*sb, "]");
+							append(*sb, mouse_rsrl.tuning_system.short_name);
+							hover_text = builder_to_string(*sb,,temp);
+							hover_cam := mouse_cam + Vector2F.{1,0};
+							hover_rect : Rectangle2 = TextBackgroundRect2D(hover_text, hover_cam, perm.text_editor_data, renderer_data.current_pixels_per_square);
+							PushRectangle(hover_rect, GREY_BLACKER_V, op_space.render_groups.scissor_group, order = MAX_ROW_RENDER_ORDER+2);
+							PushText(hover_cam, hover_text, GREY_DARK_V, op_space.render_groups.scissor_group, order = MAX_ROW_RENDER_ORDER+3);
+						}
+					}
+					else {
+						hover_cam := mouse_cam + Vector2F.{1,0};
+						hover_rect : Rectangle2 = TextBackgroundRect2D(hover_text, hover_cam, perm.text_editor_data, renderer_data.current_pixels_per_square);
+						PushRectangle(hover_rect, GREY_BLACKER_V, op_space.render_groups.scissor_group, order = MAX_ROW_RENDER_ORDER+2);
+						PushText(hover_cam, hover_text, GREY_DARK_V, op_space.render_groups.scissor_group, order = MAX_ROW_RENDER_ORDER+3);						
+					}
+				}
+
 			}
-			//else if input down this frame and base_row is midi then send midi on and right click is midi off
-			//TODO We can put sound output here for synth and midi
-			//Or just hover on the music_pt and add that here maybe
 		}
 		else if hover_entity.entity_type == EntityType.OP_SPACE {
 			if top_op_space_is_chosen continue;
@@ -6427,8 +6489,8 @@ if perm.all_data.all_start_playing_music_pts.count > 0 {
 				// We assume 12 tone eq here and that music_pt_pos is < 127
         		channel : u8 = music_lane_row_ptr.row_midi_data.midi_channel;
         		//TODO How should we grab the audio octave here? Should grab from row.
-				FIXED_OCTAVE : u8 : 12*4;
-				note := cast(u8) music_pt.music_pt_pos + FIXED_OCTAVE;
+				// FIXED_OCTAVE : u8 : 12*4;
+				note := cast(u8) music_pt.music_pt_pos + music_lane_row_ptr.row_midi_data.midi_zero_note;
 				velocity : u8 = music_lane_row_ptr.row_midi_data.midi_velocity;
 				note_on : MIDI_Message = create_midi_message(.Note_On, note, velocity, channel);
         		send_midi_message(game_memory.midi_output, note_on);
