@@ -2780,6 +2780,11 @@ Persist :: struct {
 	all_data : *AllData;
 	//TODO separate different datas here
 	//saveable data, ui data, transient level data, etc...
+
+
+	midi_output : *MIDI_Output;
+	//TODO To be used for midi clock sync and input mappings
+	midi_input  : *MIDI_Input;
 }
 
 /*TODO
@@ -3186,7 +3191,6 @@ AllData :: struct #type_info_no_size_complaint {
 	// all_subtractive_synths : [..] SubtractiveSynth;
 	// all_hover_simple_synths : [..] SimpleSynth;
 
-	play_row_chords : bool;
 }
 
 //TODO If we set all this in AllData as 1 struct then we can just have 1 move
@@ -3242,6 +3246,10 @@ AllDataToSharedLibraryData :: inline (
 
 	sl.all_cs2_points_2D = *perm.all_data.all_cs2_points_2D;
 	sl.all_chord_space_points = *perm.all_data.all_chord_space_points;
+
+	sl.runtime_settings = perm.all_data.runtime_settings;
+
+	sl.midi_output = perm.midi_output;
 
 	sl.all_terminal_events = *perm.all_data.all_terminal_events;
 
@@ -5846,11 +5854,11 @@ CreateMusicRow :: inline (create_row_data : CreateRowData, all_data : *AllData) 
 	return row, err;
 }
 
-OLDCreateOpLinearRow :: inline (create_row_data : CreateRowData, all_data : *AllData) -> OpLinearRow {
+OLDCreateOpRow :: inline (create_row_data : CreateRowData, all_data : *AllData) -> OpLinearRow {
 	//TODO Remove this once the new way is working.
 	// row : OpLinearRow = MakeMusicLaneRow(DEFAULT_MUSIC_LANE_ID, RowSystemType.internal_pitch, MusicLaneType.MEMORY, 
 	// 	next_row_world_base_pos, next_row_index, create_row_data.row_height, use_create_row_data = true, create_row_data);
-	row : *OpLinearRow = array_add(*all_data.all_op_linear_rows);
+	row := array_add(*all_data.all_op_linear_rows);
 	row.id = context.ALL_NEXT_IDS.NEXT_OP_LINEAR_ROW_ID;
 	context.ALL_NEXT_IDS.NEXT_OP_LINEAR_ROW_ID += 1;
 	//TODO We could make this one struct so we only have to copy once

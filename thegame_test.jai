@@ -3231,13 +3231,15 @@ main :: () {
 	rd : AsmCreateRowData;
 	rd.octave_height = 12.0;
 	rd.row_height = 12.0;
-	rd.muted_row = false;
+	rd.external_hover_row = false;
+	rd.remove_row_hover_text = false;
+	rd.mute_hover = false;
 	rd.row_sections = rs;
 	rd.row_system_type = RowSystemType.internal_pitch;
 	//rd.row_system_type = RowSystemType.midi_pitch;
 	rd.row_midi_data.midi_channel = 0;
 	rd.row_midi_data.midi_velocity = 100;
-	rd.row_midi_data.midi_zero_note = 12*3;
+	rd.row_midi_data.midi_zero_note = 12*4;
 	// rd.row_system_id = synth.ret_synth_id;
 	#asm{ create_row rd; }
 
@@ -3264,7 +3266,7 @@ main :: () {
 	acord.octave_height = 12.0;
 	acord.row_height = 12.0;
 	acord.row_section_data = rs_2;
-	// acord.muted_row = false;
+	acord.mute_hover = false;
 	acord.x_point_width = 1.5;
 	acord.op_pos = Vector2.{2,3};
 	acord.op_row_type = OpRowType.MULTI_SECTION;
@@ -3277,7 +3279,7 @@ main :: () {
 	a2 : AsmCreateOpRowData;
 	a2.octave_height = 12.0;
 	a2.row_height = 10.0;
-	// a2.muted_row = false;
+	a2.mute_hover = false;
 	a2.x_point_width = 1.25;
 	a2.op_pos = Vector2.{-10,-10};
 	a2.op_row_type = OpRowType.COPY_MUSIC_ROW;
@@ -3530,6 +3532,880 @@ mspace_1.mspace_id, op_space.id));
 				}
 			}
 		}
+	}
+	}
+
+	ContinueTest(*perm.test_data);
+
+} @ITest
+
+Test_HoverRows :: (
+	test_name : string,
+	game_memory : *GameMemory, 
+	renderer_data : *RendererData, 
+   audio_data : *AudioData,
+   game_input : *GameInput)
+{
+	mp_0 : MusicPoint = MakeMusicPoint(0,0,0,3);
+	mp_1 : MusicPoint = MakeMusicPoint(6,0,0,3);
+	mp_2 : MusicPoint = MakeMusicPoint(1,0,3,6);
+	mp_3 : MusicPoint = MakeMusicPoint(9,0,3,6);
+
+	mp_4 : MusicPoint = MakeMusicPoint(2,1,0,1);
+	mp_5 : MusicPoint = MakeMusicPoint(6,1,0,1);
+	mp_6 : MusicPoint = MakeMusicPoint(8,1,0,1);
+
+	mp_7 : MusicPoint = MakeMusicPoint(4,1,1,3);
+	mp_8 : MusicPoint = MakeMusicPoint(6,1,1,3);
+
+	mp_9 : MusicPoint = MakeMusicPoint(2,1,3,6);
+	mp_10 : MusicPoint = MakeMusicPoint(10,1,3,6);
+
+	perm : *Persist = GetPermanentStorage(game_memory);
+	if !perm.test_data.initialized_test {
+		perm.test_data.initialized_test = true;
+		perm.all_data = InitAllData();
+		ResetAllRendererData(renderer_data);
+
+		ROWS :: CreateRowData.[
+		.{row_section_data=.[.{x_length=2,tuning_system_id=0},.{x_length=4,tuning_system_id=1}], row_system_type=.internal_pitch},
+		.{row_section_data=.[.{x_length=2,tuning_system_id=0},.{x_length=4,tuning_system_id=1}], row_system_type=.internal_pitch},
+		];
+		for ROWS CreateMusicRow(it, perm.all_data);
+
+		mspace_0 := *perm.all_data.all_mspace_data[0];
+		row_0 : *MusicLaneRow = *mspace_0.all_music_lane_rows[0];
+		row_0.external_hover_row = false;
+		// row_0.row_system_type = RowSystemType.midi_pitch;
+		// row_0.row_midi_data.midi_channel = 0;
+		// row_0.row_midi_data.midi_velocity = 100;
+		// row_0.row_midi_data.midi_zero_note = 12*4;
+
+		CreateMusicPtInMemory(mp_0, *mspace_0.all_music_pts);
+		CreateMusicPtInMemory(mp_1, *mspace_0.all_music_pts);
+		CreateMusicPtInMemory(mp_2, *mspace_0.all_music_pts);
+		CreateMusicPtInMemory(mp_3, *mspace_0.all_music_pts);
+
+		CreateMusicPtInMemory(mp_4, *mspace_0.all_music_pts);
+		CreateMusicPtInMemory(mp_5, *mspace_0.all_music_pts);
+		CreateMusicPtInMemory(mp_6, *mspace_0.all_music_pts);
+		CreateMusicPtInMemory(mp_7, *mspace_0.all_music_pts);
+		CreateMusicPtInMemory(mp_8, *mspace_0.all_music_pts);
+		CreateMusicPtInMemory(mp_9, *mspace_0.all_music_pts);
+		CreateMusicPtInMemory(mp_10, *mspace_0.all_music_pts);
+
+		cosd : CreateOpSpaceData;
+		cosd.op_space_external_type = OpSpaceExternalType.space_2d;
+		cosd.op_space_name = "test";
+		op_space : OperationSpace = CreateClosedOpSpace(cosd,
+			*perm.all_data.all_closed_op_spaces, 
+			*perm.all_data.all_op_space_spec_data, 
+			*perm.all_data.all_op_spec_data_3D);
+
+		mspace_data : *MusicSpaceData = *perm.all_data.all_mspace_data[0];
+
+		op_rows : [2] CreateRowData;
+		//TEST copy music row with this
+		op_rows[0] = ROWS[0];
+		op_rows[0].x_point_width = 1.5;
+		op_rows[0].op_world_pos = Vector2F.{0,5};
+		op_rows[0].op_ref_row_id = mspace_data.all_music_lane_rows[0].id;
+		op_rows[0].op_row_type = .COPY_MUSIC_ROW;
+
+		op_rows[1] = ROWS[1];
+		op_rows[1].op_world_pos = Vector2F.{1,-10};
+		op_rows[1].x_point_width = 1.75;
+		op_rows[1].op_row_type = OpRowType.MULTI_SECTION;
+		op_rows[1].op_ref_mspace_id = 0;
+		//TEST op ref offset with this
+		op_rows[1].op_ref_start_x = 1;
+		op_rows[1].op_ref_row_id = mspace_data.all_music_lane_rows[1].id;
+		op_rows[1].row_section_data = .[.{x_length=1,tuning_system_id=0},.{x_length=3,tuning_system_id=1}];
+
+		op_spec_data : *OpSpaceSpecData = *perm.all_data.all_op_space_spec_data[0];
+		for op_rows {
+			CreateOpRow(it, op_spec_data,
+				perm.all_data.all_mspace_data,
+				perm.all_data.all_tuning_systems,
+				perm.all_data.all_tuning_pitches,
+				*perm.all_data.all_linear_to_tuning_system,
+				*perm.all_data.all_linear_pitch_spaces,
+				*perm.all_data.all_space_points);
+		}
+
+		array_resize(*perm.test_data.all_sub_tests, 21+1);
+	} 
+
+	wait_test := WaitTest(*perm.test_data);
+	if wait_test return;
+
+	text_op : *TextOpSpaceData;
+	if perm.all_data.all_text_op_space_data.count > 0 {
+		text_op = *perm.all_data.all_text_op_space_data[0];
+	}
+
+	default_base_cam : Camera2D;
+	mspace_0 : *MusicSpaceData;
+	if perm.all_data.all_mspace_data.count > 0 {
+		mspace_0 = *perm.all_data.all_mspace_data[0];
+		default_base_cam = mspace_0.mspace_cam;
+	}
+	op_spec_data : *OpSpaceSpecData = *perm.all_data.all_op_space_spec_data[0];
+
+	if perm.test_data.sub_test_index == {
+	case 0; {
+		mp : MusicPoint = MakeMusicPoint(0,0,0,1);
+		row_0 := *mspace_0.all_music_lane_rows[0];
+		row_section : SectionToRow = GetRowSectionByXEpsLeft(mp.x_start_float, row_0.id, mspace_0.all_section_to_row);
+		rsrl := BuildRSRData(row_section, row_0, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, perm.all_data.global_rules.memory_unit_width);
+		world_rect : Rectangle2 = MusicPtRowSectionRect(mp, rsrl.octave_mult, cast(float) mp.x_start_float, 
+			perm.all_data.global_rules.memory_unit_width, row_0, rsrl.section_points);
+		//TEST hover should load up hover rects and synth waves
+		cam_pos : Vector2F = WorldSpaceToCameraSpace(GetCenter(world_rect), default_base_cam);
+		game_input.mouse_cam = cam_pos;
+	}
+	case 1; {
+		row_0 := *mspace_0.all_music_lane_rows[0];
+		row_section : SectionToRow = GetRowSectionByXEpsLeft(mp_0.x_start_float, row_0.id, mspace_0.all_section_to_row);
+		rsrl_0 := BuildRSRData(row_section, row_0, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, perm.all_data.global_rules.memory_unit_width);
+		world_rect_0 : Rectangle2 = MusicPtRowSectionRect(mp_0, rsrl_0.octave_mult, cast(float) mp_0.x_start_float, 
+			perm.all_data.global_rules.memory_unit_width, row_0, rsrl_0.section_points);
+
+		row_section_1 : SectionToRow = GetRowSectionByXEpsLeft(mp_1.x_start_float, row_0.id, mspace_0.all_section_to_row);
+		rsrl_1 := BuildRSRData(row_section_1, row_0, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, perm.all_data.global_rules.memory_unit_width);
+		world_rect_1 : Rectangle2 = MusicPtRowSectionRect(mp_1, rsrl_1.octave_mult, cast(float) mp_1.x_start_float, 
+			perm.all_data.global_rules.memory_unit_width, row_0, rsrl_1.section_points);
+
+		count_equals := AssertEquals(2, row_0.row_hover_rects.count);
+		if count_equals {
+			AssertEquals(world_rect_0.min, row_0.row_hover_rects[0].min);
+			AssertEquals(world_rect_0.max, row_0.row_hover_rects[0].max);
+
+			AssertEquals(world_rect_1.min, row_0.row_hover_rects[1].min);
+			AssertEquals(world_rect_1.max, row_0.row_hover_rects[1].max);
+		}
+
+		count_equals = AssertEquals(2, row_0.extra_hover_synth.simple_waves.count);
+		if count_equals {
+			tuning_system := perm.all_data.all_tuning_systems[0];
+			tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
+			freq_0 : float = MusicPtToFrequency(mp_0.music_pt_float, tuning_system, tuning_pitches);
+			AssertEquals(freq_0, row_0.extra_hover_synth.simple_waves[0].frequency);
+
+			freq_1 : float = MusicPtToFrequency(mp_1.music_pt_float, tuning_system, tuning_pitches);
+			AssertEquals(freq_1, row_0.extra_hover_synth.simple_waves[1].frequency);
+		}
+
+		//TEST moving over should udpate the synth since we use the mouse tuning system
+		next_mp : MusicPoint = MakeMusicPoint(1,0,2,3);
+		world_rect : Rectangle2 = MusicPtRowSectionRect(next_mp, rsrl_1.octave_mult, cast(float) next_mp.x_start_float,
+			perm.all_data.global_rules.memory_unit_width, row_0, rsrl_1.section_points);
+		cam_pos : Vector2F = WorldSpaceToCameraSpace(GetCenter(world_rect), default_base_cam);
+		game_input.mouse_cam = cam_pos;
+	}
+	case 2; {
+		row_0 := *mspace_0.all_music_lane_rows[0];
+		row_section : SectionToRow = GetRowSectionByXEpsLeft(mp_0.x_start_float, row_0.id, mspace_0.all_section_to_row);
+		rsrl_0 := BuildRSRData(row_section, row_0, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, perm.all_data.global_rules.memory_unit_width);
+		world_rect_0 : Rectangle2 = MusicPtRowSectionRect(mp_0, rsrl_0.octave_mult, cast(float) mp_0.x_start_float, 
+			perm.all_data.global_rules.memory_unit_width, row_0, rsrl_0.section_points);
+
+		row_section_1 : SectionToRow = GetRowSectionByXEpsLeft(mp_1.x_start_float, row_0.id, mspace_0.all_section_to_row);
+		rsrl_1 := BuildRSRData(row_section_1, row_0, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, perm.all_data.global_rules.memory_unit_width);
+		world_rect_1 : Rectangle2 = MusicPtRowSectionRect(mp_1, rsrl_1.octave_mult, cast(float) mp_1.x_start_float, 
+			perm.all_data.global_rules.memory_unit_width, row_0, rsrl_1.section_points);
+
+		count_equals := AssertEquals(2, row_0.row_hover_rects.count);
+		if count_equals {
+			AssertEquals(world_rect_0.min, row_0.row_hover_rects[0].min);
+			AssertEquals(world_rect_0.max, row_0.row_hover_rects[0].max);
+
+			AssertEquals(world_rect_1.min, row_0.row_hover_rects[1].min);
+			AssertEquals(world_rect_1.max, row_0.row_hover_rects[1].max);
+		}
+
+		count_equals = AssertEquals(2, row_0.extra_hover_synth.simple_waves.count);
+		if count_equals {
+			//TEST we changed tuning system now
+			tuning_system := perm.all_data.all_tuning_systems[1];
+			tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
+			freq_0 : float = MusicPtToFrequency(mp_0.music_pt_float, tuning_system, tuning_pitches);
+			AssertEquals(freq_0, row_0.extra_hover_synth.simple_waves[0].frequency);
+
+			freq_1 : float = MusicPtToFrequency(mp_1.music_pt_float, tuning_system, tuning_pitches);
+			AssertEquals(freq_1, row_0.extra_hover_synth.simple_waves[1].frequency);
+		}
+
+		//TEST moving to different points should change chord
+		world_rect : Rectangle2 = MusicPtRowSectionRect(mp_2, rsrl_1.octave_mult, cast(float) mp_2.x_start_float,
+			perm.all_data.global_rules.memory_unit_width, row_0, rsrl_1.section_points);
+		cam_pos : Vector2F = WorldSpaceToCameraSpace(GetCenter(world_rect), default_base_cam);
+		game_input.mouse_cam = cam_pos;
+	}
+	case 3; {
+		row_0 := *mspace_0.all_music_lane_rows[0];
+		row_section_1 : SectionToRow = GetRowSectionByXEpsLeft(mp_2.x_start_float, row_0.id, mspace_0.all_section_to_row);
+		rsrl_1 := BuildRSRData(row_section_1, row_0, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, perm.all_data.global_rules.memory_unit_width);
+		world_rect_2 : Rectangle2 = MusicPtRowSectionRect(mp_2, rsrl_1.octave_mult, cast(float) mp_2.x_start_float, 
+			perm.all_data.global_rules.memory_unit_width, row_0, rsrl_1.section_points);
+		world_rect_3 : Rectangle2 = MusicPtRowSectionRect(mp_3, rsrl_1.octave_mult, cast(float) mp_3.x_start_float, 
+			perm.all_data.global_rules.memory_unit_width, row_0, rsrl_1.section_points);
+
+		count_equals := AssertEquals(2, row_0.row_hover_rects.count);
+		if count_equals {
+			AssertEquals(world_rect_2.min, row_0.row_hover_rects[0].min);
+			AssertEquals(world_rect_2.max, row_0.row_hover_rects[0].max);
+
+			AssertEquals(world_rect_3.min, row_0.row_hover_rects[1].min);
+			AssertEquals(world_rect_3.max, row_0.row_hover_rects[1].max);
+		}
+
+		count_equals = AssertEquals(2, row_0.extra_hover_synth.simple_waves.count);
+		if count_equals {
+			//TEST we changed tuning system now
+			tuning_system := perm.all_data.all_tuning_systems[1];
+			tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
+			freq_0 : float = MusicPtToFrequency(mp_2.music_pt_float, tuning_system, tuning_pitches);
+			AssertEquals(freq_0, row_0.extra_hover_synth.simple_waves[0].frequency);
+
+			freq_1 : float = MusicPtToFrequency(mp_3.music_pt_float, tuning_system, tuning_pitches);
+			AssertEquals(freq_1, row_0.extra_hover_synth.simple_waves[1].frequency);
+		}
+
+		//TEST Switch to single note and we should just have 1 hover rect and 1 osc wave
+		world_rect : Rectangle2 = MusicPtRowSectionRect(mp_2, rsrl_1.octave_mult, cast(float) mp_2.x_start_float,
+			perm.all_data.global_rules.memory_unit_width, row_0, rsrl_1.section_points);
+		cam_pos : Vector2F = WorldSpaceToCameraSpace(GetCenter(world_rect), default_base_cam);
+		game_input.mouse_cam = cam_pos;
+		perm.all_data.runtime_settings.play_row_hover_chords = false;
+	}
+	case 4; {
+		row_0 := *mspace_0.all_music_lane_rows[0];
+		row_section_1 : SectionToRow = GetRowSectionByXEpsLeft(mp_2.x_start_float, row_0.id, mspace_0.all_section_to_row);
+		rsrl_1 := BuildRSRData(row_section_1, row_0, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, perm.all_data.global_rules.memory_unit_width);
+		world_rect_2 : Rectangle2 = MusicPtRowSectionRect(mp_2, rsrl_1.octave_mult, cast(float) mp_2.x_start_float, 
+			perm.all_data.global_rules.memory_unit_width, row_0, rsrl_1.section_points);
+
+		count_equals := AssertEquals(1, row_0.row_hover_rects.count);
+		if count_equals {
+			AssertEquals(world_rect_2.min, row_0.row_hover_rects[0].min);
+			AssertEquals(world_rect_2.max, row_0.row_hover_rects[0].max);
+		}
+
+		count_equals = AssertEquals(1, row_0.extra_hover_synth.simple_waves.count);
+		if count_equals {
+			//TEST we changed tuning system now
+			tuning_system := perm.all_data.all_tuning_systems[1];
+			tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
+			freq_0 : float = MusicPtToFrequency(mp_2.music_pt_float, tuning_system, tuning_pitches);
+			AssertEquals(freq_0, row_0.extra_hover_synth.simple_waves[0].frequency);
+		}
+
+		//TEST Move back to previous note with only 1 playing
+		mp_1_end := mp_1;
+		mp_1_end.x_start_float = 2;
+		mp_1_end.x_end_float = 3;
+		row_section_0 : SectionToRow = GetRowSectionByXEpsLeft(mp_1.x_start_float, row_0.id, mspace_0.all_section_to_row);
+		rsrl_0 := BuildRSRData(row_section_0, row_0, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, perm.all_data.global_rules.memory_unit_width);
+		world_rect : Rectangle2 = MusicPtRowSectionRect(mp_1_end, rsrl_0.octave_mult, cast(float) mp_1_end.x_start_float,
+			perm.all_data.global_rules.memory_unit_width, row_0, rsrl_0.section_points);
+		cam_pos : Vector2F = WorldSpaceToCameraSpace(GetCenter(world_rect), default_base_cam);
+		game_input.mouse_cam = cam_pos;
+		perm.all_data.runtime_settings.play_row_hover_chords = false;
+	}
+	case 5; {
+		row_0 := *mspace_0.all_music_lane_rows[0];
+		row_section_0 : SectionToRow = GetRowSectionByXEpsLeft(mp_1.x_start_float, row_0.id, mspace_0.all_section_to_row);
+		rsrl_0 := BuildRSRData(row_section_0, row_0, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, perm.all_data.global_rules.memory_unit_width);
+		world_rect_1 : Rectangle2 = MusicPtRowSectionRect(mp_1, rsrl_0.octave_mult, cast(float) mp_1.x_start_float, 
+			perm.all_data.global_rules.memory_unit_width, row_0, rsrl_0.section_points);
+
+		count_equals := AssertEquals(1, row_0.row_hover_rects.count);
+		if count_equals {
+			AssertEquals(world_rect_1.min, row_0.row_hover_rects[0].min);
+			AssertEquals(world_rect_1.max, row_0.row_hover_rects[0].max);
+		}
+
+		count_equals = AssertEquals(1, row_0.extra_hover_synth.simple_waves.count);
+		if count_equals {
+			//TEST we changed tuning system now
+			tuning_system := perm.all_data.all_tuning_systems[1];
+			tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
+			freq_0 : float = MusicPtToFrequency(mp_1.music_pt_float, tuning_system, tuning_pitches);
+			AssertEquals(freq_0, row_0.extra_hover_synth.simple_waves[0].frequency);
+		}
+
+		//TEST Move back to previous note with only 1 playing but different tuning system
+		prev_mp : MusicPoint = MakeMusicPoint(mp_1.music_pt_float,0,1,2);
+		world_rect : Rectangle2 = MusicPtRowSectionRect(prev_mp, rsrl_0.octave_mult, cast(float) prev_mp.x_start_float,
+			perm.all_data.global_rules.memory_unit_width, row_0, rsrl_0.section_points);
+		cam_pos : Vector2F = WorldSpaceToCameraSpace(GetCenter(world_rect), default_base_cam);
+		game_input.mouse_cam = cam_pos;
+		perm.all_data.runtime_settings.play_row_hover_chords = false;
+	}
+	case 6; {
+		row_0 := *mspace_0.all_music_lane_rows[0];
+		row_section_0 : SectionToRow = GetRowSectionByXEpsLeft(mp_1.x_start_float, row_0.id, mspace_0.all_section_to_row);
+		rsrl_0 := BuildRSRData(row_section_0, row_0, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, perm.all_data.global_rules.memory_unit_width);
+		world_rect_1 : Rectangle2 = MusicPtRowSectionRect(mp_1, rsrl_0.octave_mult, cast(float) mp_1.x_start_float, 
+			perm.all_data.global_rules.memory_unit_width, row_0, rsrl_0.section_points);
+
+		count_equals := AssertEquals(1, row_0.row_hover_rects.count);
+		if count_equals {
+			AssertEquals(world_rect_1.min, row_0.row_hover_rects[0].min);
+			AssertEquals(world_rect_1.max, row_0.row_hover_rects[0].max);
+		}
+
+		count_equals = AssertEquals(1, row_0.extra_hover_synth.simple_waves.count);
+		if count_equals {
+			//TEST we changed tuning system now
+			tuning_system := perm.all_data.all_tuning_systems[0];
+			tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
+			freq_0 : float = MusicPtToFrequency(mp_1.music_pt_float, tuning_system, tuning_pitches);
+			AssertEquals(freq_0, row_0.extra_hover_synth.simple_waves[0].frequency);
+		}
+
+		//TEST moving off a single note should not hover or play anything
+		no_mp : MusicPoint = MakeMusicPoint(mp_0.music_pt_float+2,0,1,2);
+		world_rect : Rectangle2 = MusicPtRowSectionRect(no_mp, rsrl_0.octave_mult, cast(float) no_mp.x_start_float,
+			perm.all_data.global_rules.memory_unit_width, row_0, rsrl_0.section_points);
+		cam_pos : Vector2F = WorldSpaceToCameraSpace(GetCenter(world_rect), default_base_cam);
+		game_input.mouse_cam = cam_pos;
+		perm.all_data.runtime_settings.play_row_hover_chords = false;
+	}
+	case 7; {
+		row_0 := *mspace_0.all_music_lane_rows[0];
+		row_section_0 : SectionToRow = GetRowSectionByXEpsLeft(mp_1.x_start_float, row_0.id, mspace_0.all_section_to_row);
+		rsrl_0 := BuildRSRData(row_section_0, row_0, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, perm.all_data.global_rules.memory_unit_width);
+		world_rect_1 : Rectangle2 = MusicPtRowSectionRect(mp_1, rsrl_0.octave_mult, cast(float) mp_1.x_start_float, 
+			perm.all_data.global_rules.memory_unit_width, row_0, rsrl_0.section_points);
+
+		AssertEquals(0, row_0.row_hover_rects.count);
+		//This is still 1 because it's not playing but we still have the wave in order to persist
+		//waves across frames to hear the wave properly with a continuous wave across frames
+		AssertEquals(1, row_0.extra_hover_synth.simple_waves.count);
+
+
+		//TEST moving down a row with chords should update to that
+		//Also test that this input mapping works
+		DownUpInputMap(.ROW_HOVER_CHORDS, game_input);
+		row_1 := *mspace_0.all_music_lane_rows[1];
+		row_1_section : SectionToRow = GetRowSectionByXEpsLeft(mp_4.x_start_float, row_1.id, mspace_0.all_section_to_row);
+		rsrl_2 := BuildRSRData(row_1_section, row_1, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, perm.all_data.global_rules.memory_unit_width);
+		world_rect_2 : Rectangle2 = MusicPtRowSectionRect(mp_4, rsrl_2.octave_mult, cast(float) mp_4.x_start_float, 
+			perm.all_data.global_rules.memory_unit_width, row_1, rsrl_2.section_points);
+		cam_pos : Vector2F = WorldSpaceToCameraSpace(GetCenter(world_rect_2), default_base_cam);
+		game_input.mouse_cam = cam_pos;
+	}
+	case 8; {
+		row_1 := *mspace_0.all_music_lane_rows[1];
+		row_1_section : SectionToRow = GetRowSectionByXEpsLeft(mp_4.x_start_float, row_1.id, mspace_0.all_section_to_row);
+		rsrl_2 := BuildRSRData(row_1_section, row_1, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, perm.all_data.global_rules.memory_unit_width);
+		world_rect_4 : Rectangle2 = MusicPtRowSectionRect(mp_4, rsrl_2.octave_mult, cast(float) mp_4.x_start_float, 
+			perm.all_data.global_rules.memory_unit_width, row_1, rsrl_2.section_points);
+		world_rect_5 : Rectangle2 = MusicPtRowSectionRect(mp_5, rsrl_2.octave_mult, cast(float) mp_5.x_start_float, 
+			perm.all_data.global_rules.memory_unit_width, row_1, rsrl_2.section_points);
+		world_rect_6 : Rectangle2 = MusicPtRowSectionRect(mp_6, rsrl_2.octave_mult, cast(float) mp_6.x_start_float, 
+			perm.all_data.global_rules.memory_unit_width, row_1, rsrl_2.section_points);
+
+		AssertEquals(0, mspace_0.all_music_lane_rows[0].row_hover_rects.count);
+		count_equals := AssertEquals(3, row_1.row_hover_rects.count);
+		if count_equals {
+			AssertEquals(world_rect_4.min, row_1.row_hover_rects[0].min);
+			AssertEquals(world_rect_4.max, row_1.row_hover_rects[0].max);
+
+			AssertEquals(world_rect_5.min, row_1.row_hover_rects[1].min);
+			AssertEquals(world_rect_5.max, row_1.row_hover_rects[1].max);
+
+			AssertEquals(world_rect_6.min, row_1.row_hover_rects[2].min);
+			AssertEquals(world_rect_6.max, row_1.row_hover_rects[2].max);
+		}
+
+		AssertEquals(1, mspace_0.all_music_lane_rows[0].extra_hover_synth.simple_waves.count);
+		count_equals = AssertEquals(3, row_1.extra_hover_synth.simple_waves.count);
+		if count_equals {
+			//TEST we changed tuning system now
+			tuning_system := perm.all_data.all_tuning_systems[0];
+			tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
+			freq_0 : float = MusicPtToFrequency(mp_4.music_pt_float, tuning_system, tuning_pitches);
+			AssertEquals(freq_0, row_1.extra_hover_synth.simple_waves[0].frequency);
+
+			freq_1 : float = MusicPtToFrequency(mp_5.music_pt_float, tuning_system, tuning_pitches);
+			AssertEquals(freq_1, row_1.extra_hover_synth.simple_waves[1].frequency);
+
+			freq_2 : float = MusicPtToFrequency(mp_6.music_pt_float, tuning_system, tuning_pitches);
+			AssertEquals(freq_2, row_1.extra_hover_synth.simple_waves[2].frequency);
+		}
+
+
+		//TEST everything from above in an op space
+		open_test := MakeTerminalEvent(.open_op, "test");
+		array_add(*perm.all_data.all_terminal_events, open_test);
+	}
+	case 9; {
+		row_0 := *op_spec_data.all_op_linear_rows[0];
+		row_section : SectionToRow = GetRowSectionByXEpsLeft(mp_0.x_start_float, row_0.id, op_spec_data.all_op_section_to_row);
+		rsrl := BuildRSRData(row_section, row_0, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, row_0.x_point_width);
+		world_rect : Rectangle2 = MusicPtRowSectionRect(mp_0, rsrl.octave_mult, cast(float) mp_0.x_start_float, 
+			row_0.x_point_width, row_0, rsrl.section_points);
+		//TEST hover should load up hover rects and synth waves
+		cam_pos : Vector2F = WorldSpaceToCameraSpace(GetCenter(world_rect), default_base_cam);
+		game_input.mouse_cam = cam_pos;
+	}
+	case 10; {
+		row_0 := *op_spec_data.all_op_linear_rows[0];
+		row_section : SectionToRow = GetRowSectionByXEpsLeft(mp_0.x_start_float, row_0.id, 
+			mspace_0.all_section_to_row);
+		rsrl_0 := BuildRSRData(row_section, row_0, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, row_0.x_point_width);
+		world_rect_0 : Rectangle2 = MusicPtRowSectionRect(mp_0, rsrl_0.octave_mult, cast(float) mp_0.x_start_float, 
+			row_0.x_point_width, row_0, rsrl_0.section_points);
+
+		row_section_1 : SectionToRow = GetRowSectionByXEpsLeft(mp_1.x_start_float, row_0.id, 
+			mspace_0.all_section_to_row);
+		rsrl_1 := BuildRSRData(row_section_1, row_0, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, row_0.x_point_width);
+		world_rect_1 : Rectangle2 = MusicPtRowSectionRect(mp_1, rsrl_1.octave_mult, cast(float) mp_1.x_start_float, 
+			row_0.x_point_width, row_0, rsrl_1.section_points);
+
+		count_equals := AssertEquals(2, row_0.row_hover_rects.count);
+		if count_equals {
+			AssertEquals(world_rect_0.min, row_0.row_hover_rects[0].min);
+			AssertEquals(world_rect_0.max, row_0.row_hover_rects[0].max);
+
+			AssertEquals(world_rect_1.min, row_0.row_hover_rects[1].min);
+			AssertEquals(world_rect_1.max, row_0.row_hover_rects[1].max);
+		}
+
+		count_equals = AssertEquals(2, row_0.extra_hover_synth.simple_waves.count);
+		if count_equals {
+			tuning_system := perm.all_data.all_tuning_systems[0];
+			tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
+			freq_0 : float = MusicPtToFrequency(mp_0.music_pt_float, tuning_system, tuning_pitches);
+			AssertEquals(freq_0, row_0.extra_hover_synth.simple_waves[0].frequency);
+
+			freq_1 : float = MusicPtToFrequency(mp_1.music_pt_float, tuning_system, tuning_pitches);
+			AssertEquals(freq_1, row_0.extra_hover_synth.simple_waves[1].frequency);
+		}
+
+		//TEST moving over should udpate the synth since we use the mouse tuning system
+		next_mp : MusicPoint = MakeMusicPoint(1,0,2,3);
+		world_rect : Rectangle2 = MusicPtRowSectionRect(next_mp, rsrl_1.octave_mult, cast(float) next_mp.x_start_float,
+			row_0.x_point_width, row_0, rsrl_1.section_points);
+		cam_pos : Vector2F = WorldSpaceToCameraSpace(GetCenter(world_rect), default_base_cam);
+		game_input.mouse_cam = cam_pos;
+	}
+	case 11; {
+		row_0 := *op_spec_data.all_op_linear_rows[0];
+		row_section : SectionToRow = GetRowSectionByXEpsLeft(mp_0.x_start_float, row_0.id, 
+			mspace_0.all_section_to_row);
+		rsrl_0 := BuildRSRData(row_section, row_0, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, row_0.x_point_width);
+		world_rect_0 : Rectangle2 = MusicPtRowSectionRect(mp_0, rsrl_0.octave_mult, cast(float) mp_0.x_start_float, 
+			row_0.x_point_width, row_0, rsrl_0.section_points);
+
+		row_section_1 : SectionToRow = GetRowSectionByXEpsLeft(mp_1.x_start_float, row_0.id, 
+			mspace_0.all_section_to_row);
+		rsrl_1 := BuildRSRData(row_section_1, row_0, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, row_0.x_point_width);
+		world_rect_1 : Rectangle2 = MusicPtRowSectionRect(mp_1, rsrl_1.octave_mult, cast(float) mp_1.x_start_float, 
+			row_0.x_point_width, row_0, rsrl_1.section_points);
+
+		count_equals := AssertEquals(2, row_0.row_hover_rects.count);
+		if count_equals {
+			AssertEquals(world_rect_0.min, row_0.row_hover_rects[0].min);
+			AssertEquals(world_rect_0.max, row_0.row_hover_rects[0].max);
+
+			AssertEquals(world_rect_1.min, row_0.row_hover_rects[1].min);
+			AssertEquals(world_rect_1.max, row_0.row_hover_rects[1].max);
+		}
+
+		count_equals = AssertEquals(2, row_0.extra_hover_synth.simple_waves.count);
+		if count_equals {
+			tuning_system := perm.all_data.all_tuning_systems[1];
+			tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
+			freq_0 : float = MusicPtToFrequency(mp_0.music_pt_float, tuning_system, tuning_pitches);
+			AssertEquals(freq_0, row_0.extra_hover_synth.simple_waves[0].frequency);
+
+			freq_1 : float = MusicPtToFrequency(mp_1.music_pt_float, tuning_system, tuning_pitches);
+			AssertEquals(freq_1, row_0.extra_hover_synth.simple_waves[1].frequency);
+		}
+
+		//TEST moving to different points should change chord
+		world_rect : Rectangle2 = MusicPtRowSectionRect(mp_2, rsrl_1.octave_mult, cast(float) mp_2.x_start_float,
+			row_0.x_point_width, row_0, rsrl_1.section_points);
+		cam_pos : Vector2F = WorldSpaceToCameraSpace(GetCenter(world_rect), default_base_cam);
+		game_input.mouse_cam = cam_pos;
+	}
+	case 12; {
+		row_0 := *op_spec_data.all_op_linear_rows[0];
+		row_section_1 : SectionToRow = GetRowSectionByXEpsLeft(mp_2.x_start_float, row_0.id, 
+			mspace_0.all_section_to_row);
+		rsrl_1 := BuildRSRData(row_section_1, row_0, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, row_0.x_point_width);
+		world_rect_2 : Rectangle2 = MusicPtRowSectionRect(mp_2, rsrl_1.octave_mult, cast(float) mp_2.x_start_float, 
+			row_0.x_point_width, row_0, rsrl_1.section_points);
+		world_rect_3 : Rectangle2 = MusicPtRowSectionRect(mp_3, rsrl_1.octave_mult, cast(float) mp_3.x_start_float, 
+			row_0.x_point_width, row_0, rsrl_1.section_points);
+
+		count_equals := AssertEquals(2, row_0.row_hover_rects.count);
+		if count_equals {
+			AssertEquals(world_rect_2.min, row_0.row_hover_rects[0].min);
+			AssertEquals(world_rect_2.max, row_0.row_hover_rects[0].max);
+
+			AssertEquals(world_rect_3.min, row_0.row_hover_rects[1].min);
+			AssertEquals(world_rect_3.max, row_0.row_hover_rects[1].max);
+		}
+
+		count_equals = AssertEquals(2, row_0.extra_hover_synth.simple_waves.count);
+		if count_equals {
+			//TEST we changed tuning system now
+			tuning_system := perm.all_data.all_tuning_systems[1];
+			tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
+			freq_0 : float = MusicPtToFrequency(mp_2.music_pt_float, tuning_system, tuning_pitches);
+			AssertEquals(freq_0, row_0.extra_hover_synth.simple_waves[0].frequency);
+
+			freq_1 : float = MusicPtToFrequency(mp_3.music_pt_float, tuning_system, tuning_pitches);
+			AssertEquals(freq_1, row_0.extra_hover_synth.simple_waves[1].frequency);
+		}
+
+		//TEST Switch to single note and we should just have 1 hover rect and 1 osc wave
+		world_rect : Rectangle2 = MusicPtRowSectionRect(mp_2, rsrl_1.octave_mult, cast(float) mp_2.x_start_float,
+			row_0.x_point_width, row_0, rsrl_1.section_points);
+		cam_pos : Vector2F = WorldSpaceToCameraSpace(GetCenter(world_rect), default_base_cam);
+		game_input.mouse_cam = cam_pos;
+		perm.all_data.runtime_settings.play_row_hover_chords = false;
+	}
+	case 13; {
+		row_0 := *op_spec_data.all_op_linear_rows[0];
+		row_section_1 : SectionToRow = GetRowSectionByXEpsLeft(mp_2.x_start_float, row_0.id, 
+			mspace_0.all_section_to_row);
+		rsrl_1 := BuildRSRData(row_section_1, row_0, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, row_0.x_point_width);
+		world_rect_2 : Rectangle2 = MusicPtRowSectionRect(mp_2, rsrl_1.octave_mult, cast(float) mp_2.x_start_float, 
+			row_0.x_point_width, row_0, rsrl_1.section_points);
+
+		count_equals := AssertEquals(1, row_0.row_hover_rects.count);
+		if count_equals {
+			AssertEquals(world_rect_2.min, row_0.row_hover_rects[0].min);
+			AssertEquals(world_rect_2.max, row_0.row_hover_rects[0].max);
+		}
+
+		count_equals = AssertEquals(1, row_0.extra_hover_synth.simple_waves.count);
+		if count_equals {
+			//TEST we changed tuning system now
+			tuning_system := perm.all_data.all_tuning_systems[1];
+			tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
+			freq_0 : float = MusicPtToFrequency(mp_2.music_pt_float, tuning_system, tuning_pitches);
+			AssertEquals(freq_0, row_0.extra_hover_synth.simple_waves[0].frequency);
+		}
+
+		//TEST Move back to previous note with only 1 playing
+		mp_1_end := mp_1;
+		mp_1_end.x_start_float = 2;
+		mp_1_end.x_end_float = 3;
+		row_section_0 : SectionToRow = GetRowSectionByXEpsLeft(mp_1.x_start_float, row_0.id, mspace_0.all_section_to_row);
+		rsrl_0 := BuildRSRData(row_section_0, row_0, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, row_0.x_point_width);
+		world_rect : Rectangle2 = MusicPtRowSectionRect(mp_1_end, rsrl_0.octave_mult, cast(float) mp_1_end.x_start_float,
+			row_0.x_point_width, row_0, rsrl_0.section_points);
+		cam_pos : Vector2F = WorldSpaceToCameraSpace(GetCenter(world_rect), default_base_cam);
+		game_input.mouse_cam = cam_pos;
+		perm.all_data.runtime_settings.play_row_hover_chords = false;
+	}
+	case 14; {
+		row_0 := *op_spec_data.all_op_linear_rows[0];
+		row_section : SectionToRow = GetRowSectionByXEpsLeft(mp_1.x_start_float, row_0.id, 
+			mspace_0.all_section_to_row);
+		rsrl_0 := BuildRSRData(row_section, row_0, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, row_0.x_point_width);
+		world_rect_1 : Rectangle2 = MusicPtRowSectionRect(mp_1, rsrl_0.octave_mult, cast(float) mp_1.x_start_float, 
+			row_0.x_point_width, row_0, rsrl_0.section_points);
+
+		count_equals := AssertEquals(1, row_0.row_hover_rects.count);
+		if count_equals {
+			AssertEquals(world_rect_1.min, row_0.row_hover_rects[0].min);
+			AssertEquals(world_rect_1.max, row_0.row_hover_rects[0].max);
+		}
+
+		count_equals = AssertEquals(1, row_0.extra_hover_synth.simple_waves.count);
+		if count_equals {
+			//TEST we changed tuning system now
+			tuning_system := perm.all_data.all_tuning_systems[1];
+			tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
+			freq_0 : float = MusicPtToFrequency(mp_1.music_pt_float, tuning_system, tuning_pitches);
+			AssertEquals(freq_0, row_0.extra_hover_synth.simple_waves[0].frequency);
+		}
+
+		//TEST Move back to previous note with only 1 playing but different tuning system
+		prev_mp : MusicPoint = MakeMusicPoint(mp_1.music_pt_float,0,1,2);
+		world_rect : Rectangle2 = MusicPtRowSectionRect(prev_mp, rsrl_0.octave_mult, cast(float) prev_mp.x_start_float,
+			row_0.x_point_width, row_0, rsrl_0.section_points);
+		cam_pos : Vector2F = WorldSpaceToCameraSpace(GetCenter(world_rect), default_base_cam);
+		game_input.mouse_cam = cam_pos;
+		perm.all_data.runtime_settings.play_row_hover_chords = false;
+	}
+	case 15; {
+		row_0 := *op_spec_data.all_op_linear_rows[0];
+		row_section : SectionToRow = GetRowSectionByXEpsLeft(mp_1.x_start_float, row_0.id, 
+			mspace_0.all_section_to_row);
+		rsrl_0 := BuildRSRData(row_section, row_0, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, row_0.x_point_width);
+		world_rect_1 : Rectangle2 = MusicPtRowSectionRect(mp_1, rsrl_0.octave_mult, cast(float) mp_1.x_start_float, 
+			row_0.x_point_width, row_0, rsrl_0.section_points);
+
+		count_equals := AssertEquals(1, row_0.row_hover_rects.count);
+		if count_equals {
+			AssertEquals(world_rect_1.min, row_0.row_hover_rects[0].min);
+			AssertEquals(world_rect_1.max, row_0.row_hover_rects[0].max);
+		}
+
+		count_equals = AssertEquals(1, row_0.extra_hover_synth.simple_waves.count);
+		if count_equals {
+			//TEST we changed tuning system now
+			tuning_system := perm.all_data.all_tuning_systems[0];
+			tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
+			freq_0 : float = MusicPtToFrequency(mp_1.music_pt_float, tuning_system, tuning_pitches);
+			AssertEquals(freq_0, row_0.extra_hover_synth.simple_waves[0].frequency);
+		}
+
+		//TEST moving off a single note should not hover or play anything
+		no_mp : MusicPoint = MakeMusicPoint(mp_0.music_pt_float+2,0,1,2);
+		world_rect : Rectangle2 = MusicPtRowSectionRect(no_mp, rsrl_0.octave_mult, cast(float) no_mp.x_start_float,
+			row_0.x_point_width, row_0, rsrl_0.section_points);
+		cam_pos : Vector2F = WorldSpaceToCameraSpace(GetCenter(world_rect), default_base_cam);
+		game_input.mouse_cam = cam_pos;
+		perm.all_data.runtime_settings.play_row_hover_chords = false;
+	}
+	case 16; {
+		row_0 := *op_spec_data.all_op_linear_rows[0];
+		row_section : SectionToRow = GetRowSectionByXEpsLeft(mp_1.x_start_float, row_0.id, 
+			mspace_0.all_section_to_row);
+		rsrl_0 := BuildRSRData(row_section, row_0, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, row_0.x_point_width);
+		world_rect_1 : Rectangle2 = MusicPtRowSectionRect(mp_1, rsrl_0.octave_mult, cast(float) mp_1.x_start_float, 
+			row_0.x_point_width, row_0, rsrl_0.section_points);
+
+		AssertEquals(0, row_0.row_hover_rects.count);
+		//This is still 1 because it's not playing but we still have the wave in order to persist
+		//waves across frames to hear the wave properly with a continuous wave across frames
+		AssertEquals(1, row_0.extra_hover_synth.simple_waves.count);
+
+
+		//TEST moving down a row with chords should update to that
+		//Also test that this input mapping works
+		DownUpInputMap(.ROW_HOVER_CHORDS, game_input);
+		row_1 := *op_spec_data.all_op_linear_rows[1];
+		mp_start_x_offset : float64 = mp_7.x_start_float - cast(float64) row_1.op_ref_start_x;
+		row_1_section : SectionToRow = GetRowSectionByXEpsLeft(mp_start_x_offset, row_1.id, op_spec_data.all_op_section_to_row);
+		rsrl_2 := BuildRSRData(row_1_section, row_1, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, row_1.x_point_width);
+		world_rect_2 : Rectangle2 = MusicPtRowSectionRect(mp_7, rsrl_2.octave_mult, cast(float) mp_start_x_offset, 
+			row_1.x_point_width, row_1, rsrl_2.section_points);
+		cam_pos : Vector2F = WorldSpaceToCameraSpace(GetCenter(world_rect_2), default_base_cam);
+		game_input.mouse_cam = cam_pos;
+	}
+	case 17; {
+		row_1 := *op_spec_data.all_op_linear_rows[1];
+		mp_start_x_offset : float64 = mp_7.x_start_float - cast(float64) row_1.op_ref_start_x;
+		row_1_section : SectionToRow = GetRowSectionByXEpsLeft(mp_start_x_offset, row_1.id, op_spec_data.all_op_section_to_row);
+		rsrl_2 := BuildRSRData(row_1_section, row_1, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, row_1.x_point_width);
+		world_rect_7 : Rectangle2 = MusicPtRowSectionRect(mp_7, rsrl_2.octave_mult, cast(float) mp_start_x_offset, 
+			row_1.x_point_width, row_1, rsrl_2.section_points);
+		world_rect_8 : Rectangle2 = MusicPtRowSectionRect(mp_8, rsrl_2.octave_mult, cast(float) mp_start_x_offset, 
+			row_1.x_point_width, row_1, rsrl_2.section_points);
+
+		count_equals := AssertEquals(2, row_1.row_hover_rects.count);
+		if count_equals {
+			AssertEquals(world_rect_7.min, row_1.row_hover_rects[0].min);
+			AssertEquals(world_rect_7.max, row_1.row_hover_rects[0].max);
+
+			AssertEquals(world_rect_8.min, row_1.row_hover_rects[1].min);
+			AssertEquals(world_rect_8.max, row_1.row_hover_rects[1].max);
+		}
+
+		count_equals = AssertEquals(2, row_1.extra_hover_synth.simple_waves.count);
+		if count_equals {
+			//TEST we changed tuning system now
+			tuning_system := perm.all_data.all_tuning_systems[0];
+			tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
+			freq_0 : float = MusicPtToFrequency(mp_7.music_pt_float, tuning_system, tuning_pitches);
+			AssertEquals(freq_0, row_1.extra_hover_synth.simple_waves[0].frequency);
+
+			freq_1 : float = MusicPtToFrequency(mp_8.music_pt_float, tuning_system, tuning_pitches);
+			AssertEquals(freq_1, row_1.extra_hover_synth.simple_waves[1].frequency);
+		}
+
+
+		//TEST moving over op space should change tuning system in op space as well
+		next_mp : MusicPoint = MakeMusicPoint(mp_7.music_pt_float,0,1,2);
+		world_rect_2 : Rectangle2 = MusicPtRowSectionRect(next_mp, rsrl_2.octave_mult, cast(float) next_mp.x_start_float, 
+			row_1.x_point_width, row_1, rsrl_2.section_points);
+		cam_pos : Vector2F = WorldSpaceToCameraSpace(GetCenter(world_rect_2), default_base_cam);
+		game_input.mouse_cam = cam_pos;
+	}
+	case 18; {
+		row_1 := *op_spec_data.all_op_linear_rows[1];
+		mp_start_x_offset : float64 = mp_7.x_start_float - cast(float64) row_1.op_ref_start_x;
+		row_1_section : SectionToRow = GetRowSectionByXEpsLeft(mp_start_x_offset, row_1.id, op_spec_data.all_op_section_to_row);
+		rsrl_2 := BuildRSRData(row_1_section, row_1, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, row_1.x_point_width);
+		world_rect_7 : Rectangle2 = MusicPtRowSectionRect(mp_7, rsrl_2.octave_mult, cast(float) mp_start_x_offset, 
+			row_1.x_point_width, row_1, rsrl_2.section_points);
+		world_rect_8 : Rectangle2 = MusicPtRowSectionRect(mp_8, rsrl_2.octave_mult, cast(float) mp_start_x_offset, 
+			row_1.x_point_width, row_1, rsrl_2.section_points);
+
+		count_equals := AssertEquals(2, row_1.row_hover_rects.count);
+		if count_equals {
+			AssertEquals(world_rect_7.min, row_1.row_hover_rects[0].min);
+			AssertEquals(world_rect_7.max, row_1.row_hover_rects[0].max);
+
+			AssertEquals(world_rect_8.min, row_1.row_hover_rects[1].min);
+			AssertEquals(world_rect_8.max, row_1.row_hover_rects[1].max);
+		}
+
+		count_equals = AssertEquals(2, row_1.extra_hover_synth.simple_waves.count);
+		if count_equals {
+			//TEST we changed tuning system now
+			tuning_system := perm.all_data.all_tuning_systems[1];
+			tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
+			freq_0 : float = MusicPtToFrequency(mp_7.music_pt_float, tuning_system, tuning_pitches);
+			AssertEquals(freq_0, row_1.extra_hover_synth.simple_waves[0].frequency);
+
+			freq_1 : float = MusicPtToFrequency(mp_8.music_pt_float, tuning_system, tuning_pitches);
+			AssertEquals(freq_1, row_1.extra_hover_synth.simple_waves[1].frequency);
+		}
+
+
+		//TEST switch to 1 note on op space should have only 1 note on mouse tuning system
+		perm.all_data.runtime_settings.play_row_hover_chords = false;
+		next_mp : MusicPoint = MakeMusicPoint(mp_7.music_pt_float,0,1,2);
+		world_rect_2 : Rectangle2 = MusicPtRowSectionRect(next_mp, rsrl_2.octave_mult, cast(float) next_mp.x_start_float, 
+			row_1.x_point_width, row_1, rsrl_2.section_points);
+		cam_pos : Vector2F = WorldSpaceToCameraSpace(GetCenter(world_rect_2), default_base_cam);
+		game_input.mouse_cam = cam_pos;
+	}
+	case 19; {
+		row_1 := *op_spec_data.all_op_linear_rows[1];
+		mp_start_x_offset : float64 = mp_7.x_start_float - cast(float64) row_1.op_ref_start_x;
+		row_1_section : SectionToRow = GetRowSectionByXEpsLeft(mp_start_x_offset, row_1.id, op_spec_data.all_op_section_to_row);
+		rsrl_2 := BuildRSRData(row_1_section, row_1, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, row_1.x_point_width);
+		world_rect_7 : Rectangle2 = MusicPtRowSectionRect(mp_7, rsrl_2.octave_mult, cast(float) mp_start_x_offset, 
+			row_1.x_point_width, row_1, rsrl_2.section_points);
+
+		count_equals := AssertEquals(1, row_1.row_hover_rects.count);
+		if count_equals {
+			AssertEquals(world_rect_7.min, row_1.row_hover_rects[0].min);
+			AssertEquals(world_rect_7.max, row_1.row_hover_rects[0].max);
+		}
+
+		count_equals = AssertEquals(1, row_1.extra_hover_synth.simple_waves.count);
+		if count_equals {
+			//TEST we changed tuning system now
+			tuning_system := perm.all_data.all_tuning_systems[1];
+			tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
+			freq_0 : float = MusicPtToFrequency(mp_7.music_pt_float, tuning_system, tuning_pitches);
+			AssertEquals(freq_0, row_1.extra_hover_synth.simple_waves[0].frequency);
+		}
+
+
+		//TEST Switching back mouse tuning system with single note also changes tuning system
+		world_rect_2 : Rectangle2 = MusicPtRowSectionRect(mp_7, rsrl_2.octave_mult, cast(float) mp_start_x_offset, 
+			row_1.x_point_width, row_1, rsrl_2.section_points);
+		cam_pos : Vector2F = WorldSpaceToCameraSpace(GetCenter(world_rect_2), default_base_cam);
+		game_input.mouse_cam = cam_pos;
+	}
+	case 20; {
+		row_1 := *op_spec_data.all_op_linear_rows[1];
+		mp_start_x_offset : float64 = mp_7.x_start_float - cast(float64) row_1.op_ref_start_x;
+		row_1_section : SectionToRow = GetRowSectionByXEpsLeft(mp_start_x_offset, row_1.id, op_spec_data.all_op_section_to_row);
+		rsrl_2 := BuildRSRData(row_1_section, row_1, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, row_1.x_point_width);
+		world_rect_7 : Rectangle2 = MusicPtRowSectionRect(mp_7, rsrl_2.octave_mult, cast(float) mp_start_x_offset, 
+			row_1.x_point_width, row_1, rsrl_2.section_points);
+
+		count_equals := AssertEquals(1, row_1.row_hover_rects.count);
+		if count_equals {
+			AssertEquals(world_rect_7.min, row_1.row_hover_rects[0].min);
+			AssertEquals(world_rect_7.max, row_1.row_hover_rects[0].max);
+		}
+
+		count_equals = AssertEquals(1, row_1.extra_hover_synth.simple_waves.count);
+		if count_equals {
+			//TEST we changed tuning system now
+			tuning_system := perm.all_data.all_tuning_systems[0];
+			tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
+			freq_0 : float = MusicPtToFrequency(mp_7.music_pt_float, tuning_system, tuning_pitches);
+			AssertEquals(freq_0, row_1.extra_hover_synth.simple_waves[0].frequency);
+		}
+
+
+		//TEST moving to last chords with chord turned on
+		DownUpInputMap(.ROW_HOVER_CHORDS, game_input);
+		next_x_offset : float64 = mp_9.x_start_float - cast(float64) row_1.op_ref_start_x;
+		row_1_section_1 : SectionToRow = GetRowSectionByXEpsLeft(next_x_offset, row_1.id, op_spec_data.all_op_section_to_row);
+		rsrl_3 := BuildRSRData(row_1_section_1, row_1, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, row_1.x_point_width);
+		world_rect_3 : Rectangle2 = MusicPtRowSectionRect(mp_9, rsrl_3.octave_mult, cast(float) next_x_offset, 
+			row_1.x_point_width, row_1, rsrl_3.section_points);
+		cam_pos : Vector2F = WorldSpaceToCameraSpace(GetCenter(world_rect_3), default_base_cam);
+		game_input.mouse_cam = cam_pos;
+	}
+	case 21; {
+		row_1 := *op_spec_data.all_op_linear_rows[1];
+		next_x_offset : float64 = mp_9.x_start_float - cast(float64) row_1.op_ref_start_x;
+		row_1_section_1 : SectionToRow = GetRowSectionByXEpsLeft(next_x_offset, row_1.id, op_spec_data.all_op_section_to_row);
+		rsrl_3 := BuildRSRData(row_1_section_1, row_1, perm.all_data.all_tuning_systems, 
+			perm.all_data.all_space_points, row_1.x_point_width);
+		world_rect_9 : Rectangle2 = MusicPtRowSectionRect(mp_9, rsrl_3.octave_mult, cast(float) next_x_offset, 
+			row_1.x_point_width, row_1, rsrl_3.section_points);
+		world_rect_10 : Rectangle2 = MusicPtRowSectionRect(mp_10, rsrl_3.octave_mult, cast(float) next_x_offset, 
+			row_1.x_point_width, row_1, rsrl_3.section_points);
+
+		count_equals := AssertEquals(2, row_1.row_hover_rects.count);
+		if count_equals {
+			AssertEquals(world_rect_9.min, row_1.row_hover_rects[0].min);
+			AssertEquals(world_rect_9.max, row_1.row_hover_rects[0].max);
+
+			AssertEquals(world_rect_10.min, row_1.row_hover_rects[1].min);
+			AssertEquals(world_rect_10.max, row_1.row_hover_rects[1].max);
+		}
+
+		count_equals = AssertEquals(2, row_1.extra_hover_synth.simple_waves.count);
+		if count_equals {
+			//TEST we changed tuning system now
+			tuning_system := perm.all_data.all_tuning_systems[1];
+			tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
+			freq_0 : float = MusicPtToFrequency(mp_9.music_pt_float, tuning_system, tuning_pitches);
+			AssertEquals(freq_0, row_1.extra_hover_synth.simple_waves[0].frequency);
+
+			freq_1 : float = MusicPtToFrequency(mp_10.music_pt_float, tuning_system, tuning_pitches);
+			AssertEquals(freq_1, row_1.extra_hover_synth.simple_waves[1].frequency);
+		}
+
+
+		//TEST moving over op space should change tuning system in op space as well
+		// next_mp : MusicPoint = MakeMusicPoint(mp_7.music_pt_float,0,1,2);
+		// world_rect_2 : Rectangle2 = MusicPtRowSectionRect(next_mp, rsrl_2.octave_mult, cast(float) next_mp.x_start_float, 
+		// 	row_1.x_point_width, row_1, rsrl_2.section_points);
+		// cam_pos : Vector2F = WorldSpaceToCameraSpace(GetCenter(world_rect_2), default_base_cam);
+		// game_input.mouse_cam = cam_pos;
 	}
 	}
 
@@ -3906,7 +4782,7 @@ Test_OLDOpLinearRow :: (
 	}
 
 	for rows {
-		row : MusicLaneRow = OLDCreateOpLinearRow(it, perm.all_data);
+		row : MusicLaneRow = OLDCreateOpRow(it, perm.all_data);
 
 		//TODO I think we should put this in the above so it remains consistent everywhere.
 		dspace_to_op : *DSpaceToOpSpaceIndex = array_add(*perm.all_data.all_dspace_to_op_space_id);
@@ -3946,10 +4822,11 @@ Test_OpLinearRow :: (
 
 	SetupMusicAndRows(perm.all_data, TWO_ROWS);
 	row_0 : *MusicLaneRow = *perm.all_data.all_mspace_data[0].all_music_lane_rows[0];
-	row_0.row_system_type = RowSystemType.midi_pitch;
-	row_0.row_midi_data.midi_channel = 0;
-	row_0.row_midi_data.midi_velocity = 100;
-	row_0.row_midi_data.midi_zero_note = 12*3;
+	row_0.external_hover_row = false;
+	// row_0.row_system_type = RowSystemType.midi_pitch;
+	// row_0.row_midi_data.midi_channel = 0;
+	// row_0.row_midi_data.midi_velocity = 100;
+	// row_0.row_midi_data.midi_zero_note = 12*4;
 
 	cosd : CreateOpSpaceData;
 	cosd.op_space_external_type = OpSpaceExternalType.space_2d;
@@ -3962,6 +4839,9 @@ Test_OpLinearRow :: (
 	mspace_data : *MusicSpaceData = *perm.all_data.all_mspace_data[0];
 
 	rows : [2] CreateRowData;
+	rows[0].muted_row = false;
+	rows[0].remove_row_hover_text = false;
+	rows[0].external_hover_row = true;
 	rows[0].octave_height = 12;
 	rows[0].row_height = 19;
 	rows[0].op_world_pos = Vector2F.{0,5};
@@ -3984,6 +4864,9 @@ Test_OpLinearRow :: (
 	#if 1 {
 	// rows[1].tuning_system_type = .EQUAL_TEMPERAMENT;
 	// rows[1].tuning_system_count = 12;
+	rows[1].muted_row = false;
+	rows[1].remove_row_hover_text = false;
+	rows[1].external_hover_row = true;
 	rows[1].octave_height = 16;
 	rows[1].row_height = 12;
 	rows[1].x_point_width = 1.5;
@@ -4005,7 +4888,7 @@ Test_OpLinearRow :: (
 	}
 
 	for rows {
-		row := CreateOpLinearRow(it, op_spec_data,
+		row := CreateOpRow(it, op_spec_data,
 			perm.all_data.all_mspace_data,
 			perm.all_data.all_tuning_systems,
 			perm.all_data.all_tuning_pitches,

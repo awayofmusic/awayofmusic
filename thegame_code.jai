@@ -15125,6 +15125,11 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		crd.row_height = cast(float) asm_data.row_height;
 		crd.row_base_pt = cast(float) asm_data.row_base_pt;
 		crd.muted_row = AsmBoolToBool(asm_data.muted_row);
+		crd.mute_hover = AsmBoolToBool(asm_data.mute_hover);
+		crd.remove_row_hover_text = AsmBoolToBool(asm_data.remove_row_hover_text);
+		crd.external_hover_row = AsmBoolToBool(asm_data.external_hover_row);
+		crd.use_mouse_wheel_rate = AsmBoolToBool(asm_data.use_mouse_wheel_rate);
+		crd.mouse_wheel_rate = cast(float) asm_data.mouse_wheel_rate;
 		crd.row_system_type = asm_data.row_system_type;
 		crd.row_system_id = asm_data.row_system_id;
 		crd.row_sub_system_id = asm_data.row_sub_system_id;
@@ -15285,6 +15290,11 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		crd.octave_height = cast(float) asm_data.octave_height;
 		crd.row_height = cast(float) asm_data.row_height;
 		crd.muted_row = AsmBoolToBool(asm_data.muted_row);
+		crd.mute_hover = AsmBoolToBool(asm_data.mute_hover);
+		crd.remove_row_hover_text = AsmBoolToBool(asm_data.remove_row_hover_text);
+		crd.external_hover_row = AsmBoolToBool(asm_data.external_hover_row);
+		crd.use_mouse_wheel_rate = AsmBoolToBool(asm_data.use_mouse_wheel_rate);
+		crd.mouse_wheel_rate = cast(float) asm_data.mouse_wheel_rate;
 		// crd.row_system_type = asm_data.row_system_type;
 		crd.op_world_pos = MakeV2FFrom64(asm_data.op_pos);
 		crd.x_point_width = cast(float) asm_data.x_point_width;
@@ -15298,7 +15308,7 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 			crd.row_section_data = row_sections;
 		}
 
-		row, row_err := CreateOpLinearRow(crd, op_spec_data,
+		row, row_err := CreateOpRow(crd, op_spec_data,
 			ad.all_mspace_data,
 			ad.all_tuning_systems,
 			ad.all_tuning_pitches,
@@ -16238,7 +16248,7 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 				}
 			}
 
-			row : MusicLaneRow = OLDCreateOpLinearRow(crd, ad);
+			row : MusicLaneRow = OLDCreateOpRow(crd, ad);
 
 			//We set the row return values here
 			asm_data.row_id = row.id;

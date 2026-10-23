@@ -81,6 +81,8 @@ SharedLibraryData :: struct {
 	//This flag should be set to true when updating is needed. It is set back to false after updating is complete.
 	update_runtime_settings_from_dl : bool;
 	to_update_runtime_settings : RuntimeSettingsData;
+	//The current runtime settings
+	runtime_settings : RuntimeSettingsData;
 
 	//Can use these to check if certain entities are chosen or mouse hovering for general input (eg mouse, keyboard, midi...)
 	all_chosen_entities : [] ChosenEntity;
@@ -91,6 +93,9 @@ SharedLibraryData :: struct {
 	//Is there a better way of generating ids?
 	//Then we would have to put the struct in here.
 	// all_next_ids : *AllNextIds;
+
+	//import jai-midi and cast(*MIDI_Output)
+	midi_output : *void;
 
 	//TODO We could add a pointer for my_shared_data here if global data does not work.
 	//Probably need to pass in an allocator for this to work properly
@@ -835,10 +840,8 @@ RuntimeSettingsData :: struct {
 	//TODO Could add text op default proportions for debugging
 	//TODO Could also add default debug watch rows by name for example but not parsed so only from dl (or an array of strings for now)
 
-	show_row_hover : bool = true;
-	show_op_row_hover : bool = true;
-	use_row_hover_mouse_tuning_system : bool = false;
-	use_op_row_hover_mouse_tuning_system : bool = false;
+	//If this is false then we play single notes
+	play_row_hover_chords : bool = true;
 
 	//TODO Leaving here as a reminder in case used later for tests or educational purposes for some reason 
 	// update_music_while_running : bool = true;
@@ -2270,6 +2273,11 @@ AsmCreateRowData :: struct {
 	row_height : float64;
 	row_base_pt : float64;
 	muted_row : AsmBool;
+	mute_hover : AsmBool;
+	remove_row_hover_text : AsmBool;
+	external_hover_row : AsmBool;
+	use_mouse_wheel_rate : AsmBool;
+	mouse_wheel_rate : float64;
 	//TODO Should we make this it's own struct?
 	row_system_type : RowSystemType;
 	row_system_id : int;
@@ -2357,6 +2365,11 @@ CreateMusicRow :: inline (
 	row.sub_system_id = create_row_data.row_sub_system_id;
 	// row.sound_on = create_row_data.sound_on;
 	row.is_muted_row = create_row_data.muted_row;
+	row.mute_hover = create_row_data.mute_hover;
+	row.remove_row_hover_text = create_row_data.remove_row_hover_text;
+	row.external_hover_row = create_row_data.external_hover_row;
+	row.use_mouse_wheel_rate = create_row_data.use_mouse_wheel_rate;
+	row.mouse_wheel_rate = create_row_data.mouse_wheel_rate;
 	// row.num_of_points = GetRowNumOfPoints(create_row_data.tuning_system_count, create_row_data);
 	row.row_cam.y = create_row_data.row_base_pt;
 	}
@@ -2709,7 +2722,16 @@ CreateRowData :: struct {
 	row_height : float = 12;
 
 	sound_on : bool = true;
+
 	muted_row : bool;
+	mute_hover : bool;
+	remove_row_hover_text : bool;
+	//TODO Could make this default to true or false in runtime settings
+	//if we want everything to be external for example
+	external_hover_row : bool;
+
+	use_mouse_wheel_rate : bool;
+	mouse_wheel_rate : float = 0.5;
 
 	row_system_type : RowSystemType;
 	row_system_id : int;
@@ -2784,6 +2806,12 @@ MusicLaneRow :: struct {
 	//just used for sound.
 	// sound_on : bool = true;
 	is_muted_row : bool;
+	mute_hover : bool;
+	remove_row_hover_text : bool;
+	external_hover_row : bool;
+
+	use_mouse_wheel_rate : bool;
+	mouse_wheel_rate : float = 0.5;
 
 	//TODO This should likely be pulled out into
 	//a separate array like SoA.
@@ -2825,12 +2853,15 @@ MusicLaneRow :: struct {
 	x_point_width : float; 
 
 
+	//This is used to render the hovering rows during rendering
+	//because rows need to be gl scissored
 	render_row_hovering : bool = false;
-	// mouse_rsrl : RowSectionRectsData;
-	//TODO Should we rename to row_hover_cam_rects?
-	//Or maybe stopre op rects and then transform at rendering
+	//These should be the world/op rects so we can adjust to camera when rendering with gl scissor
+	//this prevents any slight offsets from passing in the camera rects early
 	row_hover_rects : [..] Rectangle2;
 
+	extra_hover_synth : SimpleSynth;	
+	
 	//op-specific data
 	//TODO PULL THIS OUT NOW and put in OpLinearRow struct with a MusicLaneRow
 	//TODO We can separate this out if needed later. Leaving here for now for convenience.
@@ -2845,6 +2876,19 @@ MusicLaneRow :: struct {
 	// //TODO We can put this as an id instead and just put it in the synth array as well
 	// extra_hover_synth : SimpleSynth;
 }
+/*I've separate this out to not make the variables unclear BUT we could put them back
+in MusicLaneRow if that makes more sense later.
+I don't really like pulling out just a few variables but in this case it seems to makes sense
+because although the op rows are similar to the base rows 
+they have enough functional differences to warrant a separate struct :
+- op rows refer to music pts in the base row by row_id and mspace_id and so do not have their own music pts
+- op rows can be offset x from the base row which requires a different algorithm in general
+- op rows transform from op space to camera space instead of world space to camera space
+- op rows have different types specifically not available in music lane rows
+- op row cannot be played with the audio cursor like a music lane row (hovering is the same)
+This feels like enough difference to warrant a separate data type BUT we can still use
+the as a music rows since they act in similar ways in general with hovering.
+*/
 OpLinearRow :: struct {
 	#as using row : MusicLaneRow;
 
@@ -2853,7 +2897,6 @@ OpLinearRow :: struct {
 	op_ref_mspace_id : int;
 	op_ref_start_x : int;
 	//TODO We can put this as an id instead and just put it in the synth array as well
-	extra_hover_synth : SimpleSynth;	
 }
 
 /*New system for associating systems to rows so we can
@@ -2882,6 +2925,33 @@ SectionToRow :: struct {
 	Can also just leave that up to the user.
 	*/
 	tuning_system_id : int;
+}
+GetRowSectionByXRange :: inline (
+	x_float : float64,
+	row_id : int,
+	all_section_to_row : [] SectionToRow) 
+-> SectionToRow, found_section : bool
+{
+	for * section : all_section_to_row {
+		if section.row_id == row_id && InRange(cast(float64) section.start_x, x_float, cast(float64) section.end_x) {
+			return section, true;
+		}
+	}
+	return .{}, false;
+}
+//This should be used for music points so that music pts slightly below float x by epsilon are still considered at x
+GetRowSectionByXEpsLeft :: inline (
+	x_float : float64,
+	row_id : int,
+	all_section_to_row : [] SectionToRow) 
+-> SectionToRow, found_section : bool
+{
+	for * section : all_section_to_row {
+		if section.row_id == row_id && InEpsilonRangeLeft(x_float, cast(float64) section.start_x, cast(float64) section.end_x) {
+			return section, true;
+		}
+	}
+	return .{}, false;
 }
 
 /*TODO should we eventually split these up by type for efficiency
@@ -2990,6 +3060,7 @@ AsmRowMidiData :: struct {
 
 
 MAX_ROW_RENDER_ORDER :: -1000;
+//TODO We could store this in SectionToRows instead but then we would have to update it if we ever update the sections or rows
 RowSectionRectsData :: struct {
 	section : SectionToRow;
 	octave_mult : float;
@@ -3170,6 +3241,7 @@ GetPlayPosWorldX :: inline (
 MusicPtRowSectionRect :: inline (
 	music_pt : MusicPoint,
 	octave_mult : float,
+	//TODO This is used as the position so it should likely be called x_row_pos
 	x_offset : float,
 	x_point_width : float,
 	//TODO Pass in row_size here so we can cut off music_pts if they're too long
@@ -3228,7 +3300,7 @@ MusicPtRowSectionRect :: inline (
 	return world_rect;
 }
 
-CreateOpLinearRow :: inline (
+CreateOpRow :: inline (
 	create_row_data : CreateRowData,
 	op_spec_data : *OpSpaceSpecData,
 	all_mspace_data : [] MusicSpaceData,
@@ -3273,6 +3345,11 @@ CreateOpLinearRow :: inline (
 	// row.row_midi_data = create_row_data.row_midi_data;
 	// row.sound_on = create_row_data.sound_on;
 	row.is_muted_row = create_row_data.muted_row;
+	row.mute_hover = create_row_data.mute_hover;
+	row.remove_row_hover_text = create_row_data.remove_row_hover_text;
+	row.external_hover_row = create_row_data.external_hover_row;
+	row.use_mouse_wheel_rate = create_row_data.use_mouse_wheel_rate;
+	row.mouse_wheel_rate = create_row_data.mouse_wheel_rate;
 
 	if row.op_row_type == {
 	case OpRowType.COPY_MUSIC_ROW; {
@@ -3345,6 +3422,11 @@ AsmCreateOpRowData :: struct {
 	//TODO We might want to make this different for op_rows since we will play them differently
 	// sound_on : int; //bool in asm
 	muted_row : AsmBool;
+	mute_hover : AsmBool;
+	remove_row_hover_text : AsmBool;
+	external_hover_row : AsmBool;
+	use_mouse_wheel_rate : AsmBool;
+	mouse_wheel_rate : float64;
 	// row_system_type : RowSystemType;
 	//TODO We can add midi specific data here if we want custom midi data for the op row
 	// row_midi_data : RowMidiData;

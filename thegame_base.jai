@@ -727,6 +727,7 @@ if hovering_top_op_space && !found_moving_op_space {
 }
 
 //Use this to store all row section rects so we don't take a bunch of space every frame
+//REMINDER This is reset every time we call ComputeRowSectionRects
 row_section_rects_array : [..] RowSectionRectsReturn;
 row_section_rects_array.allocator = temp;
 
@@ -1406,13 +1407,21 @@ if frame_hover_entities.count > 0 {
 		}
 		else if hover_entity.entity_type == EntityType.LANE_ROW_WITH_SECTIONS {
 			// if game_input.mouse_wheel != 0 {
+			if IsInputMapPress(.ROW_HOVER_CHORDS, .DOWN_THIS_FRAME, game_input) {
+				perm.all_data.runtime_settings.play_row_hover_chords = !perm.all_data.runtime_settings.play_row_hover_chords;
+			}
+
 			row, found_row := ArrayFindFirstByNameId(mspace_for_input.all_music_lane_rows,
 				hover_entity.id, "id");
 			assert(found_row);
+
+			mouse_x_float : float = WorldXToRowXFloat(world_mouse.x, row, perm.all_data.global_rules.memory_unit_width);
+
 			if IsMouseWheelWithoutModifiers(game_input) {
 				//TODO Can adjust this rate of movement by a multiple if needed. Can store it in the row if needed.
 				//Could make it adjustable by user and then also default to smallest rect height.
 				rate : float = 0.5;
+				if row.use_mouse_wheel_rate rate = row.mouse_wheel_rate;
 				row.row_cam.y += rate * game_input.mouse_wheel;
 				//TODO How should we max the top out? Should it be based on frequencies or just allow the user to place it?
 				// row.row_cam.y = Clamp(0.0, row.row_cam.y, 9 * row.octave_height);
@@ -1427,11 +1436,11 @@ if frame_hover_entities.count > 0 {
 				// top_row : MusicLaneRow = mspace_for_input.all_music_lane_rows[0];
 				//TODO REMINDER the world_base_start.x is at the center of the min value so we need to adjust by 0.5 the memory unit width
 				//whenever we are using it. MAYBE I SHOULD MAKE A FUNCTION FOR THAT
-				row_x_start : float = GetRowXStart(row, perm.all_data.global_rules.memory_unit_width);
+				// row_x_start : float = GetRowXStart(row, perm.all_data.global_rules.memory_unit_width);
 				// mouse_play_x_float : float = world_mouse.x - row.row_world_base_start.x + 0.5*perm.all_data.global_rules.memory_unit_width;
-				mouse_play_x_float : float = world_mouse.x - row_x_start;
-				mouse_play_x_float /= perm.all_data.global_rules.memory_unit_width;
-				mouse_memory_unit := cast(int) mouse_play_x_float;
+				// mouse_play_x_float : float = world_mouse.x - row_x_start;
+				// mouse_play_x_float /= perm.all_data.global_rules.memory_unit_width;
+				mouse_memory_unit := cast(int) mouse_x_float;
 				mouse_memory_unit = Clamp(0, mouse_memory_unit, mspace_for_input.mspace_audio_row_size);
 				// if mouse_memory_unit > mspace_for_input.mspace_audio_row_size {
 				// 	mouse_memory_unit = mspace_for_input.mspace_audio_row_size;
@@ -1466,30 +1475,146 @@ if frame_hover_entities.count > 0 {
 				}
 			}
 
+			//TODO FROM HERE update unit tests and then maybe add a small integration test for row hovering
+			//then go over geometry hovering with midi and update everything based on feel and generalize midi out
+			//also allow geometries to update row hover in the same way
+
 			//CUSTOM : Set show row hover = false and then this can be done the same way through a dynamic library
 			//and then the text can be set to anything or the hover and can do anything else as well.
-			if perm.all_data.runtime_settings.show_row_hover {
-   			mouse_x_float : float = WorldXToRowXFloat(world_mouse.x, row, perm.all_data.global_rules.memory_unit_width);
-				for section : mspace_for_input.all_section_to_row {
-					if section.row_id == row.id && 
-						InRange(cast(float64) section.start_x, mouse_x_float, cast(float64) section.end_x) 
-					{
-						rsrl : RowSectionRectsData = BuildRSRData(section, row, perm.all_data.all_tuning_systems,
+			array_reset_keeping_memory(*row.row_hover_rects);
+			is_interactive_row : bool = !row.mute_hover || !row.remove_row_hover_text;
+			if is_interactive_row && !row.external_hover_row {
+				mouse_rsrl : RowSectionRectsData;
+				hover_text : string;
+				show_hover_text : bool = false;
+				section : SectionToRow = GetRowSectionByXRange(mouse_x_float, row.id, mspace_for_input.all_section_to_row);
+				mouse_rsrl = BuildRSRData(section, row, perm.all_data.all_tuning_systems, 
+					perm.all_data.all_space_points, perm.all_data.global_rules.memory_unit_width);
+				ComputeRowSectionRects(mouse_rsrl, row, *row_section_rects_array);
+				// for rs_ret : mouse_rsrl {
+				for rs_ret : row_section_rects_array {
+					cam_rect : Rectangle2 = WorldRectToCamRect(rs_ret.world_rect, default_base_cam);
+			   	if IsInRectangle(mouse_cam, cam_rect) {
+		   			pos_mod : int = rs_ret.point.int_pos.x;
+						hover_text = tprint("%,%,%", pos_mod, rs_ret.octave, mouse_rsrl.tuning_system.short_name);
+						show_hover_text = true;
+						break;
+					}
+				}
+				// }
+
+				audio_float_poses : [..] float64;
+				audio_float_poses.allocator = temp;
+				play_row_audio : bool = false;
+				hover_chord : [] MusicPoint = GetAllMusicPtPosByPosition(row.total_row_index, mouse_x_float, 
+					mspace_for_input.all_music_pts, type=MusicPoint,,temp);
+				for mp : hover_chord {
+					mp_start_rsrl : RowSectionRectsData = mouse_rsrl;
+					if !InEpsilonRangeLeft(mp.x_start_float, cast(float64) mouse_rsrl.section.start_x, cast(float64) mouse_rsrl.section.end_x) {
+						row_section : SectionToRow = GetRowSectionByXEpsLeft(mp.x_start_float, row.id, mspace_for_input.all_section_to_row);
+						mp_start_rsrl = BuildRSRData(row_section, row, perm.all_data.all_tuning_systems, 
 							perm.all_data.all_space_points, perm.all_data.global_rules.memory_unit_width);
-						ComputeRowSectionRects(rsrl, row, *row_section_rects_array);
-						// for rs_ret : rsrl {
-						for rs_ret : row_section_rects_array {
-							cam_rect : Rectangle2 = WorldRectToCamRect(rs_ret.world_rect, default_base_cam);
-					   	if IsInRectangle(mouse_cam, cam_rect) {
-				   			pos_mod : int = rs_ret.point.int_pos.x;
-								text := tprint("%,%,%", pos_mod, rs_ret.octave, rsrl.tuning_system.short_name);
-								hover_cam := mouse_cam + Vector2F.{1,0};
-								hover_rect : Rectangle2 = TextBackgroundRect2D(text, hover_cam, perm.text_editor_data, renderer_data.current_pixels_per_square);
-								PushRectangle(hover_rect, GREY_BLACKER_V, renderer_data.base_render_group, order = MAX_ROW_RENDER_ORDER);
-								PushText(hover_cam, text, GREY_DARK_V, renderer_data.base_render_group, order = MAX_ROW_RENDER_ORDER+1);
-								break section;
+					}
+
+					world_rect := MusicPtRowSectionRect(mp, mp_start_rsrl.octave_mult, cast(float) mp.x_start_float, 
+						perm.all_data.global_rules.memory_unit_width, row, mp_start_rsrl.section_points);
+					cam_rect : Rectangle2 = WorldRectToCamRect(world_rect, default_base_cam);
+					if !row.mute_hover && 
+						//If in rectangle then we break out when rendering below and only add pts for this rectangle
+						//if play row chords is true then we would add each one
+						(perm.all_data.runtime_settings.play_row_hover_chords || IsInRectangle(mouse_cam, cam_rect)) 
+					{
+						array_add(*audio_float_poses, mp.music_pt_float);
+						play_row_audio = true;
+					}
+
+					if perm.all_data.runtime_settings.play_row_hover_chords {
+						array_add(*row.row_hover_rects, world_rect);
+						row.render_row_hovering = true;
+						show_hover_text = true;
+					} else if IsInRectangle(mouse_cam, cam_rect) {
+						array_add(*row.row_hover_rects, world_rect);
+						row.render_row_hovering = true;
+						show_hover_text = true;
+						break;
+					}
+				}
+
+				if play_row_audio {
+					if row.row_system_type == {
+					case .internal_pitch; {
+						synth, found_synth := ArrayFindFirstByNameId(perm.all_data.all_simple_synths, 
+							row.system_id, "synth_id");
+						if found_synth {
+							//TODO Add a pitch_zero_freq for each row
+							ref_freq : float64 = perm.all_data.runtime_settings.default_zero_pitch_frequency;
+							// if circle.use_set_zero_freq ref_freq = circle.pitch_zero_freq;
+							if row.extra_hover_synth.simple_waves.count != audio_float_poses.count {
+								row.extra_hover_synth = synth.*;
+								array_reset_keeping_memory(*row.extra_hover_synth.simple_waves);
+								for 0..audio_float_poses.count-1 {
+									AddSimpleWaveFromFrequency(0, *row.extra_hover_synth, audio_data);
+								}
 							}
+							tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, mouse_rsrl.tuning_system.id, "tuning_system_id", temp);
+							for audio_float_poses {
+								frequency := MusicPtToFrequency(it, mouse_rsrl.tuning_system, tuning_pitches, ref_freq);
+								UpdateWaveFrequency(frequency, *row.extra_hover_synth.simple_waves[it_index], audio_data.*);
+							}
+							GenerateSimpleSynthSamples(*row.extra_hover_synth, audio_data.float_buffer, audio_data);
+						} 
+						else {
+							//Maybe this is a helpful log message, maybe not and we remove it.
+							print("No synth found for row id % with synth id %.\n", row.id, row.system_id);
 						}
+					}
+					case .midi_pitch; {
+						//TODO Separate this out and reuse it for other geometries and then generalize it
+						//and also reuse in row_hover_dl
+						if perm.midi_output != null {
+			        		m_channel : u8 = row.row_midi_data.midi_channel;
+							if IsInputMapPress(.MIDI_PRESS_NOTE_ON, .DOWN_THIS_FRAME, game_input) {
+								velocity : u8 = row.row_midi_data.midi_velocity;
+								for audio_float_poses {
+									note := (cast(u8) round_to_int(it)) + row.row_midi_data.midi_zero_note;
+									note_on : MIDI_Message = create_midi_message(.Note_On, note, velocity, m_channel);
+					        		send_midi_message(perm.midi_output, note_on);
+								}
+				        	} else if IsInputMapPress(.MIDI_PRESS_NOTE_OFF, .DOWN_THIS_FRAME, game_input) {
+								for audio_float_poses {
+									note := (cast(u8) round_to_int(it)) + row.row_midi_data.midi_zero_note;
+									note_off : MIDI_Message = create_midi_message(.Note_Off, note, channel = m_channel);
+					        		send_midi_message(perm.midi_output, note_off);
+								}
+							}
+						} else {
+							print("No midi output port available.\n");
+						}
+					}
+					}
+				}
+				if show_hover_text && !row.remove_row_hover_text {
+					if play_row_audio {
+						sb : String_Builder;
+						sb.allocator = temp;
+						append(*sb, "[");
+						for audio_float_poses {
+							print_to_builder(*sb, "%", it);
+							if it_index < audio_float_poses.count-1 append(*sb, ",");
+						}
+						append(*sb, "]");
+						append(*sb, mouse_rsrl.tuning_system.short_name);
+						hover_text = builder_to_string(*sb,,temp);
+						hover_cam := mouse_cam + Vector2F.{1,0};
+						hover_rect : Rectangle2 = TextBackgroundRect2D(hover_text, hover_cam, perm.text_editor_data, renderer_data.current_pixels_per_square);
+						PushRectangle(hover_rect, GREY_BLACKER_V, renderer_data.base_render_group, order = MAX_ROW_RENDER_ORDER+2);
+						PushText(hover_cam, hover_text, GREY_DARK_V, renderer_data.base_render_group, order = MAX_ROW_RENDER_ORDER+3);
+					} else {
+						//draw the tuning system section hover
+						hover_cam := mouse_cam + Vector2F.{1,0};
+						hover_rect : Rectangle2 = TextBackgroundRect2D(hover_text, hover_cam, perm.text_editor_data, renderer_data.current_pixels_per_square);
+						PushRectangle(hover_rect, GREY_BLACKER_V, renderer_data.base_render_group, order = MAX_ROW_RENDER_ORDER+2);
+						PushText(hover_cam, hover_text, GREY_DARK_V, renderer_data.base_render_group, order = MAX_ROW_RENDER_ORDER+3);						
 					}
 				}
 			}
@@ -1500,6 +1625,9 @@ if frame_hover_entities.count > 0 {
 			//We could allow this to hover even if this is not chosen if that helps maybe
 			//Maybe only need to check top op space for sound in general
 			// if !top_op_space_is_chosen continue;
+			if IsInputMapPress(.ROW_HOVER_CHORDS, .DOWN_THIS_FRAME, game_input) {
+				perm.all_data.runtime_settings.play_row_hover_chords = !perm.all_data.runtime_settings.play_row_hover_chords;
+			}
 
 			op_spec_data, found_op_spec_data := ArrayFindFirstByNameId(perm.all_data.all_op_space_spec_data,
 				top_op_space.id, "op_space_id");
@@ -1522,28 +1650,23 @@ if frame_hover_entities.count > 0 {
 				//TODO Can adjust this rate of movement by a multiple if needed. Can store it in the op_row if needed.
 				//Could make it adjustable by user and then also default to smallest rect height.
 				rate : float = 0.5;
+				if op_row.use_mouse_wheel_rate rate = op_row.mouse_wheel_rate;
 				op_row.row_cam.y += rate * game_input.mouse_wheel;
 				//TODO How should we max the top out? Should it be based on frequencies or just allow the user to place it?
 				// op_row.row_cam.y = Clamp(0.0, op_row.row_cam.y, 9 * op_row.octave_height);
 				op_row.row_cam.y = Clamp(-9 * op_row.octave_height, op_row.row_cam.y, 9 * op_row.octave_height);
 			}	
 
-			if IsInputMapPress(.ROW_HOVER_CHORDS, .DOWN_THIS_FRAME, game_input) {
-				perm.all_data.play_row_chords = !perm.all_data.play_row_chords;
-			}
-
-			//TODO Could make a function that let's use check input map is down. Would have to check modifier keys separately
 			//If this row is muted AND no show hover, then we don't process. This can then be fully processed in a dynamic lib
 			array_reset_keeping_memory(*op_row.row_hover_rects);
-			is_interactive_row : bool = !op_row.is_muted_row || perm.all_data.runtime_settings.show_op_row_hover;
-			if is_interactive_row {
+			is_interactive_row : bool = !op_row.mute_hover || !op_row.remove_row_hover_text;
+			if is_interactive_row && !op_row.external_hover_row {
 				op_space, found_op_space :=
 					ArrayFindFirstByNameId(perm.all_data.all_open_op_spaces, op_spec_data.op_space_id, "id");
 				assert(found_op_space);
 
 				op_mouse : Vector2F = WorldSpaceToOpSpace(world_mouse, op_space, op_space.op_2D_cam.world_pos);
 				mouse_x_float : float = WorldXToRowXFloat(op_mouse.x, op_row, op_row.x_point_width);
-				// if perm.all_data.runtime_settings.show_row_hover {
 				row_section_check_id : int;
 				current_section_to_row : [] SectionToRow;
 				if op_row.op_row_type == {
@@ -1555,40 +1678,29 @@ if frame_hover_entities.count > 0 {
 					//TODO Could also allow a specific sections to be copied between a given x_start and x_end
 					row_section_check_id = op_row.op_ref_row_id;
 					current_section_to_row = mspace_data.all_section_to_row;
-				} 
+				}
 				}
 				mouse_rsrl : RowSectionRectsData;
 				hover_text : string;
 				show_hover_text : bool = false;
-				//TODO FROM HERE Pull this out into a function and get section to row by x value.
-				//Then pull things out below for general reuse in base rows 
-				//and then pull them both out and put multi tuning system case into dynamic library.
-				//These can be sorted/indexed by row for efficiency
-				for section : current_section_to_row {
-					if section.row_id == row_section_check_id && 
-						InRange(cast(float64) section.start_x, mouse_x_float, cast(float64) section.end_x) 
-					{
-						mouse_rsrl = BuildRSRData(section, op_row, perm.all_data.all_tuning_systems, 
-							perm.all_data.all_space_points, op_row.x_point_width);
-						ComputeRowSectionRects(mouse_rsrl, op_row, *row_section_rects_array);
-						// for rs_ret : mouse_rsrl {
-						for rs_ret : row_section_rects_array {
-							cam_rect : Rectangle2 = OpRectToCamRect(rs_ret.world_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
-					   	if IsInRectangle(mouse_cam, cam_rect) {
-				   			pos_mod : int = rs_ret.point.int_pos.x;
-								hover_text = tprint("%,%,%", pos_mod, rs_ret.octave, mouse_rsrl.tuning_system.short_name);
-								show_hover_text = true;
-								break section;
-							}
-						}
+				section : SectionToRow = GetRowSectionByXRange(mouse_x_float, row_section_check_id, current_section_to_row);
+				mouse_rsrl = BuildRSRData(section, op_row, perm.all_data.all_tuning_systems, 
+					perm.all_data.all_space_points, op_row.x_point_width);
+				ComputeRowSectionRects(mouse_rsrl, op_row, *row_section_rects_array);
+				// for rs_ret : mouse_rsrl {
+				for rs_ret : row_section_rects_array {
+					cam_rect : Rectangle2 = OpRectToCamRect(rs_ret.world_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
+			   	if IsInRectangle(mouse_cam, cam_rect) {
+		   			pos_mod : int = rs_ret.point.int_pos.x;
+						hover_text = tprint("%,%,%", pos_mod, rs_ret.octave, mouse_rsrl.tuning_system.short_name);
+						show_hover_text = true;
+						break;
 					}
 				}
 				// }
 
 				audio_float_poses : [..] float64;
 				audio_float_poses.allocator = temp;
-				mp_tuning_systems : [..] TuningSystem;
-				mp_tuning_systems.allocator = temp;
 				play_row_audio : bool = false;
 
 				base_row, found_base_row := ArrayFindFirstByNameId(mspace_data.all_music_lane_rows,
@@ -1601,40 +1713,30 @@ if frame_hover_entities.count > 0 {
 					for mp : hover_chord {
 						mp_start_rsrl : RowSectionRectsData = mouse_rsrl;
 						x_offset := cast(float) (mp.x_start_float - op_row.op_ref_start_x);
-						//TODO FROM HERE Could have an option here that plays the alternate music pts or chords on the other tuning system
-						//By just not doing this loop check
 						if !InEpsilonRangeLeft(x_offset, cast(float64) mouse_rsrl.section.start_x, cast(float64) mouse_rsrl.section.end_x) {
-							//TODO Make a function here get row section based on row id and x
-							for section : current_section_to_row {
-								if section.row_id == row_section_check_id && 
-									InEpsilonRangeLeft(x_offset, cast(float64) section.start_x, cast(float64) section.end_x) 
-								{
-									mp_start_rsrl = BuildRSRData(section, op_row, perm.all_data.all_tuning_systems, 
-										perm.all_data.all_space_points, op_row.x_point_width);
-									break;
-								}
-							}
+							row_section : SectionToRow = GetRowSectionByXEpsLeft(x_offset, row_section_check_id, current_section_to_row);
+							mp_start_rsrl = BuildRSRData(row_section, op_row, perm.all_data.all_tuning_systems, 
+								perm.all_data.all_space_points, op_row.x_point_width);
 						}
 
 						op_rect := MusicPtRowSectionRect(mp, mp_start_rsrl.octave_mult, x_offset, 
 							op_row.x_point_width, op_row, mp_start_rsrl.section_points);
 						cam_rect : Rectangle2 = OpRectToCamRect(op_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
-						if !op_row.is_muted_row && 
+						if !op_row.mute_hover && 
 							//If in rectangle then we break out when rendering below and only add pts for this rectangle
 							//if play row chords is true then we would add each one
-							(perm.all_data.play_row_chords || IsInRectangle(mouse_cam, cam_rect)) 
+							(perm.all_data.runtime_settings.play_row_hover_chords || IsInRectangle(mouse_cam, cam_rect)) 
 						{
 							array_add(*audio_float_poses, mp.music_pt_float);
-							array_add(*mp_tuning_systems, mp_start_rsrl.tuning_system);
 							play_row_audio = true;
 						}
 
-						if perm.all_data.play_row_chords {
-							array_add(*op_row.row_hover_rects, cam_rect);
+						if perm.all_data.runtime_settings.play_row_hover_chords {
+							array_add(*op_row.row_hover_rects, op_rect);
 							op_row.render_row_hovering = true;
 							show_hover_text = true;
 						} else if IsInRectangle(mouse_cam, cam_rect) {
-							array_add(*op_row.row_hover_rects, cam_rect);
+							array_add(*op_row.row_hover_rects, op_rect);
 							op_row.render_row_hovering = true;
 							show_hover_text = true;
 							break;
@@ -1642,14 +1744,7 @@ if frame_hover_entities.count > 0 {
 					}
 				}
 
-				//If we don't play row audio then there are no tuning systems to check
-				all_same_tunings : bool = true;
 				if play_row_audio {
-					first_ts_id := mp_tuning_systems[0].id;
-					for mp_tuning_systems if it.id != first_ts_id {
-						all_same_tunings = false;
-						break;
-					}
 					if base_row.row_system_type == {
 					case .internal_pitch; {
 						synth, found_synth := ArrayFindFirstByNameId(perm.all_data.all_simple_synths, 
@@ -1665,20 +1760,10 @@ if frame_hover_entities.count > 0 {
 									AddSimpleWaveFromFrequency(0, *op_row.extra_hover_synth, audio_data);
 								}
 							}
-							if all_same_tunings {
-								ts : TuningSystem = mp_tuning_systems[0];
-								tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, ts.id, "tuning_system_id", temp);
-								for audio_float_poses {
-									frequency := MusicPtToFrequency(it, ts, tuning_pitches, ref_freq);
-									UpdateWaveFrequency(frequency, *op_row.extra_hover_synth.simple_waves[it_index], audio_data.*);
-								}									
-							} else {
-								for audio_float_poses {
-									ts : TuningSystem = mp_tuning_systems[it_index];
-									tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, mp_tuning_systems[it_index].id, "tuning_system_id", temp);
-									frequency := MusicPtToFrequency(it, ts, tuning_pitches, ref_freq);
-									UpdateWaveFrequency(frequency, *op_row.extra_hover_synth.simple_waves[it_index], audio_data.*);
-								}
+							tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, mouse_rsrl.tuning_system.id, "tuning_system_id", temp);
+							for audio_float_poses {
+								frequency := MusicPtToFrequency(it, mouse_rsrl.tuning_system, tuning_pitches, ref_freq);
+								UpdateWaveFrequency(frequency, *op_row.extra_hover_synth.simple_waves[it_index], audio_data.*);
 							}
 							GenerateSimpleSynthSamples(*op_row.extra_hover_synth, audio_data.float_buffer, audio_data);
 						} 
@@ -1688,60 +1773,54 @@ if frame_hover_entities.count > 0 {
 						}
 					}
 					case .midi_pitch; {
-		        		m_channel : u8 = base_row.row_midi_data.midi_channel;
-						if IsInputMapPress(.MIDI_PRESS_NOTE_ON, .DOWN_THIS_FRAME, game_input) {
-							velocity : u8 = base_row.row_midi_data.midi_velocity;
-							for audio_float_poses {
-								note := (cast(u8) round_to_int(it)) + base_row.row_midi_data.midi_zero_note;
-								note_on : MIDI_Message = create_midi_message(.Note_On, note, velocity, m_channel);
-				        		send_midi_message(game_memory.midi_output, note_on);
+						//TODO Separate this out and reuse it for other geometries and then generalize it
+						//and also reuse in row_hover_dl
+						if perm.midi_output != null {
+			        		m_channel : u8 = base_row.row_midi_data.midi_channel;
+							if IsInputMapPress(.MIDI_PRESS_NOTE_ON, .DOWN_THIS_FRAME, game_input) {
+								velocity : u8 = base_row.row_midi_data.midi_velocity;
+								for audio_float_poses {
+									note := (cast(u8) round_to_int(it)) + base_row.row_midi_data.midi_zero_note;
+									note_on : MIDI_Message = create_midi_message(.Note_On, note, velocity, m_channel);
+					        		send_midi_message(perm.midi_output, note_on);
+								}
+				        	} else if IsInputMapPress(.MIDI_PRESS_NOTE_OFF, .DOWN_THIS_FRAME, game_input) {
+								for audio_float_poses {
+									note := (cast(u8) round_to_int(it)) + base_row.row_midi_data.midi_zero_note;
+									note_off : MIDI_Message = create_midi_message(.Note_Off, note, channel = m_channel);
+					        		send_midi_message(perm.midi_output, note_off);
+								}
 							}
-			        	} else if IsInputMapPress(.MIDI_PRESS_NOTE_OFF, .DOWN_THIS_FRAME, game_input) {
-							for audio_float_poses {
-								note := (cast(u8) round_to_int(it)) + base_row.row_midi_data.midi_zero_note;
-								note_off : MIDI_Message = create_midi_message(.Note_Off, note, channel = m_channel);
-				        		send_midi_message(game_memory.midi_output, note_off);
-							}
+						} else {
+							print("No midi output port available.\n");
 						}
 					}
 					}
 				}
-				if show_hover_text && perm.all_data.runtime_settings.show_op_row_hover {
+				if show_hover_text && !op_row.remove_row_hover_text {
 					if play_row_audio {
-						if audio_float_poses.count == 1 || !all_same_tunings {
-							for audio_float_poses {
-								hover_text = tprint("%-%", it, mp_tuning_systems[it_index].short_name);
-								text_y : float = it_index*perm.text_editor_data.char_height/renderer_data.current_pixels_per_square;
-								hover_cam := mouse_cam + Vector2F.{1,text_y};
-								hover_rect : Rectangle2 = TextBackgroundRect2D(hover_text, hover_cam, perm.text_editor_data, renderer_data.current_pixels_per_square);
-								PushRectangle(hover_rect, GREY_BLACKER_V, op_space.render_groups.scissor_group, order = MAX_ROW_RENDER_ORDER+2);
-								PushText(hover_cam, hover_text, GREY_DARK_V, op_space.render_groups.scissor_group, order = MAX_ROW_RENDER_ORDER+3);
-							}
-						} else if all_same_tunings {
-							sb : String_Builder;
-							sb.allocator = temp;
-							append(*sb, "[");
-							for audio_float_poses {
-								print_to_builder(*sb, "%", it);
-								if it_index < audio_float_poses.count-1 append(*sb, ",");
-							}
-							append(*sb, "]");
-							append(*sb, mouse_rsrl.tuning_system.short_name);
-							hover_text = builder_to_string(*sb,,temp);
-							hover_cam := mouse_cam + Vector2F.{1,0};
-							hover_rect : Rectangle2 = TextBackgroundRect2D(hover_text, hover_cam, perm.text_editor_data, renderer_data.current_pixels_per_square);
-							PushRectangle(hover_rect, GREY_BLACKER_V, op_space.render_groups.scissor_group, order = MAX_ROW_RENDER_ORDER+2);
-							PushText(hover_cam, hover_text, GREY_DARK_V, op_space.render_groups.scissor_group, order = MAX_ROW_RENDER_ORDER+3);
+						sb : String_Builder;
+						sb.allocator = temp;
+						append(*sb, "[");
+						for audio_float_poses {
+							print_to_builder(*sb, "%", it);
+							if it_index < audio_float_poses.count-1 append(*sb, ",");
 						}
-					}
-					else {
+						append(*sb, "]");
+						append(*sb, mouse_rsrl.tuning_system.short_name);
+						hover_text = builder_to_string(*sb,,temp);
 						hover_cam := mouse_cam + Vector2F.{1,0};
 						hover_rect : Rectangle2 = TextBackgroundRect2D(hover_text, hover_cam, perm.text_editor_data, renderer_data.current_pixels_per_square);
-						PushRectangle(hover_rect, GREY_BLACKER_V, op_space.render_groups.scissor_group, order = MAX_ROW_RENDER_ORDER+2);
-						PushText(hover_cam, hover_text, GREY_DARK_V, op_space.render_groups.scissor_group, order = MAX_ROW_RENDER_ORDER+3);						
+						PushRectangle(hover_rect, GREY_BLACKER_V, op_space.render_groups.post_render_group, order = 100);
+						PushText(hover_cam, hover_text, GREY_DARK_V, op_space.render_groups.post_render_group, order = 101);
+					} else {
+						//draw the tuning system section hover
+						hover_cam := mouse_cam + Vector2F.{1,0};
+						hover_rect : Rectangle2 = TextBackgroundRect2D(hover_text, hover_cam, perm.text_editor_data, renderer_data.current_pixels_per_square);
+						PushRectangle(hover_rect, GREY_BLACKER_V, op_space.render_groups.post_render_group, order = 100);
+						PushText(hover_cam, hover_text, GREY_DARK_V, op_space.render_groups.post_render_group, order = 101);						
 					}
 				}
-
 			}
 		}
 		else if hover_entity.entity_type == EntityType.OP_SPACE {
@@ -5538,7 +5617,7 @@ GENERATED_INPUT_MAPPINGS_REL_PATH);
 						if is_valid {
 							valid_msg, cc_msg := create_midi_message(cc_params);
 							if valid_msg {
-			        			sent_message : bool = send_midi_message(game_memory.midi_output, cc_msg);
+			        			sent_message : bool = send_midi_message(perm.midi_output, cc_msg);
 			        			if sent_message append(*sb, "midi_msg success.\n");
 			        			else append(*sb, "midi_msg failure.\n");
 							} else {
@@ -6275,7 +6354,7 @@ for audio_event : perm.all_data.all_audio_events {
 		for perm.all_data.all_playing_midi {
 			note := cast(u8) it.music_pt_pos;
 			note_off : MIDI_Message = create_midi_message(.Note_Off, note, channel = it.midi_channel);
-			send_midi_message(game_memory.midi_output, note_off);
+			send_midi_message(perm.midi_output, note_off);
 		}
 		array_reset_keeping_memory(*perm.all_data.all_playing_midi);
 
@@ -6327,7 +6406,7 @@ if perm.all_data.game_audio_play.play_state == AudioPlayState.PLAY {
 	for perm.all_data.all_playing_midi if it.x_end_float <= gap.float_x_memory {
 		note := cast(u8) it.music_pt_pos;
 		note_off : MIDI_Message = create_midi_message(.Note_Off, note, channel = it.midi_channel);
-		send_midi_message(game_memory.midi_output, note_off);
+		send_midi_message(perm.midi_output, note_off);
 		remove it;
 	}
 }
@@ -6493,7 +6572,7 @@ if perm.all_data.all_start_playing_music_pts.count > 0 {
 				note := cast(u8) music_pt.music_pt_pos + music_lane_row_ptr.row_midi_data.midi_zero_note;
 				velocity : u8 = music_lane_row_ptr.row_midi_data.midi_velocity;
 				note_on : MIDI_Message = create_midi_message(.Note_On, note, velocity, channel);
-        		send_midi_message(game_memory.midi_output, note_on);
+        		send_midi_message(perm.midi_output, note_on);
 
         		//TODO Make function
         		//TODO FROM HERE set note_offs beforehand here and then move back the internal_synth
@@ -6511,7 +6590,7 @@ if perm.all_data.all_start_playing_music_pts.count > 0 {
         		channel : u8 = music_lane_row_ptr.row_midi_data.midi_channel;
         		control_change : u8 = music_lane_row_ptr.row_midi_data.midi_control_change;
 				cc_msg : MIDI_Message = create_midi_message(.Control_Change, control_change, cast(u8) music_pt.music_pt_pos, channel);
-        		send_midi_message(game_memory.midi_output, cc_msg);
+        		send_midi_message(perm.midi_output, cc_msg);
          }
          }
 		}
@@ -6806,7 +6885,7 @@ PushSetShaderColor(renderer_data.base_render_group, next_order);
 // PushShaderEntries(renderer_data.post_row_group, 10000, 0, S64_MAX);
 // PushSetShaderColor(renderer_data.row_group, next_order);
 //TODO Move this up to input if we process this on input later
-for row, row_index : render_mspace.all_music_lane_rows {
+for * row, row_index : render_mspace.all_music_lane_rows {
 	defer next_order += order_increment;
 	//NOTE : We cap the order since everything > 0 will be drawn on top of rows.
 	//We still have around 2^62 possible rows with 10 values in here. Could be 2^61 if we allow 100 render order indices per row.
@@ -6833,7 +6912,7 @@ for row, row_index : render_mspace.all_music_lane_rows {
 		continue;
 	}
 
-	PushSetScissor(pixel_rect, renderer_data.base_render_group, order = next_order+4);
+	PushSetScissor(pixel_rect, renderer_data.base_render_group, order = next_order);
 
 	//TODO If section x_range not within screen bounds then we can skip over rendering that section here
 	music_pt_index : int = 0;
@@ -6849,8 +6928,8 @@ for row, row_index : render_mspace.all_music_lane_rows {
 		for rs_ret : row_section_rects_array {
 			// alpha : float = ifx rs_ret.octave < 0 then 0.9 else 1.0; //was multiplying color by this but we have hover now
 			cam_rect : Rectangle2 = WorldRectToCamRect(rs_ret.world_rect, default_base_cam);
-			PushRectangle(cam_rect, rs_ret.point.color, renderer_data.base_render_group, order = next_order+5);
-			PushRectangleOutline(cam_rect, GREY_BLACKER_V, renderer_data.base_render_group, r = 1.0, order = next_order+6);
+			PushRectangle(cam_rect, rs_ret.point.color, renderer_data.base_render_group, order = next_order+1);
+			PushRectangleOutline(cam_rect, GREY_BLACKER_V, renderer_data.base_render_group, r = 1.0, order = next_order+2);
 		}	
 
 		//TODO We should be pre-processing these whenever we finish an instruction pass and sort the neumes.
@@ -6862,8 +6941,8 @@ for row, row_index : render_mspace.all_music_lane_rows {
 					perm.all_data.global_rules.memory_unit_width, row, rsrl.section_points);
 				cam_rect : Rectangle2 = WorldRectToCamRect(world_rect, default_base_cam);
 				//TODO Could give the rectangle a bit of a shade so we can see where the edges/corners are
-				PushRectangle(cam_rect, FGREEN_V, renderer_data.base_render_group, order = next_order+7);
-				PushRectangleOutline(cam_rect, GREY_BLACKER_V, renderer_data.base_render_group, r = 1.0, order = next_order+8);
+				PushRectangle(cam_rect, FGREEN_V, renderer_data.base_render_group, order = next_order+3);
+				PushRectangleOutline(cam_rect, GREY_BLACKER_V, renderer_data.base_render_group, r = 1.0, order = next_order+4);
 			}
 		}	
 	}
@@ -6886,8 +6965,19 @@ for row, row_index : render_mspace.all_music_lane_rows {
 		//TODO Could just accumulate the translation and not create a new rect each time.
 		next_rect : Rectangle2 = vert_rect;
 		MoveRect(Vector2F.{it * perm.all_data.global_rules.memory_unit_width,0}, *next_rect);
-		PushRectangleOutline(next_rect, GREY_BLACKER_V, renderer_data.base_render_group, r = 1.0, order = next_order+6);
+		PushRectangleOutline(next_rect, GREY_BLACKER_V, renderer_data.base_render_group, r = 1.0, order = next_order+2);
 	}
+
+	if row.render_row_hovering {
+		//TODO Rename to row_hover_cam_rects OR pass th op rect and convert here
+		for world_rect : row.row_hover_rects {
+			cam_rect : Rectangle2 = WorldRectToCamRect(world_rect, default_base_cam);
+			PushRectangle(cam_rect, LBLUE_V, renderer_data.base_render_group, order = next_order+5);
+			PushRectangleOutline(cam_rect, GREY_BLACKER_V, renderer_data.base_render_group, r = 1.0, order = next_order+6);
+		}
+	}
+	row.render_row_hovering = false;
+
 }
 //TODO We would have to reset the scissor to full viewport if we use base_render_group instead of a separate row_group like we are now.
 //TODO Should have post_scissor_order variable somewhere for everything that is not in scissor to draw on top
@@ -7202,40 +7292,21 @@ if IsViewableOpSpace(op_space.*, perm.all_data.render_mspace_id, renderer_data.*
 				}
 			}	
 
-			world_rect : Rectangle2 = RectMinCenterDim(op_row.row_world_base_start, 
-				Vector2F.{op_row.x_point_width, op_row.row_height});
-			// world_rect.max.y = world_rect.min.y + op_row.row_height;
-			// MoveRect(op_row.row_world_base_start, *world_rect);
-			vert_rect : Rectangle2 = OpRectToCamRect(world_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
-			//TODO Can store bottom left point in MusicLaneRow instead or just grab from collider
-			// vert_rect : Rectangle2 = WorldRectToCamRect(section_points[0].rect_mesh, default_base_cam);
-			// for section.start_x..section.end_x-1 {
 			for 0..op_row.row_size-1 {
-				//TODO Could just accumulate the translation and not create a new rect each time.
-				next_rect : Rectangle2 = vert_rect;
-				MoveRect(Vector2F.{it * op_row.x_point_width,0}, *next_rect);
-				PushRectangleOutline(next_rect, GREY_BLACKER_V, op_space.render_groups.scissor_group, r = 1.0, order = op_linear_order+2);
+				rect_pos : Vector2F = op_row.row_world_base_start;
+				rect_pos.x += it * op_row.x_point_width;
+				world_rect : Rectangle2 = RectMinCenterDim(rect_pos, 
+					Vector2F.{op_row.x_point_width, op_row.row_height});
+				vert_rect : Rectangle2 = OpRectToCamRect(world_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
+				PushRectangleOutline(vert_rect, GREY_BLACKER_V, op_space.render_groups.scissor_group, r = 1.0, order = op_linear_order+2);
 			}
 
 			if op_row.render_row_hovering {
-				// op_mouse : Vector2F = WorldSpaceToOpSpace(world_mouse, op_space, op_space.op_2D_cam.world_pos);
-				// mouse_x_float : float = WorldXToRowXFloat(op_mouse.x, op_row, op_row.x_point_width);
-				// total_x_float : float = mouse_x_float + op_row.op_ref_start_x;
-				// hover_mps : [] MusicPoint = GetAllMusicPtPosByPosition(base_row.total_row_index, total_x_float, 
-				// 	mspace_for_input.all_music_pts, type=MusicPoint);
-				for op_row.row_hover_rects {
-					// x_offset := cast(float) (mp.x_start_float - op_row.op_ref_start_x);
-					// op_rect := MusicPtRowSectionRect(mp, op_row.mouse_rsrl.octave_mult, x_offset, 
-					// 	op_row.x_point_width, op_row, op_row.mouse_rsrl.section_points);
-					// cam_rect : Rectangle2 = OpRectToCamRect(op_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
-					// if perm.all_data.play_row_chords {
-						PushRectangle(it, LBLUE_V, op_space.render_groups.scissor_group, order = op_linear_order+7);
-						PushRectangleOutline(it, GREY_BLACKER_V, op_space.render_groups.scissor_group, r = 1.0, order = op_linear_order+8);
-					// } else if IsInRectangle(mouse_cam, cam_rect) {
-					// 	PushRectangle(cam_rect, LBLUE_V, op_space.render_groups.scissor_group, order = op_linear_order+7);
-					// 	PushRectangleOutline(cam_rect, GREY_BLACKER_V, op_space.render_groups.scissor_group, r = 1.0, order = op_linear_order+8);
-					// 	break;
-					// }
+				//TODO Rename to row_hover_cam_rects OR pass th op rect and convert here
+				for op_rect : op_row.row_hover_rects {
+					cam_rect : Rectangle2 = OpRectToCamRect(op_rect, op_space, op_space.op_2D_cam.world_pos, default_base_cam);
+					PushRectangle(cam_rect, LBLUE_V, op_space.render_groups.scissor_group, order = op_linear_order+7);
+					PushRectangleOutline(cam_rect, GREY_BLACKER_V, op_space.render_groups.scissor_group, r = 1.0, order = op_linear_order+8);
 				}
 			}
 			op_row.render_row_hovering = false;
@@ -7475,7 +7546,7 @@ if IsViewableOpSpace(op_space.*, perm.all_data.render_mspace_id, renderer_data.*
 				}
 
 				PushSetShaderColor(op_space.render_groups.scissor_group, old_op_linear_order);
-				row : OpLinearRow = ArrayFindFirstByNameId(perm.all_data.all_op_linear_rows,
+				row := ArrayFindFirstByNameId(perm.all_data.all_op_linear_rows,
 					dspace_to_op_space.dspace_id, "id");
 
 				coll := ArrayFindFirstByAndOp(perm.all_data.all_op_collision_entities, 

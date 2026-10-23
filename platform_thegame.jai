@@ -289,6 +289,9 @@ if(Window) {
 	to be runtime if needed.
 	*/
 	#if 1 {
+	//TODO Remove permanent storage and 
+	//Put persist in game memory and initialize game memory here so we have a layer above persist in case we want
+	//other memory like internal temp later.
 	game_state := cast(*GameState) game_memory.PermanentStorage;
 	perm := *game_state.persist;
 
@@ -427,7 +430,7 @@ if(Window) {
 	} else {
 	midi_port_number : int = 0;
 	}
-	game_memory.midi_output = open_output(midi_port_number);
+	perm.midi_output = open_output(midi_port_number);
 	// assert(game_memory.midi_output != null, "No midi output found with port %.\n", midi_port_number);
 
 	while(Running) {
@@ -781,8 +784,8 @@ if(Window) {
 		}
 	}
 
-	if game_memory.midi_output != null {
-		close_output(game_memory.midi_output);
+	if perm.midi_output != null {
+		close_output(perm.midi_output);
 	}
 
 	#if !DSOUND_AUDIO {

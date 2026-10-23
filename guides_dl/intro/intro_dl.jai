@@ -85,24 +85,6 @@ ExternalRunOnce :: (shared_lib : *SharedLibraryData) {
 		*shared_lib.all_mspace_data.*[0].all_music_pts);
 	
 	//Opening other op spaces can be found in guides_dl/circle.
-
-	/*
-	rd.row_system_id = synth.ret_synth_id;
-	rd.row_sub_system_id = cast(int) SimpleSynthMessageType.VOLUME;
-	//Can use right click knob and press link controller in fl studio 
-	//to set midi channel and cc messages.
-	//cc messages may not map directly to the neume values
-	//rd.row_system_type = RowSystemType.midi_control_change;
-	//rd.row_midi_data.midi_channel = 0;
-	//rd.row_midi_data.midi_control_change = 0;
-	#asm{ create_row rd; }
-
-	for x : 0..11 {
-		tano(1,x) ~= 0.15 * cast(float) x;
-		//For midi cc message
-		// tano(1,x) ~= 10*x;
-	}
-	*/
 }
 
 /*

@@ -27,6 +27,8 @@ ExternalRunOnce :: (sld : *SharedLibraryData) {
 
 	//This is how we would update the settings
 	sld.update_runtime_settings_from_dl = true;
+	//copy the current settings
+	sld.to_update_runtime_settings = sld.runtime_settings; 
 	sld.to_update_runtime_settings.save_file_on_focus_lost = false;
 
 	//We can also compile, load and run other dls like this

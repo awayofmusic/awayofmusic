@@ -41,9 +41,9 @@ GameMemory :: struct {
 	//TODO Should likely put this in data because we can have multiple
 	//and their pointers so it does not matter if their platform dependent.
 	//TODO Should we put this in-game? It is platform dependent...
-	midi_output : *MIDI_Output;
+	// midi_output : *MIDI_Output;
 	//TODO To be used for midi clock sync
-	midi_input  : *MIDI_Input;
+	// midi_input  : *MIDI_Input;
 
 	//TODO put this in RendererState/RendererData
 	//TODO leaving name for now since Dynamic_Font and Font_Effects are SIMP specific
