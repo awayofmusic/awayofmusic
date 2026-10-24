@@ -11,7 +11,7 @@
 
 #import "jai-midi";
 
-//Run this once to setup my data and get the midi output data.
+//Run this once to setup MyData and get the midi output data.
 #program_export
 ExternalRunOnce :: (sld : *SharedLibraryData) {
 	Remap_Context();
@@ -130,6 +130,9 @@ HoverBaseRow :: inline (row_hover : HoverEntity, sld : *SharedLibraryData) {
 			break;
 		}
 	}
+
+	//Sort so that they are consistently used for output
+	quick_sort(audio_float_poses, (f1,f2) => f1 - f2);
 
 	//If we don't play row audio then there are no tuning systems to check
 	all_same_tunings : bool = true;
@@ -365,6 +368,9 @@ HoverOpRow :: inline (op_row_hover : HoverEntity, sld : *SharedLibraryData) {
 			}
 		}
 	}
+
+	//Sort so that they are consistently used for output
+	quick_sort(audio_float_poses, (f1,f2) => f1 - f2);
 
 	//If we don't play row audio then there are no tuning systems to check
 	all_same_tunings : bool = true;

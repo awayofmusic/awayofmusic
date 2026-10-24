@@ -15,6 +15,7 @@ op_space_name : string = "render_op";
 ExternalRunOnce :: (sld : *SharedLibraryData) {
 	Remap_Context();
 
+	//See guides_dl/circle/circle_dl.jai for an important note on creating op space and allocating data from a dl
 	/*To open this op space from the internal terminal run :
 	open_op render_op
 	*/

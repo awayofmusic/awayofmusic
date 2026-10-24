@@ -177,4 +177,8 @@ ExternalRunOnce :: (shared_lib : *SharedLibraryData) {
 		CreateMusicPtInMemory(new_mp, mps_0);
 	}
 	}
+
+	//Whenever adding/updating music points this needs to be called
+	//so that audio and rendering music_pts will display correctly.
+	DefaultSortNeumes(shared_lib.all_mspace_data.*[0].all_music_pts);
 }

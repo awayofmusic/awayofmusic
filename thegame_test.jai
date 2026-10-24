@@ -2444,9 +2444,9 @@ Test_CreateNewCircle :: (
 	}
 
 	// ts_name := "gamma";
-	// ts_name := "et12";
+	ts_name := "et12";
 	// ts_name := "pyth";
-	ts_name := "natural";
+	// ts_name := "natural";
 	tuning_system := ArrayFindFirstByNameId(perm.all_data.all_tuning_systems, ts_name, "short_name");
 
 	//TODO Should make a version of this where we pass in num_of_points
@@ -2454,13 +2454,23 @@ Test_CreateNewCircle :: (
 	tuning_system_id = tuning_system.id,
 	radius = 10,
 	start_note = 0,
-	repeating_interval_ratio = 4.0,
+	// repeating_interval_ratio = 4.0,
+	repeating_interval_ratio = 2.0,
 	//TODO Should we make this automatically false based on repeating_interval_ratio if it's not a multiple of compass_interval?
 	is_repeating = true,
-	is_sound_float = true,
+	// is_sound_float = true,
+	// circle_audio = CircleAudioType.DISCRETE,
+	// circle_audio = CircleAudioType.CONTINUOUS,
+	circle_audio = CircleAudioType.MIDI,
+	midi_data = .{
+		midi_port = 0,
+		midi_channel = 0,
+		midi_velocity = 100,
+		midi_zero_note = 12*4,
+	},
 	inner_circle_mute = 0.3,
 	no_base_points = false,
-	show_text = true
+	show_text = false
 	};
 
 	circle : *CircleSpace = CreateCircleInOpSpace(c_data, op_spec_data, 
@@ -10860,7 +10870,9 @@ DONE);
 // #if OS == .WINDOWS {
 //TODO Technically we would have to compile this before being able to pull it in.
 LDLData :: struct {
+	fixed_test_path_no_ext : string;
 	fixed_test_path : string;
+	test_path_2_no_ext : string;
 	test_path_2 : string;
 }
 Test_LoadDL :: (
@@ -10909,10 +10921,10 @@ Test_LoadDL :: (
 	ldl_data := cast(*LDLData) perm.test_data.spec_data;
 	if perm.test_data.sub_test_index == {
 	case 0; {
-		open_test := MakeTerminalEvent(.load_dl, ldl_data.fixed_test_path);
+		open_test := MakeTerminalEvent(.load_dl, TEST_DL_PATH_NAME);
 		array_add(*perm.all_data.all_terminal_events, open_test);
 
-		test_2 := MakeTerminalEvent(.load_dl, ldl_data.test_path_2);
+		test_2 := MakeTerminalEvent(.load_dl, TEST_DL_2_PATH_NAME);
 		array_add(*perm.all_data.all_terminal_events, test_2);
 	}
 	case 1; {
@@ -10947,7 +10959,7 @@ Test_LoadDL :: (
 
 		AssertEquals(0, perm.all_data.all_mspace_data[0].all_music_pts.count);
 
-		run_test := MakeTerminalEvent(.run_dl_once, ldl_data.fixed_test_path);
+		run_test := MakeTerminalEvent(.run_dl_once, TEST_DL_PATH_NAME);
 		array_add(*perm.all_data.all_terminal_events, run_test);
 	}
 	case 2; {
@@ -10960,7 +10972,7 @@ Test_LoadDL :: (
 			AssertEquals(3, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		}
 
-		run_test := MakeTerminalEvent(.run_dl_once, ldl_data.test_path_2);
+		run_test := MakeTerminalEvent(.run_dl_once, TEST_DL_2_PATH_NAME);
 		array_add(*perm.all_data.all_terminal_events, run_test);
 	}
 	case 3; {
@@ -10970,7 +10982,7 @@ Test_LoadDL :: (
 
 
 		//Test start per frame
-		run_test := MakeTerminalEvent(.start_dl_per_frame, ldl_data.fixed_test_path);
+		run_test := MakeTerminalEvent(.start_dl_per_frame, TEST_DL_PATH_NAME);
 		array_add(*perm.all_data.all_terminal_events, run_test);		
 	}
 	case 4; {
@@ -11001,7 +11013,7 @@ Test_LoadDL :: (
 
 
 		//Test stop per frame
-		run_test := MakeTerminalEvent(.stop_dl_per_frame, ldl_data.fixed_test_path);
+		run_test := MakeTerminalEvent(.stop_dl_per_frame, TEST_DL_PATH_NAME);
 		array_add(*perm.all_data.all_terminal_events, run_test);	
 	}
 	case 7; {
@@ -13907,30 +13919,34 @@ Test_CodeCircle :: (
 #string DONE
 #load "c_load/Library";
 main :: () {
-  cs : AsmCircleData;
-  cs.op_space_id = %;
-  cs.radius = 9.0;
-  cs.world_center = Vector2.{0,0};
-  cs.rotate_theta = 1.570796;
-  cs.point_dim = Vector2.{0.6,0.6};
-  cs.is_clockwise = true;
-  cs.repeating_interval_ratio = 2.0;
-  cs.tuning_system_id = 0;
-  cs.non_repeating = false;
-  cs.start_note = 0;
-  cs.is_sound_float = false;
-  cs.inner_circle_mute = 0.;
-  cs.no_base_points = false;
-  #asm{ create_circle cs; }
+	clear : AsmClearOpData;
+	clear.op_space_id = %;
+	#asm{ clear_op_space clear; }
 
-  mc : AsmMapCircle;
-  mc.dspace_id = cs.ret_dspace_id;
-  mc.op_space_id = cs.op_space_id;
-  mc.pitches = float64.[0,4.5,7];
-  mc.draw_vl_type = DrawVLType.VL_LINE;
-  #asm{ map_circle mc; }
+	cs : AsmCircleData;
+	cs.op_space_id = %;
+	cs.radius = 9.0;
+	cs.world_center = Vector2.{0,0};
+	cs.rotate_theta = 1.570796;
+	cs.point_dim = Vector2.{0.6,0.6};
+	cs.is_clockwise = true;
+	cs.repeating_interval_ratio = 2.0;
+	cs.tuning_system_id = 0;
+	cs.non_repeating = false;
+	cs.start_note = 0;
+	cs.is_sound_float = false;
+	cs.inner_circle_mute = 0.;
+	cs.no_base_points = false;
+	#asm{ create_circle cs; }
+
+	mc : AsmMapCircle;
+	mc.dspace_id = cs.ret_dspace_id;
+	mc.op_space_id = cs.op_space_id;
+	mc.pitches = float64.[0,4.5,7];
+	mc.draw_vl_type = DrawVLType.VL_LINE;
+	#asm{ map_circle mc; }
 }
-DONE, op_space.id));
+DONE, op_space.id, op_space.id));
 	
 		array_resize(*perm.test_data.all_sub_tests, 8+1);
 	} 

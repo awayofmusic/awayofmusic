@@ -1263,8 +1263,14 @@ if frame_hover_entities.count > 0 {
 					top_op_space.id, "op_space_id");
 				assert(found_op_spec_data);
 
-				circle : *CircleSpace = ArrayFindFirstByNameId(op_spec_data.all_op_circle_spaces, 
+				circle, found_circle := ArrayFindFirstByNameId(op_spec_data.all_op_circle_spaces, 
 					hover_entity.id, "dspace_id");
+				if !found_circle {
+					print("circle id % not found.\n", hover_entity.id);
+					continue;
+				}
+
+				if circle.external_hover continue;
 
 				ref_freq : float64 = perm.all_data.runtime_settings.default_zero_pitch_frequency;
 				if circle.use_set_zero_freq ref_freq = circle.pitch_zero_freq;
@@ -1275,7 +1281,7 @@ if frame_hover_entities.count > 0 {
 				assert(tuning_system.music_pt_count == tuning_pitches.count);
 
 				NEW_AUDIO :: true;
-				assert(circle.synth.simple_waves.count > 0);
+				// assert(circle.synth.simple_waves.count > 0);
 				add_audio : bool = false;
 
 				/*DOC TODO : Eventually we might just be able to have space rects and values and we can
@@ -1298,6 +1304,8 @@ if frame_hover_entities.count > 0 {
 				found_hover_rect : bool;
 				hover_rect : SpaceRect;
 				hover_cam_rect : Rectangle2;
+				audio_float_poses : [..] float64;
+				audio_float_poses.allocator = temp;
 				for op_spec_data.ass.all_space_rects if it.dspace_id == circle.dspace_id {
 					// world_pos : Vector2F = circle.transform * point.dspace_pos + circle.world_center;
 					// world_rect : Rectangle2 = RectCenterDim(world_pos, circle.point_dim);
@@ -1338,15 +1346,19 @@ if frame_hover_entities.count > 0 {
 					} else {
 					PushRectangle(hover_cam_rect, LBLUE_V, top_op_space.render_groups.scissor_group, order = hover_rect.render_order+2);
 					if hover_rect.pitch_set.count > 0 {
-						frequency : float = MusicPtToFrequency(hover_rect.pitch_set[0], tuning_system, tuning_pitches, ref_freq);
-						// frequency := cast(float) shape_value.float_value;
-						#if NEW_AUDIO {
-						UpdateWaveFrequency(frequency, *circle.synth.simple_waves[0], audio_data.*);
-						} else {
-						UpdateWaveFrequency(frequency, *circle.osc_wave, audio_data.*);
-						}
+						array_add(*audio_float_poses, hover_rect.pitch_set[0]);
 						add_audio = true;
 					}
+					// if hover_rect.pitch_set.count > 0 {
+					// 	frequency : float = MusicPtToFrequency(hover_rect.pitch_set[0], tuning_system, tuning_pitches, ref_freq);
+					// 	// frequency := cast(float) shape_value.float_value;
+					// 	#if NEW_AUDIO {
+					// 	UpdateWaveFrequency(frequency, *circle.synth.simple_waves[0], audio_data.*);
+					// 	} else {
+					// 	UpdateWaveFrequency(frequency, *circle.osc_wave, audio_data.*);
+					// 	}
+					// 	add_audio = true;
+					// }
 					}
 					// break;
 				}
@@ -1359,7 +1371,8 @@ if frame_hover_entities.count > 0 {
 				REMINDER in general we need to ensure that audio is only coming from 1 source in this dspace so we don't have
 				overlapping audio although we can have overlapping audio from other dspaces
 				*/
-				if circle.is_sound_float && !add_audio {
+				// if circle.is_sound_float && !add_audio {
+				if !add_audio && circle.circle_audio == CircleAudioType.CONTINUOUS {
 					// use_hovering_point = true;
 					// hover_cam_pos = mouse_cam;
 
@@ -1378,29 +1391,42 @@ if frame_hover_entities.count > 0 {
 						music_pt_float := cast(float64) circle.inter_points.count * polar.theta / TAU;
 						music_pt_float += circle.start_note;
 
+						array_add(*audio_float_poses, music_pt_float);
+						add_audio = true;
 						//TODO Technically we could force this to be equal equal_temperament since it will be the same
 						//over the same span realtive to some compass interval on the circle.
-						frequency : float = MusicPtToFrequency(music_pt_float, tuning_system, tuning_pitches, ref_freq);
-						#if NEW_AUDIO {
-						UpdateWaveFrequency(frequency, *circle.synth.simple_waves[0], audio_data.*);
-						} else {
-						UpdateWaveFrequency(frequency, *circle.osc_wave, audio_data.*);
-						}
+						// frequency : float = MusicPtToFrequency(music_pt_float, tuning_system, tuning_pitches, ref_freq);
+						// #if NEW_AUDIO {
+						// UpdateWaveFrequency(frequency, *circle.synth.simple_waves[0], audio_data.*);
+						// } else {
+						// UpdateWaveFrequency(frequency, *circle.osc_wave, audio_data.*);
+						// }
 						// AddToAudioBuffer(*circle.osc_wave, audio_data);
-						add_audio = true;
 					}
 					// add_audio = true;					
 				}
-				// if use_hovering_point {
-				// } 
-				//TODO We only add this once here for now but we can change it once we pull everything out since
-				//this will happen at the collision code and not the rendering code.
+
 				if add_audio {
-					//TODO Use SimpleSynth here
-					#if NEW_AUDIO {
-					GenerateSimpleSynthSamples(*circle.synth, audio_data.float_buffer, audio_data);
-					} else {
-					AddToAudioBuffer(*circle.osc_wave, audio_data);
+					if circle.circle_audio == {
+					case CircleAudioType.CONTINUOUS; #through;
+					case CircleAudioType.DISCRETE; {
+						if audio_float_poses.count != circle.synth.simple_waves.count {
+							array_reset_keeping_memory(*circle.synth.simple_waves);
+							for 0..audio_float_poses.count-1 {
+								AddSimpleWaveFromFrequency(0, *circle.synth, audio_data.*);
+							}
+						}
+						if audio_float_poses.count > 0 {
+							for audio_float_poses {
+								frequency : float = MusicPtToFrequency(it, tuning_system, tuning_pitches, ref_freq);
+								UpdateWaveFrequency(frequency, *circle.synth.simple_waves[it_index], audio_data.*);
+							}
+							GenerateSimpleSynthSamples(*circle.synth, audio_data.float_buffer, audio_data);
+						}
+					}
+					case CircleAudioType.MIDI; {
+						PressMidiNote(hover_rect.pitch_set, circle.midi_data, perm.midi_output, game_input);
+					}
 					}
 				}
 			}
@@ -1539,6 +1565,9 @@ if frame_hover_entities.count > 0 {
 						break;
 					}
 				}
+
+				//Sort so that they are consistently used for output
+				quick_sort(audio_float_poses, (f1,f2) => f1 - f2);
 
 				if play_row_audio {
 					if row.row_system_type == {
@@ -1743,6 +1772,9 @@ if frame_hover_entities.count > 0 {
 						}
 					}
 				}
+
+				//Sort so that they are consistently used for output
+				quick_sort(audio_float_poses, (f1,f2) => f1 - f2);
 
 				if play_row_audio {
 					if base_row.row_system_type == {
@@ -4890,7 +4922,7 @@ for terminal_event : perm.all_data.all_terminal_events
 			//them all out easily to print out all the instructions with their help msgs.
 			//Then we could have a general check on top that if we have a -help we just print the help message for that command.
 			//IF we don't want certain commands to be accessible, then we can just not print the messages for those in that loop.
-			case TerminalCommandType.create_op; {
+			case TerminalCommandType.create_text_op; {
 				if IsTerminalCmdHelp(cmd_switches) {
 					print_to_builder(*sb, 
 #string DONE
@@ -5056,6 +5088,53 @@ DONE;
 					print_to_builder(*sb, INVALID_CMD_MSG, help_msg);
 				}
 			}
+			case TerminalCommandType.create_op; {
+				help_msg := 
+#string DONE
+create_op op_space_name op_space_type
+Create a new op space of type op_space_type.
+space_2d or space_3d can be used here.
+DONE;
+				if IsTerminalCmdHelp(cmd_switches) {
+					print_to_builder(*sb, help_msg);
+				} else if command_tokens.count == 3 {
+					op_space_name : string = command_tokens[1].token;
+					op_space, found_op_space := FindOpSpacePointerOpenOrClosed(op_space_name, 
+						perm.all_data.all_open_op_spaces, perm.all_data.all_closed_op_spaces);
+
+					op_space_type : OpSpaceExternalType;
+					found_op_space_type : bool = false;
+					op_space_type_string : string = command_tokens[2].token;
+					for enum_names(OpSpaceExternalType) if it == op_space_type_string {
+						op_space_type = cast(OpSpaceExternalType) it_index;
+						found_op_space_type = true;
+						break;
+					}
+
+					valid_op_space_type : bool = AllOrEquals(op_space_type, .[.space_2d, .space_3d]);
+					if !found_op_space_type || !valid_op_space_type {
+						print_to_builder(*sb, "Invalid op space type \"%\". Use space_2d or space_3d here.\n", op_space_type_string);
+					} else if found_op_space {
+						print_to_builder(*sb, "op space with name \"%\" already exists.\n", op_space_name);
+					} else {
+						cosd : CreateOpSpaceData;
+						cosd.op_space_name = copy_string(op_space_name);
+						cosd.op_space_external_type = op_space_type;
+						//TODO We could allow setting offset here and also fixed to mspace so then the whole
+						//music space can be setup in 1 shot. This would also be possible through dynamic libraries
+						// cosd.world_offset = ;
+						cosd.world_size = perm.all_data.runtime_settings.default_op_space_size;
+						op_space = CreateClosedOpSpace(cosd, 
+							*perm.all_data.all_closed_op_spaces, 
+							*perm.all_data.all_op_space_spec_data, 
+							*perm.all_data.all_op_spec_data_3D);
+
+						print_to_builder(*sb, "Created op space \"%\" of type %.\n", op_space_name, op_space_type_string);
+					}
+				} else {
+					print_to_builder(*sb, INVALID_CMD_MSG, help_msg);
+				}
+			}
 			case TerminalCommandType.open_op; {
 				help_msg ::
 #string DONE
@@ -5148,7 +5227,8 @@ Reload if we've already loaded it.
 DONE);
 				} else {
 					//TODO We could do this with an open file now
-					file_name_with_type : string = command_tokens[1].token;
+					// file_name_without_type : string = command_tokens[1].token;
+					file_name_with_type : string = tprint("%.%", command_tokens[1].token, dl_suffix);
 					success, msg := FetchDynamicLibrary(file_name_with_type);
 					print_to_builder(*sb, msg);
 				}
@@ -5164,7 +5244,7 @@ DL_FUNCTION_RUN_ONCE);
 				if IsTerminalCmdHelp(cmd_switches) {
 					print_to_builder(*sb, help_msg);
 				} else {
-					dlib_name : string = command_tokens[1].token;
+					dlib_name : string = tprint("%.%", command_tokens[1].token, dl_suffix);
 					found_dl : bool = false;
 					for global_dynamic_libraries if it.input_path_name == dlib_name {
 						for * global_dynamic_libraries if it.input_path_name == dlib_name && it.ExternalRunOnce_proc_address != null {
@@ -5190,7 +5270,7 @@ DL_FUNCTION_PER_FRAME);
 				if IsTerminalCmdHelp(cmd_switches) {
 					print_to_builder(*sb, help_msg);
 				} else {
-					dlib_name : string = command_tokens[1].token;
+					dlib_name : string = tprint("%.%", command_tokens[1].token, dl_suffix);
 					found_dl : bool = false;
 					for * global_dynamic_libraries if it.input_path_name == dlib_name && it.ExternalPerFrame_proc_address != null {
 						it.is_running_dl_per_frame = true;
@@ -5214,7 +5294,8 @@ DL_FUNCTION_PER_FRAME);
 				if IsTerminalCmdHelp(cmd_switches) {
 					print_to_builder(*sb, help_msg);
 				} else {
-					dlib_name : string = command_tokens[1].token;
+					// dlib_name : string = command_tokens[1].token;
+					dlib_name : string = tprint("%.%", command_tokens[1].token, dl_suffix);
 					for * global_dynamic_libraries if it.input_path_name == dlib_name {
 						if it.is_running_dl_per_frame {
 							it.is_running_dl_per_frame = false;
@@ -6644,7 +6725,7 @@ for * dl : global_dynamic_libraries if dl.is_running_once_dl {
 	//TODO We could cast this beforehand to reuse but I will leave it like this for now so we only
 	//keep 1 pointer and dont have to reset it all the time.
 	ExternalRunOnce := cast(Type_ExternalRunOnce) dl.ExternalRunOnce_proc_address;
-	ExternalRunOnce(*perm.all_data.shared_lib_data);
+	ExternalRunOnce(*perm.all_data.shared_lib_data,,context.allocator);
 
 	PostUpdateExternal(dl, renderer_data, perm);
 }
@@ -6664,7 +6745,7 @@ for * dl : global_dynamic_libraries if dl.is_running_dl_per_frame {
 		*frame_hover_entities, perm);
 
 	ExternalPerFrame := cast(Type_ExternalRunOnce) dl.ExternalPerFrame_proc_address;
-	ExternalPerFrame(*perm.all_data.shared_lib_data);
+	ExternalPerFrame(*perm.all_data.shared_lib_data,,context.allocator);
 
 	PostUpdateExternal(dl, renderer_data, perm);
 }

@@ -227,8 +227,10 @@ TerminalCommandType :: enum {
 
 	open_op; //open op_space
 	close_op; //close op_space
-	create_op; //create a new empty text op_space
 	load_op; //load file and open op_space
+	create_op; //create new 2d or 3d op_space
+	//TODO This can be removed in favor of just loading an op and creating a file in the explorer
+	create_text_op; //create a new empty text op_space
 
 	text_tab; //open a tab in a text op
 
@@ -3045,6 +3047,7 @@ RowMidiData :: struct {
 	//since only 16 channels, we would have 2 bits per port
 	//TODO Should this channel be per lane or per row?
 	//TODO I think this should just be called midi_channel
+	midi_port : u8;
 	midi_channel : u8;
 	midi_velocity : u8 = 100;
 	midi_control_change : u8;
@@ -3052,11 +3055,21 @@ RowMidiData :: struct {
 	midi_zero_note : u8 = 12*4;
 }
 AsmRowMidiData :: struct {
+	midi_port : int;
 	midi_channel : int;
 	midi_velocity : int = 100;
 	midi_control_change : int;	
 	midi_zero_note : int = 12*4;
 } @LibraryAsmGen
+AsmToMidiData :: inline (asm_data : AsmRowMidiData) -> RowMidiData {
+	md : RowMidiData;
+	md.midi_port = cast(u8) asm_data.midi_port;
+	md.midi_channel = cast(u8) asm_data.midi_channel;
+	md.midi_velocity = cast(u8) asm_data.midi_velocity;
+	md.midi_control_change = cast(u8) asm_data.midi_control_change;
+	md.midi_zero_note = cast(u8) asm_data.midi_zero_note;
+	return md;
+}
 
 
 MAX_ROW_RENDER_ORDER :: -1000;
@@ -4281,7 +4294,7 @@ CreateClosedOpSpace :: inline (
 	op_space.world_size = cosd.world_size;
 	// op_space.cam_2D_id = op_2D_cam.id;
 	//TODO I think we should copy the name in here and then later if we store it with some op_space data storage we can update it all at once
-	op_space.op_space_name = cosd.op_space_name;
+	op_space.op_space_name = copy_string(cosd.op_space_name);
 	op_space.op_space_external_type = cosd.op_space_external_type;
 	// SetDefaultOpSpaceFixedTypeState(op_space, all_data.runtime_settings);
 
@@ -4998,16 +5011,26 @@ CircleSpace :: struct {
 	is_default : bool;
 
 	is_sound_float : bool;
+	circle_audio : CircleAudioType;
 	inner_circle_mute : float;
+	external_hover : bool;
+
+	midi_data : RowMidiData;
 
 	//TODO Can make this an array if needed
-	osc_wave : OscWave;
+	// osc_wave : OscWave;
 	synth : SimpleSynth;
 
 	//TODO We could make this a struct for passing around but its just in a if in like 5 places to check the frequency...
 	use_set_zero_freq : bool;
 	pitch_zero_freq : float64;
 }
+CircleAudioType :: enum {
+	NONE;
+	DISCRETE;
+	CONTINUOUS;
+	MIDI;
+} @LibraryAsmGen
 
 
 ChordSpace2 :: struct {
@@ -6486,7 +6509,11 @@ AsmCircleData :: struct {
 	start_note : int;
 
 	is_sound_float : AsmBool;
+	circle_audio : CircleAudioType;
 	inner_circle_mute : float64 = 0;
+	external_hover : AsmBool;
+
+	asm_midi_data : AsmRowMidiData;
 
 	op_space_id : int;
 
@@ -6520,7 +6547,11 @@ CreateCircleSpaceData :: struct {
 	start_note : int;
 
 	is_sound_float : bool;
+	circle_audio : CircleAudioType;
 	inner_circle_mute : float = 0;
+	external_hover : bool;
+
+	midi_data : RowMidiData;
 
 	//We can use these if we ever have > 1 circle with the same
 	//tuning_system, compass_interval and repeating_interval_ratio for some reason.
@@ -6590,9 +6621,12 @@ CreateCircleSpace :: inline (
 	// circle.sort_music_pts = c_data.sort_music_pts;
 
 	circle.is_sound_float = c_data.is_sound_float;
+	circle.circle_audio = c_data.circle_audio;
 	circle.inner_circle_mute = c_data.inner_circle_mute;
+	circle.external_hover = c_data.external_hover;
+	circle.midi_data = c_data.midi_data;
 	//TODO can remove this osc_wave once we just use the simple synth
-	circle.osc_wave.type = OscWaveType.SINE;
+	// circle.osc_wave.type = OscWaveType.SINE;
 
 	circle.synth.wave_type = OscWaveType.SINE;
 	circle.synth.envelope = MakeVolumeEnvelope();

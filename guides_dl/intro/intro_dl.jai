@@ -13,10 +13,10 @@ To build this dl, run this command from the root directory :
 jai build_dl_thegame.jai -import_dir "." - guides_dl/intro/intro_dl 
 
 To load the dl from the internal command line run :
-load_dl guides_dl/intro/intro_dl.dll
+load_dl guides_dl/intro/intro_dl
 
 To run ExternalRunOnce 1 time from the internal command line run :
-run_dl guides_dl/intro/intro_dl.dll
+run_dl guides_dl/intro/intro_dl
 
 If re-compiled, this dl will automatically reload with a message in the system terminal.
 */
@@ -84,7 +84,12 @@ ExternalRunOnce :: (shared_lib : *SharedLibraryData) {
 	CreateManyMusicPtsInMemory(float64.[0,3,7], 0, 2, 4, 
 		*shared_lib.all_mspace_data.*[0].all_music_pts);
 	
+	//Whenever adding/updating music points this needs to be called
+	//so that audio and rendering music_pts will display correctly.
+	DefaultSortNeumes(shared_lib.all_mspace_data.*[0].all_music_pts);
+
 	//Opening other op spaces can be found in guides_dl/circle.
+	//See guides_dl/circle/circle_dl.jai for an important note on creating op space and allocating data from a dl.
 }
 
 /*
@@ -92,7 +97,8 @@ The ExternalPerFrame function below will run every frame.
 An example of creating some music with keyboard input is given.
 
 Global variables work but if you want the data to remain the same after a reload, then 
-the data needs to be stored in either my_shared_data or my_per_dl_data.
+the data needs to be stored in either my_shared_data or my_per_dl_data as
+the os will unallocate the data associated to a dl once that dl is unloaded.
 
 TODO We can also pass in an allocator if that helps in some way.
 */

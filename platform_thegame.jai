@@ -1418,6 +1418,7 @@ UnloadDLL :: (dl : *DynamicLibrary) -> success : bool, msg : string {
 		dl.module_handle = null;
 	}
 	dl.ExternalRunOnce_proc_address = null;
+	dl.ExternalPerFrame_proc_address = null;
 	return true, tprint("Successfully unloaded %.\n", dl.input_path_name);
 }
 RemoveDynamicLibrary :: (dl : *DynamicLibrary) -> success : bool, msg : string {

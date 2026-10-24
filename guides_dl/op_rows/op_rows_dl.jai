@@ -62,16 +62,22 @@ ExternalRunOnce :: (sld : *SharedLibraryData) {
 	CreateMusicPtInMemory(mp_9, *mspace_0.all_music_pts);
 	CreateMusicPtInMemory(mp_10, *mspace_0.all_music_pts);
 
+	//See guides_dl/circle/circle_dl.jai for an important note on creating op space and allocating data from a dl
 	/*To open this op space from the internal terminal run :
 	open_op op_r
 	*/
-	cosd : CreateOpSpaceData;
-	cosd.op_space_external_type = OpSpaceExternalType.space_2d;
-	cosd.op_space_name = "op_r";
-	op_space : OperationSpace = CreateClosedOpSpace(cosd,
-		sld.all_closed_op_spaces, 
-		sld.all_op_space_spec_data, 
-		sld.all_op_spec_data_3D);
+	op_space_name : string = "op_r";
+	op_space, found_op_space := FindOpSpacePointerOpenOrClosed(op_space_name,
+		sld.all_open_op_spaces, sld.all_closed_op_spaces.*);
+	if !found_op_space {
+		cosd : CreateOpSpaceData;
+		cosd.op_space_external_type = OpSpaceExternalType.space_2d;
+		cosd.op_space_name = op_space_name;
+		op_space = CreateClosedOpSpace(cosd,
+			sld.all_closed_op_spaces, 
+			sld.all_op_space_spec_data, 
+			sld.all_op_spec_data_3D);
+	}
 
 	op_rows : [2] CreateRowData;
 	op_rows[0] = ROWS[0];

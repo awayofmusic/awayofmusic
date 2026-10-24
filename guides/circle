@@ -35,7 +35,14 @@ main :: () {
 	cs.tuning_system_id = 0;
 	cs.non_repeating = false;
 	cs.start_note = 0;
-	cs.is_sound_float = false;
+	cs.circle_audio = CircleAudioType.DISCRETE;
+	//cs.circle_audio = CircleAudioType.CONTINUOUS;
+	//Mouse left click sends midi note on and right click sends midi note off
+	//cs.circle_audio = CircleAudioType.MIDI;
+	//cs.asm_midi_data.midi_port = 0;
+	//cs.asm_midi_data.midi_channel = 0;
+	//cs.asm_midi_data.midi_velocity = 100;
+	//cs.asm_midi_data.midi_zero_note = 12*4;
 	cs.inner_circle_mute = 0.;
 	cs.no_base_points = false;
 	cs.use_set_zero_freq = true;

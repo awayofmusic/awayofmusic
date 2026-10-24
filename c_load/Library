@@ -21,16 +21,17 @@ CreateTuningType :: enum {
 	LINEAR_FROM_START;
 	LINEAR_TO_NEXT;
 }
+AsmDeleteSimpleSynthData :: struct {
+	synth_id : int;
+}
 AsmClearMSpaceData :: struct {
 	mspace_id : int;
 }
 AsmDeleteMSpaceData :: struct {
 	mspace_id : int;
 }
-AsmDeleteSimpleSynthData :: struct {
-	synth_id : int;
-}
 AsmRowMidiData :: struct {
+	midi_port : int;
 	midi_channel : int;
 	midi_velocity : int;
 	midi_control_change : int;
@@ -60,14 +61,28 @@ AsmGetOrCreateSimpleSynthData :: struct {
 	ret_synth_id : int;
 	synth_name : string;
 }
+DrawVLType :: enum {
+	NONE;
+	VL_LINE;
+	VL_ARROW;
+}
 S3CamStartType :: enum {
 	MIN_ZY;
 	USER_SET;
 	POINT_FOCUS;
 }
+AsmShapeType :: enum {
+	RECTANGLE;
+}
 CustomAudioType :: enum {
 	TUNING_SYSTEM;
 	PITCH_SET_AS_FREQUENCY;
+}
+CircleAudioType :: enum {
+	NONE;
+	DISCRETE;
+	CONTINUOUS;
+	MIDI;
 }
 ChordSpaceFilterType :: enum {
 	DEFAULT;
@@ -91,18 +106,6 @@ ChordSpaceFilterAggregate :: enum {
 	INTERSECTION;
 	UNION;
 }
-DrawVLType :: enum {
-	NONE;
-	VL_LINE;
-	VL_ARROW;
-}
-AsmOpSpaceType :: enum {
-	space_2d;
-	space_3d;
-}
-AsmShapeType :: enum {
-	RECTANGLE;
-}
 SpiralType :: enum {
 	PROPER;
 	CONCENTRIC_CIRCLE;
@@ -111,6 +114,14 @@ SpiralType :: enum {
 AsmMapSpiralType :: enum {
 	CHORD;
 	INDEX;
+}
+OpRowType :: enum {
+	MULTI_SECTION;
+	COPY_MUSIC_ROW;
+}
+AsmOpSpaceType :: enum {
+	space_2d;
+	space_3d;
 }
 LinearPitchSpaceView :: enum {
 	RATIO_PROPORTIONAL;
@@ -124,15 +135,6 @@ RowSystemType :: enum {
 	midi_velocity;
 	midi_pitch;
 }
-OpRowType :: enum {
-	MULTI_SECTION;
-	COPY_MUSIC_ROW;
-}
-GetOrCreateMSpaceType :: enum {
-	GET_BY_NAME;
-	GET_BY_ID;
-	GET_BY_INDEX;
-}
 SimpleSynthMessageType :: enum {
 	VOLUME;
 	WAVE_TYPE;
@@ -140,6 +142,11 @@ SimpleSynthMessageType :: enum {
 	RELEASE_SECONDS;
 	ATTACK_CURVE;
 	RELEASE_CURVE;
+}
+GetOrCreateMSpaceType :: enum {
+	GET_BY_NAME;
+	GET_BY_ID;
+	GET_BY_INDEX;
 }
 OscWaveType :: enum {
 	SINE;
@@ -291,13 +298,6 @@ AsmGeom2D :: struct {
 	use_set_zero_freq : bool;
 	pitch_zero_freq : float64;
 }
-AsmText2D :: struct {
-	op_space_id : int;
-	text : string;
-	op_pos : Vector2;
-	color : Vector4;
-	render_order : int;
-}
 AsmCreateOpRowData :: struct {
 	row_id : int;
 	octave_height : float64;
@@ -317,6 +317,13 @@ AsmCreateOpRowData :: struct {
 	op_ref_mspace_id : int;
 	op_ref_start_x : int;
 }
+AsmText2D :: struct {
+	op_space_id : int;
+	text : string;
+	op_pos : Vector2;
+	color : Vector4;
+	render_order : int;
+}
 AsmShapeData :: struct {
 	ret_shape_id : int;
 	dspace_id : int;
@@ -331,6 +338,18 @@ AsmShapeData :: struct {
 	type : AsmShapeType;
 	rect_pos : Vector2;
 	rect_dim : Vector2;
+}
+AsmShape3D :: struct {
+	op_space_id : int;
+	group_id : int;
+	rel_pos : Vector3;
+	fun_region : [] float64;
+	pitch_set : [] float64;
+	shape_text : string;
+	draw_wire_mesh : bool;
+	not_selectable : bool;
+	color : Vector4;
+	scale_value : float64;
 }
 AsmChordS2Data :: struct {
 	ret_dspace_id : int;
@@ -361,7 +380,10 @@ AsmCircleData :: struct {
 	non_repeating : bool;
 	start_note : int;
 	is_sound_float : bool;
+	circle_audio : CircleAudioType;
 	inner_circle_mute : float64;
+	external_hover : bool;
+	asm_midi_data : AsmRowMidiData;
 	op_space_id : int;
 	show_text : bool;
 	no_base_points : bool;
@@ -391,16 +413,4 @@ AsmCreateSpiral :: struct {
 	set_spiral_base : bool;
 	base_chord : [] float64;
 	base_index : int;
-}
-AsmShape3D :: struct {
-	op_space_id : int;
-	group_id : int;
-	rel_pos : Vector3;
-	fun_region : [] float64;
-	pitch_set : [] float64;
-	shape_text : string;
-	draw_wire_mesh : bool;
-	not_selectable : bool;
-	color : Vector4;
-	scale_value : float64;
 }

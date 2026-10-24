@@ -13,6 +13,7 @@ I can move those details here if that is preferable.
 ExternalRunOnce :: (sld : *SharedLibraryData) {
 	Remap_Context();
 
+	//See guides_dl/circle/circle_dl.jai for an important note on creating op space and allocating data from a dl
 	/*To open this op space from the internal terminal run :
 	open_op chords3
 	*/

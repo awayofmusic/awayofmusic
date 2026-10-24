@@ -11,6 +11,7 @@
 ExternalRunOnce :: (sld : *SharedLibraryData) {
 	Remap_Context();
 
+	//See guides_dl/circle/circle_dl.jai for an important note on creating op space and allocating data from a dl
 	/*To open this op space from the internal terminal run :
 	open_op sp_dl
 	*/
@@ -48,7 +49,7 @@ ExternalRunOnce :: (sld : *SharedLibraryData) {
 		break;
 	}
 
-	base_chord := float64.[0,4,7];
+	base_chord := float64.[0,5,7];
 
 	spiral : SpiralSpace;
 	spiral.spiral_type = SpiralType.PROPER;

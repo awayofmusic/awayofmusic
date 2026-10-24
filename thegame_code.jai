@@ -15135,11 +15135,7 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		crd.row_sub_system_id = asm_data.row_sub_system_id;
 		crd.row_section_data, err = GetAsmArray(asm_data.row_sections, ad.ram_memory);
 		if err.is_error return err;
-		//TODO Could make a function for this once we reuse in other geometries
-		crd.row_midi_data.midi_channel = cast(u8) asm_data.row_midi_data.midi_channel;
-		crd.row_midi_data.midi_velocity = cast(u8) asm_data.row_midi_data.midi_velocity;
-		crd.row_midi_data.midi_control_change = cast(u8) asm_data.row_midi_data.midi_control_change;
-		crd.row_midi_data.midi_zero_note = cast(u8) asm_data.row_midi_data.midi_zero_note;
+		crd.row_midi_data = AsmToMidiData(asm_data.row_midi_data);
 		row, row_err := CreateMusicRow(crd, ad);
 		if row_err.is_error return row_err;
 
@@ -15350,6 +15346,9 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		c_data.is_repeating = !AsmBoolToBool(asm_data.non_repeating);
 		c_data.start_note = asm_data.start_note;
 		c_data.is_sound_float = AsmBoolToBool(asm_data.is_sound_float);
+		c_data.circle_audio = asm_data.circle_audio;
+		c_data.external_hover = AsmBoolToBool(asm_data.external_hover);
+		c_data.midi_data = AsmToMidiData(asm_data.asm_midi_data);
 		c_data.inner_circle_mute = cast(float) asm_data.inner_circle_mute;
 		c_data.no_base_points = AsmBoolToBool(asm_data.no_base_points);
 		c_data.show_text = AsmBoolToBool(asm_data.show_text);
