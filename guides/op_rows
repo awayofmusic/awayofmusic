@@ -4,6 +4,8 @@
 Music points are mapped from the base rows onto the op rows and 
 the dimensions and tuning systems of the op row can be changed.
 
+"ctrl+q" toggles hover chord and hover note when mouse is on a row.
+
 Alternative row hover audio and text
 guides_dl/row_hover/row_hover_dl.jai
 

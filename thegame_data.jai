@@ -2781,38 +2781,9 @@ Persist :: struct {
 	//TODO separate different datas here
 	//saveable data, ui data, transient level data, etc...
 
-	//TODO Can make an array of these if we want to allow multiple midi output ports
-	midi_output : *MIDI_Output;
+	all_midi_outs : [..] *MIDI_Output;
 	//TODO To be used for midi clock sync and input mappings
 	midi_input  : *MIDI_Input;
-}
-//Keeping this in here instead of shared library so that the shared library does not depend on jai midi library
-PressMidiNote :: inline (
-	audio_float_poses : [] float64,
-	midi_data : RowMidiData,
-	midi_output : *MIDI_Output,
-	game_input : GameInput)
-{
-	if midi_output == null {
-		print("No midi output port available.\n");
-		return;
-	}
-
-	m_channel : u8 = midi_data.midi_channel;
-	if IsInputMapPress(.MIDI_PRESS_NOTE_ON, .DOWN_THIS_FRAME, game_input) {
-		velocity : u8 = midi_data.midi_velocity;
-		for audio_float_poses {
-			note := (cast(u8) round_to_int(it)) + midi_data.midi_zero_note;
-			note_on : MIDI_Message = create_midi_message(.Note_On, note, velocity, m_channel);
-     		send_midi_message(midi_output, note_on);
-		}
-  	} else if IsInputMapPress(.MIDI_PRESS_NOTE_OFF, .DOWN_THIS_FRAME, game_input) {
-		for audio_float_poses {
-			note := (cast(u8) round_to_int(it)) + midi_data.midi_zero_note;
-			note_off : MIDI_Message = create_midi_message(.Note_Off, note, channel = m_channel);
-     		send_midi_message(midi_output, note_off);
-		}
-	}
 }
 
 /*TODO
@@ -3277,7 +3248,8 @@ AllDataToSharedLibraryData :: inline (
 
 	sl.runtime_settings = perm.all_data.runtime_settings;
 
-	sl.midi_output = perm.midi_output;
+	//Since their both addresses this efficiently copies over the array without having to cast or anything like that
+	sl.all_midi_outs = *perm.all_midi_outs;
 
 	sl.all_terminal_events = *perm.all_data.all_terminal_events;
 
@@ -7990,10 +7962,11 @@ LockedSoundData :: struct {
 
 PlayingMidi :: struct {
 	//TODO Remove x_end once we only have float
-	x_end : int;
+	// x_end : int;
 	x_end_float : float64;
 	//TODO Should this be float64 and just cast or round for midi?
-	music_pt_pos : int;
+	midi_note : u8;
+	midi_port : u8;
 	midi_channel : u8;
 }
 

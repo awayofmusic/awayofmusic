@@ -21,6 +21,7 @@
 #import "thegame_common_data";
 #import "thegame_array_poly";
 #import "thegame_input";
+#import "thegame_midi_utils";
 
 #import "shared_names";
 

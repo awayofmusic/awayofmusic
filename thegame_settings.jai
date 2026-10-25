@@ -24,6 +24,8 @@ StartupSettingsData :: struct {
 	startup_window_pos_y_screen_fraction : float = 0.075;
 
 	load_startup_dl : bool = false;
+
+	startup_midi_out_ports : [] int;
 }
 StartupSettingsReturn :: struct {
 	new_settings : StartupSettingsData;

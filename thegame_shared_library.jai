@@ -94,8 +94,8 @@ SharedLibraryData :: struct {
 	//Then we would have to put the struct in here.
 	// all_next_ids : *AllNextIds;
 
-	//import jai-midi and cast(*MIDI_Output)
-	midi_output : *void;
+	//import jai-midi and cast(*[] *MIDI_Output)
+	all_midi_outs : *void;
 
 	//TODO We could add a pointer for my_shared_data here if global data does not work.
 	//Probably need to pass in an allocator for this to work properly
@@ -254,6 +254,9 @@ TerminalCommandType :: enum {
 	//Can likely remove it altogether if we use setting dynamic libraries eventually
 	set_runtime_settings_file;
 	set_input_mappings_file;
+
+	open_midi_out;
+	close_midi_out;
 
 	//Old commands (can remove if we don't use or reuse)
 	sys;

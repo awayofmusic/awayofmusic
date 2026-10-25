@@ -3256,15 +3256,16 @@ main :: () {
 	rd : AsmCreateRowData;
 	rd.octave_height = 12.0;
 	rd.row_height = 12.0;
-	rd.external_hover_row = false;
+	// rd.external_hover_row = true;
 	rd.remove_row_hover_text = false;
 	rd.mute_hover = false;
 	rd.row_sections = rs;
 	rd.row_system_type = RowSystemType.internal_pitch;
-	//rd.row_system_type = RowSystemType.midi_pitch;
-	rd.row_midi_data.midi_channel = 0;
-	rd.row_midi_data.midi_velocity = 100;
-	rd.row_midi_data.midi_zero_note = 12*4;
+	// rd.row_system_type = RowSystemType.midi_pitch;
+	// rd.row_midi_data.midi_port = 1;
+	// rd.row_midi_data.midi_channel = 0;
+	// rd.row_midi_data.midi_velocity = 100;
+	// rd.row_midi_data.midi_zero_note = 12*4;
 	// rd.row_system_id = synth.ret_synth_id;
 	#asm{ create_row rd; }
 
@@ -3294,6 +3295,7 @@ main :: () {
 	acord.mute_hover = false;
 	acord.x_point_width = 1.5;
 	acord.op_pos = Vector2.{2,3};
+	// acord.external_hover_row = true;
 	acord.op_row_type = OpRowType.MULTI_SECTION;
 	acord.op_ref_row_id = rd.ret_row_id;
 	acord.op_ref_mspace_id = 0;
@@ -3602,6 +3604,7 @@ Test_HoverRows :: (
 		row_0 : *MusicLaneRow = *mspace_0.all_music_lane_rows[0];
 		row_0.external_hover_row = false;
 		// row_0.row_system_type = RowSystemType.midi_pitch;
+		// row_0.row_midi_data.midi_port = 1;
 		// row_0.row_midi_data.midi_channel = 0;
 		// row_0.row_midi_data.midi_velocity = 100;
 		// row_0.row_midi_data.midi_zero_note = 12*4;
@@ -13517,8 +13520,10 @@ main :: () {
 	rd.row_system_id = synth.ret_synth_id;
 	//Can use this to send the music pt value as midi pitch
 	// rd.row_system_type = RowSystemType.midi_pitch;
+	// rd.row_midi_data.midi_port = 1;
 	// rd.row_midi_data.midi_channel = 0;
 	// rd.row_midi_data.midi_velocity = 100;
+	// rd.row_midi_data.midi_zero_note = 12*4;
 	#asm{ create_row rd; }
 
 	tano(0,0..12) ~= int.[0,4,7];
@@ -14509,7 +14514,7 @@ main :: () {
 	// cs3.midi_data.midi_channel = 0;
 	// cs3.midi_data.midi_velocity = 100;
 	// cs3.midi_data.midi_zero_note = 12*4;
-	// cs3.cam_start_pos = Vector3.{0.,0.,0.};
+	cs3.cam_start_pos = Vector3.{0.,0.,0.};
 	cs3.external_hover = false;
 	cs3.osc_wave_type = OscWaveType.SINE;
 	cs3.set_3d_perspective = false;

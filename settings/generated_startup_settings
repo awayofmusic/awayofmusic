@@ -6,5 +6,8 @@
 	"startup_window_width": 3168,
 	"startup_window_height": 1782,
 	"startup_window_pos_x_screen_fraction": 0.15,
-	"startup_window_pos_y_screen_fraction": 0.075
+	"startup_window_pos_y_screen_fraction": 0.075,
+	"load_startup_dl": false,
+	"startup_midi_out_ports": [
+	]
 }

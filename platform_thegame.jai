@@ -50,7 +50,7 @@ Input :: #import "Input";
 //TODO Should this be here or in thgame_mode? The ports are created per platform
 //TODO Can remove the ,dir here because we import the current directory anyways.
 //https://github.com/arjenwitteveen/jai-midi commit f206ab8a74449c860878579d76acf15d6a35676a
-#import,dir "jai-midi";
+#import "jai-midi";
 //https://github.com/rluba/jaison commit 9a407e903d64437ee34d0b0ee6fe7a06095a44d6
 #import,dir "jaison";
 
@@ -419,19 +419,12 @@ if(Window) {
 		// }
 
 
-	//TODO Grab output port by name in case the index changes
-	/*TODO This is 0 on mac and 1 on windows BUT this should be adjustable by the user so they
-	can set it however they want.
-	ALSO on mac we can create a virtual port from here easily so likely also best to do that maybe by default
-	so that we don't even have to think about it and it just works.
-	*/
-	#if OS == .WINDOWS {
-	midi_port_number : int = 1;
-	} else {
-	midi_port_number : int = 0;
+	for midi_port_number : GLOBAL_STARTUP_SETTINGS.startup_midi_out_ports {
+		midi_out : *MIDI_Output = open_output(midi_port_number);
+		if midi_out != null {
+			array_add(*perm.all_midi_outs, midi_out);
+		}
 	}
-	perm.midi_output = open_output(midi_port_number);
-	// assert(game_memory.midi_output != null, "No midi output found with port %.\n", midi_port_number);
 
 	while(Running) {
 		#if memory_debug memory_visualizer_per_frame_update();
@@ -784,8 +777,8 @@ if(Window) {
 		}
 	}
 
-	if perm.midi_output != null {
-		close_output(perm.midi_output);
+	for perm.all_midi_outs {
+		close_output(it);
 	}
 
 	#if !DSOUND_AUDIO {

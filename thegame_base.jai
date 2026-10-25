@@ -790,7 +790,7 @@ if frame_hover_entities.count > 0 {
 			for hover_shape, hover_index : all_hover_shapes {
 				if hover_shape.pitch_set.count > 0 {
 					if custom_g.custom_audio_type == CustomAudioType.MIDI {
-						PressMidiNote(hover_shape.pitch_set, custom_g.midi_data, perm.midi_output, game_input);
+						PressMidiNote(hover_shape.pitch_set, custom_g.midi_data, perm.all_midi_outs, game_input);
 					} else {
 						if custom_g.synth.simple_waves.count != hover_shape.pitch_set.count {
 							array_reset_keeping_memory(*custom_g.synth.simple_waves);
@@ -936,7 +936,7 @@ if frame_hover_entities.count > 0 {
 				//TODO Could put a full mute here if needed.
 				if found_audio_to_play {
 					if chord_s2.cs2_audio == CS2AudioType.MIDI {
-						PressMidiNote(audio_fun_region_pos, chord_s2.midi_data, perm.midi_output, game_input);
+						PressMidiNote(audio_fun_region_pos, chord_s2.midi_data, perm.all_midi_outs, game_input);
 					} 
 					else {
 						ref_freq : float64 = perm.all_data.runtime_settings.default_zero_pitch_frequency;
@@ -1239,7 +1239,7 @@ if frame_hover_entities.count > 0 {
 				#if NEW_AUDIO_PITCH {
 				if audio_pitches.count > 0 {
 					if sp.spiral_audio == SpiralAudioType.MIDI {
-						PressMidiNote(audio_pitches, sp.midi_data, perm.midi_output, game_input);
+						PressMidiNote(audio_pitches, sp.midi_data, perm.all_midi_outs, game_input);
 					}
 					else if sp.spiral_audio != SpiralAudioType.NONE {
 						tuning_system := ArrayFindFirstByNameId(perm.all_data.all_tuning_systems, sp.tuning_system_id, "id");
@@ -1435,7 +1435,7 @@ if frame_hover_entities.count > 0 {
 						}
 					}
 					case CircleAudioType.MIDI; {
-						PressMidiNote(hover_rect.pitch_set, circle.midi_data, perm.midi_output, game_input);
+						PressMidiNote(hover_rect.pitch_set, circle.midi_data, perm.all_midi_outs, game_input);
 					}
 					}
 				}
@@ -1604,7 +1604,7 @@ if frame_hover_entities.count > 0 {
 						}
 					}
 					case .midi_pitch; {
-						PressMidiNote(audio_float_poses, row.row_midi_data, perm.midi_output, game_input);
+						PressMidiNote(audio_float_poses, row.row_midi_data, perm.all_midi_outs, game_input);
 					}
 					}
 				}
@@ -1789,7 +1789,7 @@ if frame_hover_entities.count > 0 {
 						}
 					}
 					case .midi_pitch; {
-						PressMidiNote(audio_float_poses, base_row.row_midi_data, perm.midi_output, game_input);
+						PressMidiNote(audio_float_poses, base_row.row_midi_data, perm.all_midi_outs, game_input);
 					}
 					}
 				}
@@ -4504,7 +4504,7 @@ if is_resizing_op_space {
 			if is_midi_audio {
 				midi_data := op_3D.op_space_3D.midi_data;
 				if found_custom_3D midi_data = custom_3D.midi_data;
-				PressMidiNote(chosen_3d.pitch_set, midi_data, perm.midi_output, game_input);
+				PressMidiNote(chosen_3d.pitch_set, midi_data, perm.all_midi_outs, game_input);
 			} 
 			else {
 				//use defaults to avoid any issues
@@ -5646,6 +5646,69 @@ GENERATED_INPUT_MAPPINGS_REL_PATH);
 					append(*sb, "Invalid jai command : jai file_name.jai\n");
 				}
 			}
+			case TerminalCommandType.open_midi_out; {
+				help_msg :: #run sprint(
+#string DONE
+add_midi_out port_number
+Open midi output port with number port_number.
+DONE,
+INPUT_MAPPINGS_REL_PATH);
+				if IsTerminalCmdHelp(cmd_switches) {
+					print_to_builder(*sb, help_msg);
+				} 
+				else if command_tokens.count == 2 {
+					port_number, is_integer := string_to_int(command_tokens[1].token);
+					if !is_integer {
+						print_to_builder(*sb, "% is not an integer.\n", command_tokens[1].token);
+					} else {
+						midi_out, found_midi_out := GetMidiOut(port_number, perm.all_midi_outs);
+						if found_midi_out {
+							print_to_builder(*sb, "Midi out port % already exists.\n", port_number);
+						} 
+						else {
+							midi_out : *MIDI_Output = open_output(port_number);
+							if midi_out != null {
+								array_add(*perm.all_midi_outs, midi_out);
+								print_to_builder(*sb, "Midi out port % is open.\n", port_number);
+							} else {
+								print_to_builder(*sb, "Midi out port % could not be opened.\n", port_number);
+							}
+						}
+					}
+				}
+				else {
+					print_to_builder(*sb, INVALID_CMD_MSG, help_msg);
+				}
+			}
+			case TerminalCommandType.close_midi_out; {
+				help_msg :: #run sprint(
+#string DONE
+close_midi_out port_number
+Close midi output port with number port_number.
+DONE,
+INPUT_MAPPINGS_REL_PATH);
+				if IsTerminalCmdHelp(cmd_switches) {
+					print_to_builder(*sb, help_msg);
+				} 
+				else if command_tokens.count == 2 {
+					port_number, is_integer := string_to_int(command_tokens[1].token);
+					if !is_integer {
+						print_to_builder(*sb, "% is not an integer.\n", command_tokens[1].token);
+					} else {
+						midi_out, found_midi_out := GetMidiOut(port_number, perm.all_midi_outs);
+						if !found_midi_out {
+							print_to_builder(*sb, "Midi out port % is not open.\n", port_number);
+						} else {
+							array_ordered_remove_by_value(*perm.all_midi_outs, midi_out);
+							close_output(midi_out);
+							print_to_builder(*sb, "Midi out port % is closed.\n", port_number);
+						}
+					}
+				}
+				else {
+					print_to_builder(*sb, INVALID_CMD_MSG, help_msg);
+				}
+			}
 			case TerminalCommandType.midi;
 			{
 				if command_tokens.count == 4 || command_tokens.count == 5 {
@@ -5672,9 +5735,13 @@ GENERATED_INPUT_MAPPINGS_REL_PATH);
 						if is_valid {
 							valid_msg, cc_msg := create_midi_message(cc_params);
 							if valid_msg {
-			        			sent_message : bool = send_midi_message(perm.midi_output, cc_msg);
-			        			if sent_message append(*sb, "midi_msg success.\n");
-			        			else append(*sb, "midi_msg failure.\n");
+								if perm.all_midi_outs.count > 0 {
+				        			sent_message : bool = send_midi_message(perm.all_midi_outs[0], cc_msg);
+				        			if sent_message append(*sb, "midi_msg success.\n");
+				        			else append(*sb, "midi_msg failure.\n");
+				        		} else {
+									append(*sb, "No midi output ports available.\n");
+				        		}
 							} else {
 								append(*sb, "Invalid midi data for 'cc'.\n");
 			        		}
@@ -6407,9 +6474,15 @@ for audio_event : perm.all_data.all_audio_events {
 	case AudioEventType.STOP_ALL_MUSIC_PTS; {
 		//Stop all midi points
 		for perm.all_data.all_playing_midi {
-			note := cast(u8) it.music_pt_pos;
-			note_off : MIDI_Message = create_midi_message(.Note_Off, note, channel = it.midi_channel);
-			send_midi_message(perm.midi_output, note_off);
+			midi_out, found_midi_out := GetMidiOut(it.midi_port, perm.all_midi_outs);
+			if !found_midi_out {
+				print("Midi output port number % not found for note %.", it.midi_port, it);
+				continue;
+			}
+
+			// note := cast(u8) it.music_pt_pos;
+			note_off : MIDI_Message = create_midi_message(.Note_Off, it.midi_note, channel = it.midi_channel);
+			send_midi_message(midi_out, note_off);
 		}
 		array_reset_keeping_memory(*perm.all_data.all_playing_midi);
 
@@ -6459,9 +6532,15 @@ if perm.all_data.game_audio_play.play_state == AudioPlayState.PLAY {
 	}
 
 	for perm.all_data.all_playing_midi if it.x_end_float <= gap.float_x_memory {
-		note := cast(u8) it.music_pt_pos;
-		note_off : MIDI_Message = create_midi_message(.Note_Off, note, channel = it.midi_channel);
-		send_midi_message(perm.midi_output, note_off);
+		midi_out, found_midi_out := GetMidiOut(it.midi_port, perm.all_midi_outs);
+		if !found_midi_out {
+			print("Midi output port number % not found for note %.", it.midi_port, it);
+			continue;
+		}
+
+		// note := cast(u8) it.music_pt_pos;
+		note_off : MIDI_Message = create_midi_message(.Note_Off, it.midi_note, channel = it.midi_channel);
+		send_midi_message(midi_out, note_off);
 		remove it;
 	}
 }
@@ -6620,6 +6699,12 @@ if perm.all_data.all_start_playing_music_pts.count > 0 {
 				music_lane_row_ptr.row_midi_data.midi_velocity = cast(u8) music_pt.music_pt_pos;
 			}
 			case .midi_pitch; {
+				midi_out, found_midi_out := GetMidiOut(music_lane_row_ptr.row_midi_data.midi_port, perm.all_midi_outs);
+				if !found_midi_out {
+					print("Midi output port number % not found for row index %.", 
+						music_lane_row_ptr.row_midi_data.midi_port, music_lane_row_ptr.total_row_index);
+					continue;
+				}
 				// We assume 12 tone eq here and that music_pt_pos is < 127
         		channel : u8 = music_lane_row_ptr.row_midi_data.midi_channel;
         		//TODO How should we grab the audio octave here? Should grab from row.
@@ -6627,25 +6712,33 @@ if perm.all_data.all_start_playing_music_pts.count > 0 {
 				note := cast(u8) music_pt.music_pt_pos + music_lane_row_ptr.row_midi_data.midi_zero_note;
 				velocity : u8 = music_lane_row_ptr.row_midi_data.midi_velocity;
 				note_on : MIDI_Message = create_midi_message(.Note_On, note, velocity, channel);
-        		send_midi_message(perm.midi_output, note_on);
+        		send_midi_message(midi_out, note_on);
 
         		//TODO Make function
         		//TODO FROM HERE set note_offs beforehand here and then move back the internal_synth
         		//method which can likely use this
         		playing_music_pt : PlayingMidi = ---;
         		//TODO remove x_end once we only use float
-        		playing_music_pt.x_end = music_pt.x_end;
+        		// playing_music_pt.x_end = music_pt.x_end;
         		playing_music_pt.x_end_float = music_pt.x_end_float;
         		// We set this to note to make sure its the same as note_on message but eventually
-        		playing_music_pt.music_pt_pos = note;
-        		playing_music_pt.midi_channel = channel;
+        		playing_music_pt.midi_note = note;
+        		playing_music_pt.midi_port = music_lane_row_ptr.row_midi_data.midi_port;
+        		playing_music_pt.midi_channel = music_lane_row_ptr.row_midi_data.midi_channel;
         		array_add(*perm.all_data.all_playing_midi, playing_music_pt);
          }
          case .midi_control_change; {
+				midi_out, found_midi_out := GetMidiOut(music_lane_row_ptr.row_midi_data.midi_port, perm.all_midi_outs);
+				if !found_midi_out {
+					print("Midi output port number % not found for row index %.", 
+						music_lane_row_ptr.row_midi_data.midi_port, music_lane_row_ptr.total_row_index);
+					continue;
+				}
+
         		channel : u8 = music_lane_row_ptr.row_midi_data.midi_channel;
         		control_change : u8 = music_lane_row_ptr.row_midi_data.midi_control_change;
 				cc_msg : MIDI_Message = create_midi_message(.Control_Change, control_change, cast(u8) music_pt.music_pt_pos, channel);
-        		send_midi_message(perm.midi_output, cc_msg);
+        		send_midi_message(midi_out, cc_msg);
          }
          }
 		}

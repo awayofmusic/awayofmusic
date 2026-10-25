@@ -33,6 +33,7 @@ ExternalRunOnce :: (sld : *SharedLibraryData) {
 
 	Resizable arrays in SharedLibraryData are not affected by this as their allocators
 	are set to the main context allocator in InitAllData.
+	New calls will also use the context allocator which uses the main allocator due to Remap_Context.
 	*/
 	if !found_op_space {
 		//Remove this if we reload this dl or create the op space beforehand.

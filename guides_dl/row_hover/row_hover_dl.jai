@@ -1,6 +1,7 @@
 #import "Remap_Context"(VERBOSE=false);
 #import "Basic";
 #import "Math";
+#import "Sort";
 #import "thegame_shared_library";
 #import "thegame_math";
 #import "thegame_audio";
@@ -8,6 +9,7 @@
 #import "shared_names";
 #import "thegame_renderer_out_data";
 #import "thegame_array_poly";
+#import "thegame_midi_utils";
 
 #import "jai-midi";
 
@@ -19,22 +21,23 @@ ExternalRunOnce :: (sld : *SharedLibraryData) {
 	if sld.my_per_dl_data == null {
 		sld.my_per_dl_data = New(MyData);
 	}
-	my_data := cast(*MyData) sld.my_per_dl_data;
-
-	//Can open a separate midi port here if needed
-	// my_data.midi_output = open_output(midi_port_number);
-	if sld.midi_output != null {
-		//Could also set this in my_shared_data for reuse in other dls 
-		my_data.midi_output = cast(*MIDI_Output) sld.midi_output;
-	}
 }
 
 MyData :: struct {
-	midi_output : *MIDI_Output;
+	all_midi_outs : [] *MIDI_Output;
 }
 
 #program_export
 ExternalPerFrame :: (sld : *SharedLibraryData) {
+	my_data := cast(*MyData) sld.my_per_dl_data;
+	//Update this every frame in case we added new midi ports
+	if sld.all_midi_outs != null {
+		//Could also set this in my_shared_data for reuse in other dls 
+		my_data.all_midi_outs = (cast(*[] *MIDI_Output) sld.all_midi_outs).*;
+	}
+	//Can open a separate midi port here if needed
+	// my_data.all_midi_outs = open_output(midi_port_number);
+
 	Remap_Context();
 	// my_data := cast(*MyData) sld.my_per_dl_data;
 	for sld.frame_hover_entities if it.entity_type == {
@@ -180,20 +183,25 @@ HoverBaseRow :: inline (row_hover : HoverEntity, sld : *SharedLibraryData) {
 			}
 		}
 		case .midi_pitch; {
-     		m_channel : u8 = row.row_midi_data.midi_channel;
-			if IsInputMapPress(.MIDI_PRESS_NOTE_ON, .DOWN_THIS_FRAME, sld.game_input) {
-				velocity : u8 = row.row_midi_data.midi_velocity;
-				for audio_float_poses {
-					note := (cast(u8) round_to_int(it)) + row.row_midi_data.midi_zero_note;
-					note_on : MIDI_Message = create_midi_message(.Note_On, note, velocity, m_channel);
-	        		send_midi_message(my_data.midi_output, note_on);
+			midi_out, found_midi_out := GetMidiOut(row.row_midi_data.midi_port, my_data.all_midi_outs);
+			if found_midi_out {
+	     		m_channel : u8 = row.row_midi_data.midi_channel;
+				if IsInputMapPress(.MIDI_PRESS_NOTE_ON, .DOWN_THIS_FRAME, sld.game_input) {
+					velocity : u8 = row.row_midi_data.midi_velocity;
+					for audio_float_poses {
+						note := (cast(u8) round_to_int(it)) + row.row_midi_data.midi_zero_note;
+						note_on : MIDI_Message = create_midi_message(.Note_On, note, velocity, m_channel);
+		        		send_midi_message(midi_out, note_on);
+					}
+	        	} else if IsInputMapPress(.MIDI_PRESS_NOTE_OFF, .DOWN_THIS_FRAME, sld.game_input) {
+					for audio_float_poses {
+						note := (cast(u8) round_to_int(it)) + row.row_midi_data.midi_zero_note;
+						note_off : MIDI_Message = create_midi_message(.Note_Off, note, channel = m_channel);
+		        		send_midi_message(midi_out, note_off);
+					}
 				}
-        	} else if IsInputMapPress(.MIDI_PRESS_NOTE_OFF, .DOWN_THIS_FRAME, sld.game_input) {
-				for audio_float_poses {
-					note := (cast(u8) round_to_int(it)) + row.row_midi_data.midi_zero_note;
-					note_off : MIDI_Message = create_midi_message(.Note_Off, note, channel = m_channel);
-	        		send_midi_message(my_data.midi_output, note_off);
-				}
+			} else {
+				print("Midi output port number % not found for row %.", row.row_midi_data.midi_port, row);
 			}
 		}
 		}
@@ -418,20 +426,25 @@ HoverOpRow :: inline (op_row_hover : HoverEntity, sld : *SharedLibraryData) {
 			}
 		}
 		case .midi_pitch; {
-     		m_channel : u8 = base_row.row_midi_data.midi_channel;
-			if IsInputMapPress(.MIDI_PRESS_NOTE_ON, .DOWN_THIS_FRAME, sld.game_input) {
-				velocity : u8 = base_row.row_midi_data.midi_velocity;
-				for audio_float_poses {
-					note := (cast(u8) round_to_int(it)) + base_row.row_midi_data.midi_zero_note;
-					note_on : MIDI_Message = create_midi_message(.Note_On, note, velocity, m_channel);
-	        		send_midi_message(my_data.midi_output, note_on);
+			midi_out, found_midi_out := GetMidiOut(base_row.row_midi_data.midi_port, my_data.all_midi_outs);
+			if found_midi_out {
+		  		m_channel : u8 = base_row.row_midi_data.midi_channel;
+				if IsInputMapPress(.MIDI_PRESS_NOTE_ON, .DOWN_THIS_FRAME, sld.game_input) {
+					velocity : u8 = base_row.row_midi_data.midi_velocity;
+					for audio_float_poses {
+						note := (cast(u8) round_to_int(it)) + base_row.row_midi_data.midi_zero_note;
+						note_on : MIDI_Message = create_midi_message(.Note_On, note, velocity, m_channel);
+		        		send_midi_message(midi_out, note_on);
+					}
+		     	} else if IsInputMapPress(.MIDI_PRESS_NOTE_OFF, .DOWN_THIS_FRAME, sld.game_input) {
+					for audio_float_poses {
+						note := (cast(u8) round_to_int(it)) + base_row.row_midi_data.midi_zero_note;
+						note_off : MIDI_Message = create_midi_message(.Note_Off, note, channel = m_channel);
+		        		send_midi_message(midi_out, note_off);
+					}
 				}
-        	} else if IsInputMapPress(.MIDI_PRESS_NOTE_OFF, .DOWN_THIS_FRAME, sld.game_input) {
-				for audio_float_poses {
-					note := (cast(u8) round_to_int(it)) + base_row.row_midi_data.midi_zero_note;
-					note_off : MIDI_Message = create_midi_message(.Note_Off, note, channel = m_channel);
-	        		send_midi_message(my_data.midi_output, note_off);
-				}
+			} else {
+				print("Midi output port number % not found for row %.", base_row.row_midi_data.midi_port, row);
 			}
 		}
 		}
