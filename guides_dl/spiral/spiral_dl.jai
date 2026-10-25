@@ -19,6 +19,7 @@ ExternalRunOnce :: (sld : *SharedLibraryData) {
 	op_space, found_op_space := FindOpSpacePointerOpenOrClosed(op_space_name, 
 		sld.all_open_op_spaces, sld.all_closed_op_spaces.*);
 	if !found_op_space {
+		//Remove this if we reload this dl or create the op space beforehand.
 		cosd : CreateOpSpaceData;
 		cosd.op_space_name = op_space_name;
 		cosd.op_space_external_type = OpSpaceExternalType.space_2d;
@@ -49,7 +50,7 @@ ExternalRunOnce :: (sld : *SharedLibraryData) {
 		break;
 	}
 
-	base_chord := float64.[0,5,7];
+	base_chord := float64.[0,4,7];
 
 	spiral : SpiralSpace;
 	spiral.spiral_type = SpiralType.PROPER;
@@ -66,7 +67,15 @@ ExternalRunOnce :: (sld : *SharedLibraryData) {
 	spiral.radius_size = 3.6; // Use to adjust spiral_delta size going out
 	spiral.sr_factor = 1.5; // Use to adjust inner radius size (although it does effect overall spiral size as well)
 	spiral.is_in_out = true;
-	spiral.sound_float = false;
+	spiral.spiral_audio = SpiralAudioType.DISCRETE;
+	// spiral.spiral_audio = SpiralAudioType.CONTINUOUS;
+	// spiral.spiral_audio = SpiralAudioType.MIDI;
+	// spiral.midi_data = .{
+	// 	midi_port = 0,
+	// 	midi_channel = 0,
+	// 	midi_velocity = 100,
+	// 	midi_zero_note = 12*4,
+	// };
 	spiral.point_dim = Vector2F.{0.5,0.5};
 	spiral.synth.wave_type = OscWaveType.SAW;
 	sp : *SpiralSpace = CreateSpiralInSpace(spiral, op_spec_data);
@@ -81,7 +90,7 @@ ExternalRunOnce :: (sld : *SharedLibraryData) {
 	*/
 
 	//NOTE : The major/minor double spiral
-	#if 1 {
+	#if 0 {
 	minor_chord := float64.[0,3,7];
 
 	create_s2 : SpiralSpace;
@@ -99,7 +108,7 @@ ExternalRunOnce :: (sld : *SharedLibraryData) {
 	create_s2.radius_size = 3.8; // Use to adjust spiral_delta size going out
 	create_s2.sr_factor = 1.5; // Use to adjust inner radius size (although it does effect overall create_s2 size as well)
 	create_s2.is_in_out = true;
-	create_s2.sound_float = false;
+	create_s2.spiral_audio = SpiralAudioType.DISCRETE;
 	create_s2.point_dim = Vector2F.{0.5,0.5};
 	create_s2.synth.wave_type = OscWaveType.SAW;
 	s2 : *SpiralSpace = CreateSpiralInSpace(create_s2, op_spec_data);

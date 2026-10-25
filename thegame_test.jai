@@ -1630,7 +1630,15 @@ Test_CreateChordS2 :: (
 	lp_count : int = tuning_system.music_pt_count;
 	create_cs2.lp_count = lp_count;
 	create_cs2.tuning_system_id = tuning_system.id;
-	create_cs2.is_sound_float = false;
+	create_cs2.cs2_audio = CS2AudioType.DISCRETE;
+	// create_cs2.cs2_audio = CS2AudioType.CONTINUOUS;
+	// create_cs2.cs2_audio = CS2AudioType.MIDI;
+	// create_cs2.midi_data = .{
+	// 	midi_port = 0,
+	// 	midi_channel = 0,
+	// 	midi_velocity = 100,
+	// 	midi_zero_note = 12*4,
+	// };
 	create_cs2.vl_order_text = true;
 	create_cs2.vl_order_color = true;
 	chord_s2 : *ChordSpace2 = CreateChordSpace2(create_cs2, op_spec_data);
@@ -1764,7 +1772,7 @@ Test_AsmChordS2 :: (
 	// asm_cs2.transform = MakeMatrix2F64(ROTATE_NEG90 * ROTATE_NEG45 * REFLECT_90);
    asm_cs2.lp_count = 12;
 	asm_cs2.tuning_system_id = tuning_system.id;
-	asm_cs2.is_sound_float = ToAsmBool(false);
+	asm_cs2.cs2_audio = CS2AudioType.DISCRETE;
 	asm_cs2.vl_order_text = ToAsmBool(false);
 	asm_cs2.vl_order_color = ToAsmBool(true);
 	asm_cs2.op_space_id = op_space.id;
@@ -1893,7 +1901,7 @@ map_data_address,
 		AssertFloat64Equals(asm_cs2.point_dim.y, cast(float64)cs2.dspace_point_dim.y);
 		AssertEquals(tuning_system.music_pt_count, cs2.music_pt_count);
 		AssertFloat64Equals(asm_cs2.scale_world_unit, cast(float64)cs2.scale_world_unit);
-		AssertEquals(AsmBoolToBool(asm_cs2.is_sound_float), cs2.is_sound_float);
+		AssertEquals(asm_cs2.cs2_audio, cs2.cs2_audio);
 		AssertEquals(asm_cs2.tuning_system_id, cs2.tuning_system_id);
 		// AssertFloat64Equals(asm_cs2.transform.m11, cast(float64)cs2.transform.m11);
 		// AssertFloat64Equals(asm_cs2.transform.m12, cast(float64)cs2.transform.m12);
@@ -2114,7 +2122,14 @@ Test_CreateSpiral :: (
 	spiral.radius_size = 3.6; // Use to adjust spiral_delta size going out
 	spiral.sr_factor = 1.5; // Use to adjust inner radius size (although it does effect overall spiral size as well)
 	spiral.is_in_out = true;
-	spiral.sound_float = true;
+	spiral.spiral_audio = SpiralAudioType.CONTINUOUS;
+	// spiral.spiral_audio = SpiralAudioType.MIDI;
+	// spiral.midi_data = .{
+	// 	midi_port = 0,
+	// 	midi_channel = 0,
+	// 	midi_velocity = 100,
+	// 	midi_zero_note = 12*4,
+	// };
 	spiral.point_dim = Vector2F.{0.5,0.5};
 	spiral.synth.wave_type = OscWaveType.SAW;
 	sp : *SpiralSpace = CreateSpiralInSpace(spiral, op_spec_data);
@@ -2142,7 +2157,7 @@ Test_CreateSpiral :: (
 	create_s2.radius_size = 3.8; // Use to adjust spiral_delta size going out
 	create_s2.sr_factor = 1.5; // Use to adjust inner radius size (although it does effect overall create_s2 size as well)
 	create_s2.is_in_out = true;
-	create_s2.sound_float = false;
+	create_s2.spiral_audio = SpiralAudioType.DISCRETE;
 	create_s2.point_dim = Vector2F.{0.5,0.5};
 	create_s2.synth.wave_type = OscWaveType.SAW;
 	s2 : *SpiralSpace = CreateSpiralInSpace(create_s2, op_spec_data);
@@ -2306,7 +2321,7 @@ Test_AsmSpiral :: (
 	asm_spiral.radius_size = 3.0; // Use to adjust spiral_delta size going out
 	asm_spiral.sr_factor = 1.5; // Use to adjust inner radius size (although it does effect overall spiral size as well)
 	asm_spiral.is_in_out = ToAsmBool(true);
-	asm_spiral.sound_float = ToAsmBool(false);
+	asm_spiral.spiral_audio = SpiralAudioType.DISCRETE;
 	asm_spiral.is_loop = ToAsmBool(true);
 	asm_spiral.show_values = ToAsmBool(true);
 	asm_spiral.point_dim = Vector2F64.{0.5,0.5};
@@ -2396,7 +2411,7 @@ map_spiral_address,
 		AssertFloat64Equals(asm_spiral.point_dim.y, cast(float64)spiral.point_dim.y);
 		// AssertEquals(AsmBoolToBool(asm_spiral.set_base_points), spiral.has_base_points);
 		AssertEquals(AsmBoolToBool(asm_spiral.is_clockwise), spiral.is_clockwise);
-		AssertEquals(AsmBoolToBool(asm_spiral.sound_float), spiral.sound_float);
+		AssertEquals(asm_spiral.spiral_audio, spiral.spiral_audio);
 		AssertEquals(AsmBoolToBool(asm_spiral.is_loop), spiral.is_loop);
 		AssertEquals(AsmBoolToBool(asm_spiral.show_values), spiral.show_values);
 
@@ -2526,7 +2541,7 @@ Test_AsmCircle :: (
 	asm_circle.start_note = 0;
 	asm_circle.repeating_interval_ratio = 4.0;
 	asm_circle.non_repeating = ToAsmBool(false);
-	asm_circle.is_sound_float = ToAsmBool(false);
+	asm_circle.circle_audio = CircleAudioType.DISCRETE;
 	asm_circle.inner_circle_mute = 0.6;
 	asm_circle.no_base_points = ToAsmBool(false);
 	asm_circle.show_text = ToAsmBool(true);
@@ -2590,7 +2605,7 @@ map_circle_address,
 		AssertFloat64Equals(asm_circle.inner_circle_mute, circle.inner_circle_mute);
 		AssertFloat64Equals(asm_circle.repeating_interval_ratio, circle.repeating_interval_ratio);
 		AssertEquals(MakeV2FFrom64(asm_circle.world_center), circle.world_center);
-		AssertEquals(AsmBoolToBool(asm_circle.is_sound_float), circle.is_sound_float);
+		AssertEquals(asm_circle.circle_audio, circle.circle_audio);
 		AssertEquals(asm_circle.start_note, circle.start_note);
 		AssertEquals(24, circle.inter_points.count);
 
@@ -2653,7 +2668,7 @@ Test_AsmCircleShape :: (
 	asm_circle.start_note = 0;
 	asm_circle.repeating_interval_ratio = 2.0;
 	asm_circle.non_repeating = ToAsmBool(false);
-	asm_circle.is_sound_float = ToAsmBool(true);
+	asm_circle.circle_audio = CircleAudioType.CONTINUOUS;
 	asm_circle.inner_circle_mute = 0.6;
 	asm_circle.no_base_points = ToAsmBool(false);
 	PushRAMValue(asm_circle, *perm.all_data.ram_memory);
@@ -13934,7 +13949,7 @@ main :: () {
 	cs.tuning_system_id = 0;
 	cs.non_repeating = false;
 	cs.start_note = 0;
-	cs.is_sound_float = false;
+	cs.circle_audio = CircleAudioType.DISCRETE;
 	cs.inner_circle_mute = 0.;
 	cs.no_base_points = false;
 	#asm{ create_circle cs; }
@@ -13988,7 +14003,7 @@ DONE, op_space.id, op_space.id));
 			AssertFloat64Equals(9.0, cs.radius);
 			AssertFloat64Equals(2.0, cs.repeating_interval_ratio);
 			AssertEquals(true, cs.is_repeating);
-			AssertEquals(false, cs.is_sound_float);
+			AssertEquals(CircleAudioType.DISCRETE, cs.circle_audio);
 
 			//12 for circle base points and 3 for mapped points
 			count_equals = AssertEquals(12+3, op_spec_data.ass.all_space_rects.count);
@@ -14129,7 +14144,12 @@ main :: () {
    cs2.point_dim = Vector2.{0.7,0.7};
    cs2.lp_count = 12;
 	cs2.tuning_system_id = 0;
-	cs2.is_sound_float = false;
+	cs2.cs2_audio = CS2AudioType.DISCRETE;
+	// cs2.cs2_audio = CS2AudioType.MIDI;
+	// cs2.midi_data.midi_port = 0;
+	// cs2.midi_data.midi_channel = 0;
+	// cs2.midi_data.midi_velocity = 100;
+	// cs2.midi_data.midi_zero_note = 12*4;
 	cs2.vl_order_text = true;
 	cs2.vl_order_color = true;
 	cs2.osc_wave_type = OscWaveType.SAW;
@@ -14157,6 +14177,11 @@ main :: () {
 	ag.op_space_id = cs2.op_space_id;
 	//TODO When we add tuning system instructions we can grab that by name here for clarity
 	ag.custom_audio_type = CustomAudioType.TUNING_SYSTEM;
+	// ag.custom_audio_type = CustomAudioType.MIDI;
+	// ag.midi_data.midi_port = 0;
+	// ag.midi_data.midi_channel = 0;
+	// ag.midi_data.midi_velocity = 100;
+	// ag.midi_data.midi_zero_note = 12*4;
 	ag.tuning_system_id = 2;
 	ag.osc_wave_type = OscWaveType.SAW;
 	ag.collision_pos = Vector2.{10,0};
@@ -14312,7 +14337,13 @@ main :: () {
 	sp.radius_size = 3.; // Use to adjust spiral_delta size going out
 	sp.sr_factor = 1.5; // Use to adjust inner radius size (although it does effect overall spiral size as well)
 	sp.is_in_out = true;
-	sp.sound_float = false;
+	sp.spiral_audio = SpiralAudioType.DISCRETE;
+	// sp.spiral_audio = SpiralAudioType.CONTINUOUS;
+	// sp.spiral_audio = SpiralAudioType.MIDI;
+	// sp.midi_data.midi_port = 0;
+	// sp.midi_data.midi_channel = 0;
+	// sp.midi_data.midi_velocity = 100;
+	// sp.midi_data.midi_zero_note = 12*4;
 	sp.is_loop = true;
 	sp.show_values = true;
 	sp.point_dim = Vector2.{0.5,0.5};
@@ -14473,7 +14504,13 @@ main :: () {
 	cs3.tuning_system_id = 0;
 	cs3.higher_dim = 3;
 	cs3.s3_cam_start_type = S3CamStartType.USER_SET;
+	// cs3.custom_audio_type = CustomAudioType.MIDI;
+	// cs3.midi_data.midi_port = 0;
+	// cs3.midi_data.midi_channel = 0;
+	// cs3.midi_data.midi_velocity = 100;
+	// cs3.midi_data.midi_zero_note = 12*4;
 	// cs3.cam_start_pos = Vector3.{0.,0.,0.};
+	cs3.external_hover = false;
 	cs3.osc_wave_type = OscWaveType.SINE;
 	cs3.set_3d_perspective = false;
 	cs3.depth = 24.0;
@@ -14507,6 +14544,11 @@ main :: () {
 	//TODO When we add tuning system instructions we can grab that by name here for clarity
 	ag.tuning_system_id = 2;
 	ag.osc_wave_type = OscWaveType.SAW;
+	// ag.custom_audio_type = CustomAudioType.MIDI;
+	// ag.midi_data.midi_port = 0;
+	// ag.midi_data.midi_channel = 0;
+	// ag.midi_data.midi_velocity = 100;
+	// ag.midi_data.midi_zero_note = 12*4;
 	#asm{ create_custom_3D ag; }
 
 	shape : AsmShape3D;

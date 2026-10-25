@@ -31,9 +31,10 @@ main :: () {
 	rd.row_sections = rs;
 	rd.row_system_type = RowSystemType.internal_pitch;
 	//rd.row_system_type = RowSystemType.midi_pitch;
-	rd.row_midi_data.midi_channel = 0;
-	rd.row_midi_data.midi_velocity = 100;
-	rd.row_midi_data.midi_zero_note = 12*4;
+	//rd.row_midi_data.midi_port = 0;
+	//rd.row_midi_data.midi_channel = 0;
+	//rd.row_midi_data.midi_velocity = 100;
+	//rd.row_midi_data.midi_zero_note = 12*4;
 	// rd.row_system_id = synth.ret_synth_id;
 	#asm{ create_row rd; }
 

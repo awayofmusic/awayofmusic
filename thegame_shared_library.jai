@@ -4943,6 +4943,8 @@ CustomGeometry :: struct {
 	*/
 	synth : SimpleSynth;
 
+	midi_data : RowMidiData;
+
 	use_set_zero_freq : bool;
 	pitch_zero_freq : float64;
 
@@ -4956,6 +4958,7 @@ CustomGeometry :: struct {
 CustomAudioType :: enum {
 	TUNING_SYSTEM;
 	PITCH_SET_AS_FREQUENCY;
+	MIDI;
 } @LibraryAsmGen
 
 CircleSpace :: struct {
@@ -5010,7 +5013,6 @@ CircleSpace :: struct {
 	*/
 	is_default : bool;
 
-	is_sound_float : bool;
 	circle_audio : CircleAudioType;
 	inner_circle_mute : float;
 	external_hover : bool;
@@ -5026,10 +5028,10 @@ CircleSpace :: struct {
 	pitch_zero_freq : float64;
 }
 CircleAudioType :: enum {
-	NONE;
 	DISCRETE;
 	CONTINUOUS;
 	MIDI;
+	NONE;
 } @LibraryAsmGen
 
 
@@ -5124,7 +5126,9 @@ ChordSpace2 :: struct {
 	//REMINDER : This is does not work with op space zooming.
 	//I will leave it so we can play around with it but I don't think
 	//I'll update that for now.
-	is_sound_float : bool;
+	//NOTE NOW cs2_audio.CONTINUOUS does not work with op space zooming
+	//Leaving this here as a reminder
+	// is_sound_float : bool;
 
 	use_set_zero_freq : bool;
 	pitch_zero_freq : float64;
@@ -5144,6 +5148,10 @@ ChordSpace2 :: struct {
 	synth : SimpleSynth;
 
 
+	midi_data : RowMidiData;
+	cs2_audio : CS2AudioType;
+
+
 	//MusicPt : temporary data for space edges
 	crossed_edge : bool;
 	edge_mouse : Vector2F;
@@ -5152,7 +5160,12 @@ ChordSpace2 :: struct {
 	reflect_edge : bool;
 	reflect_mouse : Vector2F;
 }
-
+CS2AudioType :: enum {
+	DISCRETE;
+	CONTINUOUS;
+	MIDI;
+	NONE;		
+} @LibraryAsmGen
 //UPDATE if changed in Library
 //TODO Remove all unused types from here once we cleanup 
 //chord space filters for 2d and 3d spaces
@@ -5721,7 +5734,10 @@ SpiralSpace :: struct {
 	is_loop : bool = true;
 	show_values : bool = true;
 
-	sound_float : bool;
+	spiral_audio : SpiralAudioType;
+	midi_data : RowMidiData;
+
+	external_hover : bool;
 
 	point_dim : Vector2F = .{0.5,0.5};
 	point_color : Vector4F = LIGHT_BROWN;
@@ -5744,6 +5760,12 @@ SpiralSpace :: struct {
 	osc_waves : [] OscWave;
 	synth : SimpleSynth;
 }
+SpiralAudioType :: enum {
+	DISCRETE;
+	CONTINUOUS;
+	MIDI;
+	NONE;
+} @LibraryAsmGen
 
 AsmCreateSpiral :: struct {
 	//return values
@@ -5763,13 +5785,17 @@ AsmCreateSpiral :: struct {
 	radius_size : float64; // Use to adjust spiral_delta size going out
 	sr_factor : float64; // Use to adjust inner radius size (although it does effect overall spiral size as well)
 	is_in_out : AsmBool = #run ToAsmBool(true);
-	sound_float : AsmBool;
 	is_loop : AsmBool = #run ToAsmBool(true);
 	show_values : AsmBool = #run ToAsmBool(true);
 	point_dim : Vector2F64;
 	//TODO Do this with a Vector4F64
 	// point_color : Vector4F = LIGHT_BROWN;
 	osc_wave_type : OscWaveType;
+
+	spiral_audio : SpiralAudioType;
+	midi_data : AsmRowMidiData;
+
+	external_hover : AsmBool;
 
 	set_spiral_base : AsmBool;
 	base_chord : AsmArray(float64);
@@ -6243,6 +6269,8 @@ CustomGeom3D :: struct {
 
 	use_set_zero_freq : bool;
 	pitch_zero_freq : float64;
+
+	midi_data : RowMidiData;
 }
 
 //TODO MAybe we should rename this just OpSpace3DData
@@ -6321,6 +6349,11 @@ ChordSpace3 :: struct {
 
 	use_set_zero_freq : bool;
 	pitch_zero_freq : float64;
+
+	custom_audio_type : CustomAudioType;
+	midi_data : RowMidiData;
+
+	external_hover : bool;
 
 	//TODO implement invariant ids with arrows and arrow changes
 	// invariant_ids : [3] int;
@@ -6508,12 +6541,11 @@ AsmCircleData :: struct {
 	//to do a case we cannot otherwise do, like have 1 octave from G that we can see visually in 12-eq for example.
 	start_note : int;
 
-	is_sound_float : AsmBool;
 	circle_audio : CircleAudioType;
 	inner_circle_mute : float64 = 0;
 	external_hover : AsmBool;
 
-	asm_midi_data : AsmRowMidiData;
+	midi_data : AsmRowMidiData;
 
 	op_space_id : int;
 
@@ -6546,7 +6578,6 @@ CreateCircleSpaceData :: struct {
 	//to do a case we cannot otherwise do, like have 1 octave from G that we can see visually in 12-eq for example.
 	start_note : int;
 
-	is_sound_float : bool;
 	circle_audio : CircleAudioType;
 	inner_circle_mute : float = 0;
 	external_hover : bool;
@@ -6620,7 +6651,6 @@ CreateCircleSpace :: inline (
 	#insert #run SetResizableArrays(CircleSpace, "circle.%.allocator = context.allocator;\n");
 	// circle.sort_music_pts = c_data.sort_music_pts;
 
-	circle.is_sound_float = c_data.is_sound_float;
 	circle.circle_audio = c_data.circle_audio;
 	circle.inner_circle_mute = c_data.inner_circle_mute;
 	circle.external_hover = c_data.external_hover;
@@ -6902,7 +6932,6 @@ CreateChordS2Data :: struct {
 	//I guess I am thinking what if we want the geometry without the sound... but then someone can make it.
    lp_count : int = 12;
 	tuning_system_id : int = 0; //12-ET is default 0
-	is_sound_float : bool = false;
 
 	vl_order_text : bool = true;
 	vl_order_color : bool = true;
@@ -6913,9 +6942,45 @@ CreateChordS2Data :: struct {
 
 	osc_wave_type : OscWaveType;
 
+	cs2_audio : CS2AudioType;
+	midi_data : RowMidiData;
+
 	use_set_zero_freq : bool;
 	pitch_zero_freq : float64;
 }
+AsmChordS2Data :: struct {
+	//return values
+	ret_dspace_id : int;
+
+	op_space_id : int;
+	world_pos : Vector2F64;
+	scale_world_unit : float64;
+   point_dim : Vector2F64;
+	//TODO Should we allo both or is tuning_system_id enough since this is a chord_space.
+	//I guess I am thinking what if we want the geometry without the sound... but then someone can make it.
+	//We need lp_count in case we have different tuning syste
+   lp_count : int;
+	tuning_system_id : int;
+
+	vl_order_text : AsmBool = #run ToAsmBool(true);
+	vl_order_color : AsmBool = #run ToAsmBool(true);
+
+	asm_cs_filters : AsmArray(AsmCSFilter);
+	cs_filter_aggregate : ChordSpaceFilterAggregate;
+
+	osc_wave_type : OscWaveType;
+
+	cs2_audio : CS2AudioType;
+	midi_data : AsmRowMidiData;
+
+	use_set_zero_freq : AsmBool;
+	pitch_zero_freq : float64;
+
+   //TODO Maybe we only allow this in dynamic libraries
+   //OR MAYBE we can add it later if we add matrices to the language
+   //MAYBE 2d is ok but maybe its going overboard and will be too slow
+	// transform : Matrix2F64;
+} @LibraryAsmGen
 
 CreateChordSpace2 :: inline (
 	create_cs2 : CreateChordS2Data,
@@ -6943,7 +7008,8 @@ CreateChordSpace2 :: inline (
 	chord_s2.vl_order_color = create_cs2.vl_order_color;
 	chord_s2.music_pt_count = create_cs2.lp_count;
 	chord_s2.tuning_system_id = create_cs2.tuning_system_id;
-	chord_s2.is_sound_float = create_cs2.is_sound_float;
+	chord_s2.cs2_audio = create_cs2.cs2_audio;
+	chord_s2.midi_data = create_cs2.midi_data;
 	chord_s2.use_set_zero_freq = create_cs2.use_set_zero_freq;
 	chord_s2.pitch_zero_freq = create_cs2.pitch_zero_freq;
 
@@ -7323,6 +7389,11 @@ AsmSpace3Data :: struct {
 	use_set_zero_freq : AsmBool;
 	pitch_zero_freq : float64;
 
+	custom_audio_type : CustomAudioType;
+	midi_data : AsmRowMidiData;
+
+	external_hover : AsmBool;
+
 	/*DOC : We should make it clear that all values have to be set
 	and what the current defaults are. If 3d rotation feels wonky
 	then generally increasing the depth to between 26-40 should feel better.
@@ -7389,6 +7460,11 @@ CreateChordS3Data :: struct {
 	use_set_zero_freq : bool;
 	pitch_zero_freq : float64;
 
+	custom_audio_type : CustomAudioType;
+	midi_data : RowMidiData;
+
+	external_hover : bool;
+
 	osc_wave_type : OscWaveType;
 	lerp_vl_colors : bool;
 
@@ -7447,6 +7523,9 @@ CreateSpace3D :: inline (
 
 	op_3D.op_space_3D.use_set_zero_freq = create_cs3.use_set_zero_freq;
 	op_3D.op_space_3D.pitch_zero_freq = create_cs3.pitch_zero_freq;
+	op_3D.op_space_3D.custom_audio_type = create_cs3.custom_audio_type;
+	op_3D.op_space_3D.midi_data = create_cs3.midi_data;
+	op_3D.op_space_3D.external_hover = create_cs3.external_hover;
 
 	op_3D.op_space_3D.lp_count = create_cs3.lp_count;
 	op_3D.op_space_3D.tuning_system_id = create_cs3.tuning_system_id;

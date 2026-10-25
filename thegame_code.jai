@@ -15345,10 +15345,9 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		c_data.tuning_system_id = asm_data.tuning_system_id;
 		c_data.is_repeating = !AsmBoolToBool(asm_data.non_repeating);
 		c_data.start_note = asm_data.start_note;
-		c_data.is_sound_float = AsmBoolToBool(asm_data.is_sound_float);
 		c_data.circle_audio = asm_data.circle_audio;
 		c_data.external_hover = AsmBoolToBool(asm_data.external_hover);
-		c_data.midi_data = AsmToMidiData(asm_data.asm_midi_data);
+		c_data.midi_data = AsmToMidiData(asm_data.midi_data);
 		c_data.inner_circle_mute = cast(float) asm_data.inner_circle_mute;
 		c_data.no_base_points = AsmBoolToBool(asm_data.no_base_points);
 		c_data.show_text = AsmBoolToBool(asm_data.show_text);
@@ -15521,7 +15520,9 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		sp.chord_count = asm_data.chord_count;
 		sp.is_in_out = AsmBoolToBool(asm_data.is_in_out);
 		sp.is_loop = AsmBoolToBool(asm_data.is_loop);
-		sp.sound_float = AsmBoolToBool(asm_data.sound_float);
+		sp.spiral_audio = asm_data.spiral_audio;
+		sp.midi_data = AsmToMidiData(asm_data.midi_data);
+		sp.external_hover = AsmBoolToBool(asm_data.external_hover);
 		sp.show_values = AsmBoolToBool(asm_data.show_values);
 		sp.point_dim = MakeV2F(cast(float)asm_data.point_dim.x, cast(float)asm_data.point_dim.x);
 		sp.synth.wave_type = asm_data.osc_wave_type;
@@ -15679,7 +15680,8 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		create_cs2.vl_order_text = AsmBoolToBool(asm_cs2.vl_order_text);
 		create_cs2.vl_order_color = AsmBoolToBool(asm_cs2.vl_order_color);
 		create_cs2.cs_filter_aggregate = asm_cs2.cs_filter_aggregate; 
-		create_cs2.is_sound_float = AsmBoolToBool(asm_cs2.is_sound_float);
+		create_cs2.cs2_audio = asm_cs2.cs2_audio;
+		create_cs2.midi_data = AsmToMidiData(asm_cs2.midi_data);
 		create_cs2.osc_wave_type = asm_cs2.osc_wave_type;
 		create_cs2.use_set_zero_freq = AsmBoolToBool(asm_cs2.use_set_zero_freq);
 		create_cs2.pitch_zero_freq = asm_cs2.pitch_zero_freq;
@@ -15800,6 +15802,9 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		}
 		create_cs3.use_set_zero_freq = AsmBoolToBool(asm_cs3.use_set_zero_freq);
 		create_cs3.pitch_zero_freq = asm_cs3.pitch_zero_freq;
+		create_cs3.custom_audio_type = asm_cs3.custom_audio_type;
+		create_cs3.midi_data = AsmToMidiData(asm_cs3.midi_data);
+		create_cs3.external_hover = AsmBoolToBool(asm_cs3.external_hover);
 		//TODO I think this should be passed in so we can have different tuning systems for same counts
 		create_cs3.lp_count = tuning_system.music_pt_count;
 		create_cs3.tuning_system_id = tuning_system.id;
@@ -15972,6 +15977,8 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		custom_3D.osc_wave_type = asm_data.osc_wave_type;
 		custom_3D.use_set_zero_freq = AsmBoolToBool(asm_data.use_set_zero_freq);
 		custom_3D.pitch_zero_freq = asm_data.pitch_zero_freq;
+		custom_3D.custom_audio_type = asm_data.custom_audio_type;
+		custom_3D.midi_data = AsmToMidiData(asm_data.midi_data);
 	}
 	case OpCode.create_shape_3D; {
 		mem_address : int = ComputeRAMLocation(ci.operands[0], ad.all_register_memory, ad.ram_memory);
@@ -16067,6 +16074,7 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 		custom_g.show_collision = AsmBoolToBool(asm_data.show_collision);
 		custom_g.use_set_zero_freq = AsmBoolToBool(asm_data.use_set_zero_freq);
 		custom_g.pitch_zero_freq = asm_data.pitch_zero_freq;
+		custom_g.midi_data = AsmToMidiData(asm_data.midi_data);
 
 		//TODO Could allow other collision shapes later if needed
 		coll : *CollisionEntity = array_add(*op_spec_data.all_op_collision_entities);

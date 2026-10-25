@@ -45,6 +45,11 @@ main :: () {
 	ag.op_space_id = csd.ret_op_space_id;
 	ag.tuning_system_id = ts.ret_tuning_system_id;
 	ag.osc_wave_type = OscWaveType.SAW;
+	// ag.custom_audio_type = CustomAudioType.MIDI;
+	// ag.midi_data.midi_port = 0;
+	// ag.midi_data.midi_channel = 0;
+	// ag.midi_data.midi_velocity = 100;
+	// ag.midi_data.midi_zero_note = 12*4;
 	#asm{ create_custom_3D ag; }
 
 	shape : AsmShape3D;

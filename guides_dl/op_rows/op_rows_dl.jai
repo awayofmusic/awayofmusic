@@ -31,6 +31,7 @@ ExternalRunOnce :: (sld : *SharedLibraryData) {
 	// row_0 : *MusicLaneRow = *mspace_0.all_music_lane_rows[0];
 	// row_0.external_hover_row = false;
 	// row_0.row_system_type = RowSystemType.midi_pitch;
+	// row_0.row_midi_data.midi_port = 0;
 	// row_0.row_midi_data.midi_channel = 0;
 	// row_0.row_midi_data.midi_velocity = 100;
 	// row_0.row_midi_data.midi_zero_note = 12*4;

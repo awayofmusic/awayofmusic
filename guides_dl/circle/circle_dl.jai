@@ -35,6 +35,7 @@ ExternalRunOnce :: (sld : *SharedLibraryData) {
 	are set to the main context allocator in InitAllData.
 	*/
 	if !found_op_space {
+		//Remove this if we reload this dl or create the op space beforehand.
 		cosd : CreateOpSpaceData;
 		cosd.op_space_name = op_space_name;
 		cosd.op_space_external_type = OpSpaceExternalType.space_2d;
@@ -71,6 +72,7 @@ ExternalRunOnce :: (sld : *SharedLibraryData) {
 	// c_data.circle_audio = CircleAudioType.CONTINUOUS;
 	// c_data.circle_audio = CircleAudioType.MIDI;
 	// c_data.midi_data = .{
+	// 	midi_port = 0,
 	// 	midi_channel = 0,
 	// 	midi_velocity = 100,
 	// 	midi_zero_note = 12*4,

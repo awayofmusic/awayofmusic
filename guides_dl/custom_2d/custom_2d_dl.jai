@@ -50,11 +50,16 @@ ExternalRunOnce :: (sld : *SharedLibraryData) {
 	custom_g.dspace_id = context.ALL_NEXT_IDS.DSPACE_ID;
 	context.ALL_NEXT_IDS.DSPACE_ID += 1;
 	custom_g.tuning_system_id = tuning.id;
-	custom_g.custom_audio_type = CustomAudioType.TUNING_SYSTEM;
 	custom_g.synth.wave_type = OscWaveType.SAW;
 	custom_g.synth.envelope = MakeVolumeEnvelope();
 	custom_g.collision_rect = RectCenterDim(Vector2F.{10,0}, Vector2F.{3,3});
 	custom_g.show_collision = true;
+	custom_g.custom_audio_type = CustomAudioType.TUNING_SYSTEM;
+	// custom_g.custom_audio_type = CustomAudioType.MIDI;
+	// custom_g.midi_data.midi_port = 0;
+	// custom_g.midi_data.midi_channel = 0;
+	// custom_g.midi_data.midi_velocity = 100;
+	// custom_g.midi_data.midi_zero_note = 12*4;
 
 	coll : *CollisionEntity = array_add(*op_spec_data.all_op_collision_entities);
 	coll.entity_id = custom_g.dspace_id;

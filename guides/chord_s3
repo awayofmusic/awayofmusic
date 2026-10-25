@@ -60,6 +60,11 @@ main :: () {
 	cs3.s3_cam_start_type = S3CamStartType.USER_SET;
 	// cs3.cam_start_pos = Vector3.{0.,0.,0.};
 	cs3.osc_wave_type = OscWaveType.SINE;
+	// cs3.custom_audio_type = CustomAudioType.MIDI;
+	// cs3.midi_data.midi_port = 0;
+	// cs3.midi_data.midi_channel = 0;
+	// cs3.midi_data.midi_velocity = 100;
+	// cs3.midi_data.midi_zero_note = 12*4;
 	cs3.use_set_zero_freq = false;
 	cs3.pitch_zero_freq = 130.8128;
 	cs3.set_3d_perspective = false;

@@ -47,7 +47,13 @@ main :: () {
 	c_spiral.radius_size = 3.0; // Use to adjust spiral_delta size going out
 	c_spiral.sr_factor = 1.5; // Use to adjust inner radius size (although it does effect overall spiral size as well)
 	c_spiral.is_in_out = true;
-	c_spiral.sound_float = false; // The whole spiral will make sound instead of just the points
+	c_spiral.spiral_audio = SpiralAudioType.DISCRETE;
+	// c_spiral.spiral_audio = SpiralAudioType.CONTINUOUS; // The whole spiral will make sound instead of just the points
+	// c_spiral.spiral_audio = SpiralAudioType.MIDI;
+	// c_spiral.midi_data.midi_port = 0;
+	// c_spiral.midi_data.midi_channel = 0;
+	// c_spiral.midi_data.midi_velocity = 100;
+	// c_spiral.midi_data.midi_zero_note = 12*4;
 	c_spiral.is_loop = true;
 	c_spiral.show_values = true;
 	c_spiral.point_dim = Vector2.{0.6,0.6};

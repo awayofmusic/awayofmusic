@@ -81,8 +81,15 @@ ExternalRunOnce :: (sld : *SharedLibraryData) {
 	custom_3D : *CustomGeom3D = array_add(*op_3D.all_custom_geom_3D);
 	custom_3D.group_id = 1;
 	custom_3D.tuning_system_id = tuning.id;
-	custom_3D.custom_audio_type = CustomAudioType.TUNING_SYSTEM;
 	custom_3D.osc_wave_type = OscWaveType.SAW;
+	custom_3D.custom_audio_type = CustomAudioType.TUNING_SYSTEM;
+	// custom_3D.custom_audio_type = CustomAudioType.MIDI;
+	// custom_3D.midi_data = .{
+	// 	midi_port = 0,
+	// 	midi_channel = 0,
+	// 	midi_velocity = 100,
+	// 	midi_zero_note = 12*4,
+	// };
 
 	sp_3D : *SpacePoint3D = array_add(*op_3D.all_op_space_points_3D);
 	sp_3D.id = context.ALL_NEXT_IDS.NEXT_SPACE_POINT_3D_ID;

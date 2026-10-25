@@ -16,6 +16,7 @@ ExternalRunOnce :: (sld : *SharedLibraryData) {
 	op_space, found_op_space := FindOpSpacePointerOpenOrClosed(op_space_name, 
 		sld.all_open_op_spaces, sld.all_closed_op_spaces.*);
 	if !found_op_space {
+		//Remove this if we reload this dl or create the op space beforehand.
 		cosd : CreateOpSpaceData;
 		cosd.op_space_name = op_space_name;
 		cosd.op_space_external_type = OpSpaceExternalType.space_2d;
@@ -49,7 +50,15 @@ ExternalRunOnce :: (sld : *SharedLibraryData) {
 	create_cs2.tuning_system_id = 0; //index 0 is "et12" by default
 	create_cs2.vl_order_text = true;
 	create_cs2.vl_order_color = true;
-	create_cs2.is_sound_float = false;
+	create_cs2.cs2_audio = CS2AudioType.DISCRETE;
+	// create_cs2.cs2_audio = CS2AudioType.CONTINUOUS;
+	// create_cs2.cs2_audio = CS2AudioType.MIDI;
+	// create_cs2.midi_data = .{
+	// 	midi_port = 0,
+	// 	midi_channel = 0,
+	// 	midi_velocity = 100,
+	// 	midi_zero_note = 12*4,
+	// };
 	create_cs2.osc_wave_type = OscWaveType.SAW;
 	create_cs2.use_set_zero_freq = true;
 	create_cs2.pitch_zero_freq = C3;

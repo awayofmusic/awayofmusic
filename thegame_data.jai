@@ -2786,6 +2786,7 @@ Persist :: struct {
 	//TODO To be used for midi clock sync and input mappings
 	midi_input  : *MIDI_Input;
 }
+//Keeping this in here instead of shared library so that the shared library does not depend on jai midi library
 PressMidiNote :: inline (
 	audio_float_poses : [] float64,
 	midi_data : RowMidiData,
@@ -4549,38 +4550,6 @@ CircleOrientation :: struct {
 	rotate_rad : float;
 }
 
-
-AsmChordS2Data :: struct {
-	//return values
-	ret_dspace_id : int;
-
-	op_space_id : int;
-	world_pos : Vector2F64;
-	scale_world_unit : float64;
-   point_dim : Vector2F64;
-	//TODO Should we allo both or is tuning_system_id enough since this is a chord_space.
-	//I guess I am thinking what if we want the geometry without the sound... but then someone can make it.
-	//We need lp_count in case we have different tuning syste
-   lp_count : int;
-	tuning_system_id : int;
-	is_sound_float : AsmBool;
-
-	vl_order_text : AsmBool = #run ToAsmBool(true);
-	vl_order_color : AsmBool = #run ToAsmBool(true);
-
-	asm_cs_filters : AsmArray(AsmCSFilter);
-	cs_filter_aggregate : ChordSpaceFilterAggregate;
-
-	osc_wave_type : OscWaveType;
-
-	use_set_zero_freq : AsmBool;
-	pitch_zero_freq : float64;
-
-   //TODO Maybe we only allow this in dynamic libraries
-   //OR MAYBE we can add it later if we add matrices to the language
-   //MAYBE 2d is ok but maybe its going overboard and will be too slow
-	// transform : Matrix2F64;
-} @LibraryAsmGen
 AsmFiltersToTempFilters :: inline (
 	asm_cs_filters : [] AsmCSFilter,
 	ram_memory : RAMMemory)
@@ -7340,6 +7309,7 @@ AsmGeom3D :: struct {
 	osc_wave_type : OscWaveType;
 	use_set_zero_freq : AsmBool;
 	pitch_zero_freq : float64;
+	midi_data : AsmRowMidiData;
 } @LibraryAsmGen
 
 AsmShape3D :: struct {
@@ -7376,6 +7346,8 @@ AsmGeom2D :: struct {
 
 	use_set_zero_freq : AsmBool;
 	pitch_zero_freq : float64;
+
+	midi_data : AsmRowMidiData;
 
 	//TODO If we put this in here then we could just draw the rects
 	//and if it's a sound float, then we do the special audio

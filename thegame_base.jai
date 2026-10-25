@@ -789,28 +789,32 @@ if frame_hover_entities.count > 0 {
 			//TODO This way allows us to hover over other shapes later if needed
 			for hover_shape, hover_index : all_hover_shapes {
 				if hover_shape.pitch_set.count > 0 {
-					if custom_g.synth.simple_waves.count != hover_shape.pitch_set.count {
-						array_reset_keeping_memory(*custom_g.synth.simple_waves);
-						for 0..hover_shape.pitch_set.count-1 {
-							AddSimpleWaveFromFrequency(0, *custom_g.synth, audio_data);
+					if custom_g.custom_audio_type == CustomAudioType.MIDI {
+						PressMidiNote(hover_shape.pitch_set, custom_g.midi_data, perm.midi_output, game_input);
+					} else {
+						if custom_g.synth.simple_waves.count != hover_shape.pitch_set.count {
+							array_reset_keeping_memory(*custom_g.synth.simple_waves);
+							for 0..hover_shape.pitch_set.count-1 {
+								AddSimpleWaveFromFrequency(0, *custom_g.synth, audio_data);
+							}
 						}
-					}
-					if custom_g.custom_audio_type == CustomAudioType.TUNING_SYSTEM {
-						tuning_system := ArrayFindFirstByNameId(perm.all_data.all_tuning_systems, custom_g.tuning_system_id, "id");
-						tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
-						assert(tuning_system.music_pt_count == tuning_pitches.count);					
-						for hover_shape.pitch_set {
-							frequency : float = MusicPtToFrequency(it, tuning_system, tuning_pitches, ref_freq);
-							UpdateWaveFrequency(frequency, *custom_g.synth.simple_waves[it_index], audio_data.*);
+						if custom_g.custom_audio_type == CustomAudioType.TUNING_SYSTEM {
+							tuning_system := ArrayFindFirstByNameId(perm.all_data.all_tuning_systems, custom_g.tuning_system_id, "id");
+							tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
+							assert(tuning_system.music_pt_count == tuning_pitches.count);					
+							for hover_shape.pitch_set {
+								frequency : float = MusicPtToFrequency(it, tuning_system, tuning_pitches, ref_freq);
+								UpdateWaveFrequency(frequency, *custom_g.synth.simple_waves[it_index], audio_data.*);
+							}
 						}
-					}
-					else if custom_g.custom_audio_type == CustomAudioType.PITCH_SET_AS_FREQUENCY {
-						for frequency : hover_shape.pitch_set {
-							UpdateWaveFrequency(cast(float) frequency, *custom_g.synth.simple_waves[it_index], audio_data.*);
+						else if custom_g.custom_audio_type == CustomAudioType.PITCH_SET_AS_FREQUENCY {
+							for frequency : hover_shape.pitch_set {
+								UpdateWaveFrequency(cast(float) frequency, *custom_g.synth.simple_waves[it_index], audio_data.*);
+							}
 						}
-					}
-					GenerateSimpleSynthSamples(*custom_g.synth, audio_data.float_buffer, audio_data);
-				}	
+						GenerateSimpleSynthSamples(*custom_g.synth, audio_data.float_buffer, audio_data);
+					}	
+				}
 
 				if hover_shape.shape_text.data != null && hover_shape.shape_text.count > 0 {
 					cam_pos : Vector2F = all_hover_cam_pos[hover_index];
@@ -895,10 +899,12 @@ if frame_hover_entities.count > 0 {
 
 					hover_point_world_pos : Vector2F = GetCenter(hover_rect.rect);
 
-					found_audio_to_play = true;
-					// audio_fun_region_pos = WorldPosToFunRegionPosMatrix(hover_point_world_pos, chord_s2.*);
-					audio_fun_region_pos[0] = hover_rect.pitch_set[0];
-					audio_fun_region_pos[1] = hover_rect.pitch_set[1];
+					if AllOrEquals(chord_s2.cs2_audio, .[.DISCRETE, .MIDI]) {
+						found_audio_to_play = true;
+						// audio_fun_region_pos = WorldPosToFunRegionPosMatrix(hover_point_world_pos, chord_s2.*);
+						audio_fun_region_pos[0] = hover_rect.pitch_set[0];
+						audio_fun_region_pos[1] = hover_rect.pitch_set[1];
+					}
 
 					// pitches : [2] float = FunRegionPosToPitchSet(audio_fun_region_pos.component, chord_s2.music_pt_count);
 					// text : string = tprint("%,%", pitches[0], pitches[1]);
@@ -914,7 +920,7 @@ if frame_hover_entities.count > 0 {
 				//IMPORTANT THIS DOES NOT WORK ANYMORE IF WE ZOOM IN AND OUT SO I WILL WRITE THAT SOMEWHERE BUT I THINK
 				//ITS INTERESTING FOR PEOPLE TO SEE AND PLAY WITH ANYWAYS
 				#if 1 {
-				if chord_s2.is_sound_float {
+				if chord_s2.cs2_audio == CS2AudioType.CONTINUOUS {
 					//TODO Can we do this CamPosToFunRegionPosMatrix? I think so if we just subtract cam from other ones
 					//but then what's the difference since we still need to compare to world_pos...
 					found_audio_to_play = true;
@@ -929,30 +935,27 @@ if frame_hover_entities.count > 0 {
 
 				//TODO Could put a full mute here if needed.
 				if found_audio_to_play {
-					ref_freq : float64 = perm.all_data.runtime_settings.default_zero_pitch_frequency;
-					if chord_s2.use_set_zero_freq ref_freq = chord_s2.pitch_zero_freq;
-					#if 1 {
-					//TODO Likely will have the synth be separate eventually so then we can just init from the code
-					//This is just to make sure things works for now.
-					if chord_s2.synth.simple_waves.count == 0 {
-						AddSimpleWaveFromFrequency(0, *chord_s2.synth, audio_data);
-						AddSimpleWaveFromFrequency(0, *chord_s2.synth, audio_data);
-					}
-					for * wave, w_index : chord_s2.synth.simple_waves {
-						//TODO Set the base frequency in setup music and then pass that in as a setting to adjust base frequencies
-						frequency : float = MusicPtToFrequency(audio_fun_region_pos[w_index], tuning_system, tuning_pitches, ref_freq);
-						// frequency : float = MusicPtToFrequency(audio_fun_region_pos[w_index], tuning_system, tuning_pitches);
-						UpdateWaveFrequency(frequency, wave, audio_data.*);
-					}
-					GenerateSimpleSynthSamples(*chord_s2.synth, audio_data.float_buffer, audio_data);
-
-					} else {
-					for * wave, w_index : chord_s2.osc_waves {
-						wave.type = OscWaveType.SINE;
-						frequency : float = MusicPtToFrequency(cast(float64) audio_fun_region_pos.component[w_index], tuning_system, tuning_pitches);
-						UpdateWaveFrequency(frequency, wave, <<audio_data);
-	 					AddToAudioBuffer(wave, audio_data);
-					}
+					if chord_s2.cs2_audio == CS2AudioType.MIDI {
+						PressMidiNote(audio_fun_region_pos, chord_s2.midi_data, perm.midi_output, game_input);
+					} 
+					else {
+						ref_freq : float64 = perm.all_data.runtime_settings.default_zero_pitch_frequency;
+						if chord_s2.use_set_zero_freq ref_freq = chord_s2.pitch_zero_freq;
+						//TODO Likely will have the synth be separate eventually so then we can just init from the code
+						//This is just to make sure things works for now.
+						if chord_s2.synth.simple_waves.count != audio_fun_region_pos.count {
+							array_reset_keeping_memory(*chord_s2.synth.simple_waves);
+							for 0..audio_fun_region_pos.count-1 {
+								AddSimpleWaveFromFrequency(0, *chord_s2.synth, audio_data);
+							}
+						}
+						for * wave, w_index : chord_s2.synth.simple_waves {
+							//TODO Set the base frequency in setup music and then pass that in as a setting to adjust base frequencies
+							frequency : float = MusicPtToFrequency(audio_fun_region_pos[w_index], tuning_system, tuning_pitches, ref_freq);
+							// frequency : float = MusicPtToFrequency(audio_fun_region_pos[w_index], tuning_system, tuning_pitches);
+							UpdateWaveFrequency(frequency, wave, audio_data.*);
+						}
+						GenerateSimpleSynthSamples(*chord_s2.synth, audio_data.float_buffer, audio_data);
 					}
 				}
 			}
@@ -1040,6 +1043,8 @@ if frame_hover_entities.count > 0 {
 				// sp := ArrayFindFirstByNameId(perm.all_data.all_spiral_spaces, hover_entity.id, "dspace_id");
 				sp, found_spiral := ArrayFindFirstByNameId(op_spec_data.all_op_spirals, hover_entity.id, "dspace_id");
 				assert(found_spiral);
+
+				if sp.external_hover continue;
 
 				is_playing_chord : bool = false;
 				audio_pitches : [] float64;
@@ -1147,7 +1152,7 @@ if frame_hover_entities.count > 0 {
 				*/
 				ref_freq : float64 = perm.all_data.runtime_settings.default_zero_pitch_frequency;
 				if sp.use_set_zero_freq ref_freq = sp.pitch_zero_freq;
-				if sp.sound_float && sp.base_chord.count > 0 && !is_playing_chord &&
+				if sp.spiral_audio == .CONTINUOUS && sp.base_chord.count > 0 && !is_playing_chord &&
 				  (sp.spiral_type == SpiralType.PROPER || sp.spiral_type == SpiralType.CONCENTRIC_CIRCLE) 
 				{
 					//TODO The right side of the spiral still plays the extra octave but it seems weird to remove
@@ -1233,25 +1238,30 @@ if frame_hover_entities.count > 0 {
 				//Then we can set an audio_was_playing and audio_is_playing to check if we need to reset
 				#if NEW_AUDIO_PITCH {
 				if audio_pitches.count > 0 {
-					tuning_system := ArrayFindFirstByNameId(perm.all_data.all_tuning_systems, sp.tuning_system_id, "id");
-					tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
-					assert(tuning_system.music_pt_count == tuning_pitches.count);
-					if sp.synth.simple_waves.count != audio_pitches.count {
-						//TODO Can remove this once we grab the synth externally but can still set the waves here for convenience.
-						// sp.synth.wave_type = OscWaveType.SAW;
-						sp.synth.envelope = MakeVolumeEnvelope();
+					if sp.spiral_audio == SpiralAudioType.MIDI {
+						PressMidiNote(audio_pitches, sp.midi_data, perm.midi_output, game_input);
+					}
+					else if sp.spiral_audio != SpiralAudioType.NONE {
+						tuning_system := ArrayFindFirstByNameId(perm.all_data.all_tuning_systems, sp.tuning_system_id, "id");
+						tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
+						assert(tuning_system.music_pt_count == tuning_pitches.count);
+						if sp.synth.simple_waves.count != audio_pitches.count {
+							//TODO Can remove this once we grab the synth externally but can still set the waves here for convenience.
+							// sp.synth.wave_type = OscWaveType.SAW;
+							sp.synth.envelope = MakeVolumeEnvelope();
 
-						array_reset_keeping_memory(*sp.synth.simple_waves);
-						for 0..audio_pitches.count-1 {
-							AddSimpleWaveFromFrequency(0, *sp.synth, audio_data);
+							array_reset_keeping_memory(*sp.synth.simple_waves);
+							for 0..audio_pitches.count-1 {
+								AddSimpleWaveFromFrequency(0, *sp.synth, audio_data);
+							}
 						}
+						for pitch, pitch_index : audio_pitches {
+							// frequency : float = PitchWithOctaveToFrequency(pitch, sp.tuning_count, 2, ref_freq = C3);
+							frequency : float = MusicPtToFrequency(pitch, tuning_system, tuning_pitches, ref_freq);
+							UpdateWaveFrequency(frequency, *sp.synth.simple_waves[pitch_index], audio_data.*);
+						}
+						GenerateSimpleSynthSamples(*sp.synth, audio_data.float_buffer, audio_data);
 					}
-					for pitch, pitch_index : audio_pitches {
-						// frequency : float = PitchWithOctaveToFrequency(pitch, sp.tuning_count, 2, ref_freq = C3);
-						frequency : float = MusicPtToFrequency(pitch, tuning_system, tuning_pitches, ref_freq);
-						UpdateWaveFrequency(frequency, *sp.synth.simple_waves[pitch_index], audio_data.*);
-					}
-					GenerateSimpleSynthSamples(*sp.synth, audio_data.float_buffer, audio_data);
 				}
 				}
 			}
@@ -1501,10 +1511,6 @@ if frame_hover_entities.count > 0 {
 				}
 			}
 
-			//TODO FROM HERE update unit tests and then maybe add a small integration test for row hovering
-			//then go over geometry hovering with midi and update everything based on feel and generalize midi out
-			//also allow geometries to update row hover in the same way
-
 			//CUSTOM : Set show row hover = false and then this can be done the same way through a dynamic library
 			//and then the text can be set to anything or the hover and can do anything else as well.
 			array_reset_keeping_memory(*row.row_hover_rects);
@@ -1598,27 +1604,7 @@ if frame_hover_entities.count > 0 {
 						}
 					}
 					case .midi_pitch; {
-						//TODO Separate this out and reuse it for other geometries and then generalize it
-						//and also reuse in row_hover_dl
-						if perm.midi_output != null {
-			        		m_channel : u8 = row.row_midi_data.midi_channel;
-							if IsInputMapPress(.MIDI_PRESS_NOTE_ON, .DOWN_THIS_FRAME, game_input) {
-								velocity : u8 = row.row_midi_data.midi_velocity;
-								for audio_float_poses {
-									note := (cast(u8) round_to_int(it)) + row.row_midi_data.midi_zero_note;
-									note_on : MIDI_Message = create_midi_message(.Note_On, note, velocity, m_channel);
-					        		send_midi_message(perm.midi_output, note_on);
-								}
-				        	} else if IsInputMapPress(.MIDI_PRESS_NOTE_OFF, .DOWN_THIS_FRAME, game_input) {
-								for audio_float_poses {
-									note := (cast(u8) round_to_int(it)) + row.row_midi_data.midi_zero_note;
-									note_off : MIDI_Message = create_midi_message(.Note_Off, note, channel = m_channel);
-					        		send_midi_message(perm.midi_output, note_off);
-								}
-							}
-						} else {
-							print("No midi output port available.\n");
-						}
+						PressMidiNote(audio_float_poses, row.row_midi_data, perm.midi_output, game_input);
 					}
 					}
 				}
@@ -1647,8 +1633,6 @@ if frame_hover_entities.count > 0 {
 					}
 				}
 			}
-
-			//TODO We can put sound output here for synth and midi
 		}
 		else if hover_entity.entity_type == EntityType.OP_LINEAR_ROW {
 			//We could allow this to hover even if this is not chosen if that helps maybe
@@ -1805,27 +1789,7 @@ if frame_hover_entities.count > 0 {
 						}
 					}
 					case .midi_pitch; {
-						//TODO Separate this out and reuse it for other geometries and then generalize it
-						//and also reuse in row_hover_dl
-						if perm.midi_output != null {
-			        		m_channel : u8 = base_row.row_midi_data.midi_channel;
-							if IsInputMapPress(.MIDI_PRESS_NOTE_ON, .DOWN_THIS_FRAME, game_input) {
-								velocity : u8 = base_row.row_midi_data.midi_velocity;
-								for audio_float_poses {
-									note := (cast(u8) round_to_int(it)) + base_row.row_midi_data.midi_zero_note;
-									note_on : MIDI_Message = create_midi_message(.Note_On, note, velocity, m_channel);
-					        		send_midi_message(perm.midi_output, note_on);
-								}
-				        	} else if IsInputMapPress(.MIDI_PRESS_NOTE_OFF, .DOWN_THIS_FRAME, game_input) {
-								for audio_float_poses {
-									note := (cast(u8) round_to_int(it)) + base_row.row_midi_data.midi_zero_note;
-									note_off : MIDI_Message = create_midi_message(.Note_Off, note, channel = m_channel);
-					        		send_midi_message(perm.midi_output, note_off);
-								}
-							}
-						} else {
-							print("No midi output port available.\n");
-						}
+						PressMidiNote(audio_float_poses, base_row.row_midi_data, perm.midi_output, game_input);
 					}
 					}
 				}
@@ -4525,6 +4489,7 @@ if is_resizing_op_space {
 	}
 	}
  		
+	if op_3D.op_space_3D.external_hover continue;
 	//TODO add this to the normal audio_output with music_pts
 	//We could store 1 of these per ChordSpace3 instead of per point since we can only have over 1
 	//and then just compute the frequency here and use those OscWaves
@@ -4534,48 +4499,57 @@ if is_resizing_op_space {
  		if chosen_3d.pitch_set.count > 0 {
  			custom_3D, found_custom_3D := ArrayFindFirstByNameId(op_3D.all_custom_geom_3D,
  				chosen_3d.group_id, "group_id");
-			//use defaults to avoid any issues
-			tuning_system := ArrayFindFirstByNameId(perm.all_data.all_tuning_systems, op_3D.op_space_3D.tuning_system_id, "id");
-			tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
-			assert(tuning_system.music_pt_count == tuning_pitches.count);
-			op_3D.op_space_3D.synth.wave_type = op_3D.op_space_3D.default_wave_type;
-			ref_freq : float64 = perm.all_data.runtime_settings.default_zero_pitch_frequency;
-			if op_3D.op_space_3D.use_set_zero_freq ref_freq = op_3D.op_space_3D.pitch_zero_freq;
- 			if found_custom_3D && custom_3D.custom_audio_type == CustomAudioType.TUNING_SYSTEM {
-				tuning_system = ArrayFindFirstByNameId(perm.all_data.all_tuning_systems, custom_3D.tuning_system_id, "id");
-				tuning_pitches = ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
+ 			is_midi_audio : bool = (found_custom_3D && custom_3D.custom_audio_type == .MIDI) 
+ 				|| (!found_custom_3D && op_3D.op_space_3D.custom_audio_type == .MIDI);
+			if is_midi_audio {
+				midi_data := op_3D.op_space_3D.midi_data;
+				if found_custom_3D midi_data = custom_3D.midi_data;
+				PressMidiNote(chosen_3d.pitch_set, midi_data, perm.midi_output, game_input);
+			} 
+			else {
+				//use defaults to avoid any issues
+				tuning_system := ArrayFindFirstByNameId(perm.all_data.all_tuning_systems, op_3D.op_space_3D.tuning_system_id, "id");
+				tuning_pitches := ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
 				assert(tuning_system.music_pt_count == tuning_pitches.count);
-				op_3D.op_space_3D.synth.wave_type = custom_3D.osc_wave_type;
-				if custom_3D.use_set_zero_freq ref_freq = custom_3D.pitch_zero_freq;
- 			}
+				op_3D.op_space_3D.synth.wave_type = op_3D.op_space_3D.default_wave_type;
+				ref_freq : float64 = perm.all_data.runtime_settings.default_zero_pitch_frequency;
+				if op_3D.op_space_3D.use_set_zero_freq ref_freq = op_3D.op_space_3D.pitch_zero_freq;
+	 			if found_custom_3D && custom_3D.custom_audio_type == CustomAudioType.TUNING_SYSTEM {
+					tuning_system = ArrayFindFirstByNameId(perm.all_data.all_tuning_systems, custom_3D.tuning_system_id, "id");
+					tuning_pitches = ArrayFindAllVarName(perm.all_data.all_tuning_pitches, tuning_system.id, "tuning_system_id", temp);
+					assert(tuning_system.music_pt_count == tuning_pitches.count);
+					op_3D.op_space_3D.synth.wave_type = custom_3D.osc_wave_type;
+					if custom_3D.use_set_zero_freq ref_freq = custom_3D.pitch_zero_freq;
+	 			}
 
- 			//DOC : We set this here so later if people set any amount of osc waves they want in 3d, then this will update automatically
-			if op_3D.op_space_3D.synth.simple_waves.count != chosen_3d.pitch_set.count {
-				//TODO Can remove this once we grab the synth externally but can still set the waves here for convenience.
-				// op_3D.op_space_3D.synth.wave_type = OscWaveType.SAW;
-				// op_3D.op_space_3D.synth.envelope = MakeVolumeEnvelope();
-				array_reset_keeping_memory(*op_3D.op_space_3D.synth.simple_waves);
-				for 0..chosen_3d.pitch_set.count-1 {
-					AddSimpleWaveFromFrequency(0, *op_3D.op_space_3D.synth, audio_data);
+	 			//DOC : We set this here so later if people set any amount of osc waves they want in 3d, then this will update automatically
+				if op_3D.op_space_3D.synth.simple_waves.count != chosen_3d.pitch_set.count {
+					//TODO Can remove this once we grab the synth externally but can still set the waves here for convenience.
+					// op_3D.op_space_3D.synth.wave_type = OscWaveType.SAW;
+					// op_3D.op_space_3D.synth.envelope = MakeVolumeEnvelope();
+					array_reset_keeping_memory(*op_3D.op_space_3D.synth.simple_waves);
+					for 0..chosen_3d.pitch_set.count-1 {
+						AddSimpleWaveFromFrequency(0, *op_3D.op_space_3D.synth, audio_data);
+					}
 				}
-			}
-			//TODO We could reset the envelope is chosen_cube != last_chosen_cube and then set last_chosen cube in here
-			//although the envelope release wouldnt trigger that would remove the initial clicking
-	 		//TODO Can grab this from a synth array and also can set this to to start and end on an envelope for no clipping
-	 		//Would need code to check if we are no longer selecting specific op_spaces/dspaces and then release there AND
-	 		//also probably release here if we go to a different wave OR we can also have an audio_added to synth bool
-	 		//and if we added audio then we don't release and if we did not add audio, then we release it
-	 		//TODO We could split this in two separate loops by frequency later if that is more efficient for something like SIMD for example.
-			for * wave, w_index : op_3D.op_space_3D.synth.simple_waves {
-				frequency : float;
-		 		if found_custom_3D && custom_3D.custom_audio_type == CustomAudioType.PITCH_SET_AS_FREQUENCY {
-		 			frequency = cast(float) chosen_3d.pitch_set[w_index];
-		 		} else {
-					frequency = MusicPtToFrequency(chosen_3d.pitch_set[w_index], tuning_system, tuning_pitches, ref_freq);
+				//TODO We could reset the envelope is chosen_cube != last_chosen_cube and then set last_chosen cube in here
+				//although the envelope release wouldnt trigger that would remove the initial clicking
+		 		//TODO Can grab this from a synth array and also can set this to to start and end on an envelope for no clipping
+		 		//Would need code to check if we are no longer selecting specific op_spaces/dspaces and then release there AND
+		 		//also probably release here if we go to a different wave OR we can also have an audio_added to synth bool
+		 		//and if we added audio then we don't release and if we did not add audio, then we release it
+		 		//TODO We could split this in two separate loops by frequency later if that is more efficient for something like SIMD for example.
+				for * wave, w_index : op_3D.op_space_3D.synth.simple_waves {
+					frequency : float;
+			 		if found_custom_3D && custom_3D.custom_audio_type == CustomAudioType.PITCH_SET_AS_FREQUENCY {
+			 			frequency = cast(float) chosen_3d.pitch_set[w_index];
+			 		} else {
+						frequency = MusicPtToFrequency(chosen_3d.pitch_set[w_index], tuning_system, tuning_pitches, ref_freq);
+					}
+					UpdateWaveFrequency(frequency, wave, audio_data);
 				}
-				UpdateWaveFrequency(frequency, wave, audio_data);
+				GenerateSimpleSynthSamples(*op_3D.op_space_3D.synth, audio_data.float_buffer, audio_data);
 			}
-			GenerateSimpleSynthSamples(*op_3D.op_space_3D.synth, audio_data.float_buffer, audio_data);
 		}
 	}
 }
@@ -9640,7 +9614,10 @@ if IsViewableOpSpace(op_space.*, perm.all_data.render_mspace_id, renderer_data.*
 				PushRectangle(rect_formatted, BLACK_V, op_space.render_groups.scissor_group, order = 10001);
 			}
 		}
-		if op_3D.op_space_3D.chosen_cube.type == GridTriangleType.VERTEX &&
+		//TODO We could set the external hover just for text if that's more convenient but 
+		//this can all be copy pasted and then even the hovering highlighting can be adjusted if needed
+		if !op_3D.op_space_3D.external_hover &&
+			op_3D.op_space_3D.chosen_cube.type == GridTriangleType.VERTEX &&
 			op_3D.op_space_3D.click_cube.point_index != op_3D.op_space_3D.chosen_cube.point_index
 		{
 	    	sp_3d : SpacePoint3D = op_3D.all_op_space_points_3D[op_3D.op_space_3D.chosen_cube.point_index];

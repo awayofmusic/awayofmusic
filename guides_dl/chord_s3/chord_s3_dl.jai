@@ -49,6 +49,13 @@ ExternalRunOnce :: (sld : *SharedLibraryData) {
 	create_cs3.op_space_id = op_space.id;
 	create_cs3.higher_dim = 3;
 	create_cs3.lp_count = 12;
+	// create_cs3.custom_audio_type = CustomAudioType.MIDI;
+	// create_cs3.midi_data = .{
+	// 	midi_port = 0,
+	// 	midi_channel = 0,
+	// 	midi_velocity = 100,
+	// 	midi_zero_note = 12*4,
+	// };
 	create_cs3.tuning_system_id = 0; //index 0 is "et12" by default
 	// create_cs3.cs_filter_aggregate = ChordSpaceFilterAggregate.INTERSECTION;
 	create_cs3.new_cs_filters = CSFilter.[
