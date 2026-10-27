@@ -18443,7 +18443,7 @@ Test_RemoveMusicPtsInTano :: () {
 	t.x_end = 4;
 	t.row_start = 0;
 	t.row_end = 1;
-	RemoveAllMusicPtsInTano(t, *mspace_0.all_music_pts);
+	RemoveAllMusicPtsInTano(t, mspace_0);
 	AssertEquals(3, mspace_0.all_music_pts.count);
 	AssertFoundMusicPt(mspace_0.all_music_pts, .{
 		music_pt_float=0.,
@@ -20551,6 +20551,138 @@ Test_GetNextNonMutedMSpace :: () {
 	next_mspace_index, all_muted = GetNextNonMutedMSpace(2, all_mspace_data);
 	AssertEquals(false, all_muted);
 	AssertEquals(0, next_mspace_index);
+
+} @UnitTest
+
+Test_RowDBIndex :: () {
+	ad : *AllData = InitAllData(,,unit_test_alloc);
+	THREE_ROWS := CreateRowData.[
+	.{row_section_data=.[.{x_length=12,tuning_system_id=0}], row_system_type=.internal_pitch},
+	.{row_section_data=.[.{x_length=12,tuning_system_id=2}], row_system_type=.internal_pitch},
+	.{row_section_data=.[.{x_length=12,tuning_system_id=0}], row_system_type=.internal_pitch},
+	];
+	for THREE_ROWS CreateMusicRow(it, ad);
+
+	mspace_0 : *MusicSpaceData = *ad.all_mspace_data[0];
+
+	CreateMusicPtInMemory(2, 1, 2, 3, *mspace_0.all_music_pts);
+	CreateMusicPtInMemory(0, 0, 2, 4, *mspace_0.all_music_pts);
+	CreateMusicPtInMemory(5, 2, 6, 8, *mspace_0.all_music_pts);
+	CreateMusicPtInMemory(4, 1, 0, 2, *mspace_0.all_music_pts);
+	CreateMusicPtInMemory(8, 1, 0, 2, *mspace_0.all_music_pts);
+	CreateMusicPtInMemory(9, 1, 0, 2, *mspace_0.all_music_pts);
+	CreateMusicPtInMemory(1, 0, 0, 2, *mspace_0.all_music_pts);
+	CreateMusicPtInMemory(1, 0, 0, 2, *mspace_0.all_music_pts);
+	CreateMusicPtInMemory(6, 2, 1, 5, *mspace_0.all_music_pts);
+	CreateMusicPtInMemory(3, 1, 3, 5, *mspace_0.all_music_pts);
+
+	SortAndIndexMusicPts(mspace_0);
+
+	count_equal := AssertEquals(10, mspace_0.all_music_pts.count);
+	if !count_equal return;
+	count_equal = AssertEquals(10, mspace_0.render_music_pts.count);
+	if !count_equal return;
+	count_equal = AssertEquals(3, mspace_0.all_row_db_index.count);
+	if !count_equal return;
+
+	AssertEquals(mspace_0.render_music_pts.data, mspace_0.all_row_db_index[0].music_pts_in_row.data);
+	AssertEquals(3, mspace_0.all_row_db_index[0].music_pts_in_row.count);
+	AssertEquals(0, mspace_0.all_row_db_index[0].row_index);
+	AssertEquals(mspace_0.render_music_pts.data + 3, mspace_0.all_row_db_index[1].music_pts_in_row.data);
+	AssertEquals(5, mspace_0.all_row_db_index[1].music_pts_in_row.count);
+	AssertEquals(1, mspace_0.all_row_db_index[1].row_index);
+	AssertEquals(mspace_0.render_music_pts.data + 8, mspace_0.all_row_db_index[2].music_pts_in_row.data);
+	AssertEquals(2, mspace_0.all_row_db_index[2].music_pts_in_row.count);
+	AssertEquals(2, mspace_0.all_row_db_index[2].row_index);
+
+
+	//TEST not having music pts in last row should still work
+	array_reset_keeping_memory(*mspace_0.all_music_pts);
+	CreateMusicPtInMemory(1, 0, 0, 2, *mspace_0.all_music_pts);
+	CreateMusicPtInMemory(3, 1, 3, 5, *mspace_0.all_music_pts);
+
+	SortAndIndexMusicPts(mspace_0);
+
+	count_equal = AssertEquals(2, mspace_0.all_music_pts.count);
+	if !count_equal return;
+	count_equal = AssertEquals(2, mspace_0.render_music_pts.count);
+	if !count_equal return;
+	count_equal = AssertEquals(2, mspace_0.all_row_db_index.count);
+	if !count_equal return;
+
+	AssertEquals(mspace_0.render_music_pts.data, mspace_0.all_row_db_index[0].music_pts_in_row.data);
+	AssertEquals(1, mspace_0.all_row_db_index[0].music_pts_in_row.count);
+	AssertEquals(0, mspace_0.all_row_db_index[0].row_index);
+	AssertEquals(mspace_0.render_music_pts.data + 1, mspace_0.all_row_db_index[1].music_pts_in_row.data);
+	AssertEquals(1, mspace_0.all_row_db_index[1].music_pts_in_row.count);
+	AssertEquals(1, mspace_0.all_row_db_index[1].music_pts_in_row.count);
+
+
+	//TEST no music pts
+	array_reset_keeping_memory(*mspace_0.all_music_pts);
+
+	SortAndIndexMusicPts(mspace_0);
+	
+	count_equal = AssertEquals(0, mspace_0.all_music_pts.count);
+	if !count_equal return;
+	count_equal = AssertEquals(0, mspace_0.render_music_pts.count);
+	if !count_equal return;
+	count_equal = AssertEquals(0, mspace_0.all_row_db_index.count);
+	if !count_equal return;
+
+
+	//TEST some music pts not in rows and negative index
+	array_reset_keeping_memory(*mspace_0.all_music_pts);
+
+	CreateMusicPtInMemory(1, 1, 0, 2, *mspace_0.all_music_pts);
+	CreateMusicPtInMemory(3, 3, 3, 5, *mspace_0.all_music_pts);
+	CreateMusicPtInMemory(3, -1, 3, 5, *mspace_0.all_music_pts);
+	SortAndIndexMusicPts(mspace_0);
+	
+	count_equal = AssertEquals(3, mspace_0.all_music_pts.count);
+	if !count_equal return;
+	count_equal = AssertEquals(3, mspace_0.render_music_pts.count);
+	if !count_equal return;
+	count_equal = AssertEquals(3, mspace_0.all_row_db_index.count);
+	if !count_equal return;
+
+	AssertEquals(mspace_0.render_music_pts.data, mspace_0.all_row_db_index[0].music_pts_in_row.data);
+	AssertEquals(1, mspace_0.all_row_db_index[0].music_pts_in_row.count);
+	AssertEquals(-1, mspace_0.all_row_db_index[0].row_index);
+	AssertEquals(mspace_0.render_music_pts.data+1, mspace_0.all_row_db_index[1].music_pts_in_row.data);
+	AssertEquals(1, mspace_0.all_row_db_index[1].music_pts_in_row.count);
+	AssertEquals(1, mspace_0.all_row_db_index[1].row_index);
+	AssertEquals(mspace_0.render_music_pts.data+2, mspace_0.all_row_db_index[2].music_pts_in_row.data);
+	AssertEquals(1, mspace_0.all_row_db_index[2].music_pts_in_row.count);
+	AssertEquals(3, mspace_0.all_row_db_index[2].row_index);
+
+
+
+	//TEST music pts only not in rows
+	array_reset_keeping_memory(*mspace_0.all_music_pts);
+
+	CreateMusicPtInMemory(1, 4, 0, 2, *mspace_0.all_music_pts);
+	CreateMusicPtInMemory(3, 3, 3, 5, *mspace_0.all_music_pts);
+	CreateMusicPtInMemory(4, -5, 3, 5, *mspace_0.all_music_pts);
+	SortAndIndexMusicPts(mspace_0);
+	
+	count_equal = AssertEquals(3, mspace_0.all_music_pts.count);
+	if !count_equal return;
+	count_equal = AssertEquals(3, mspace_0.render_music_pts.count);
+	if !count_equal return;
+	count_equal = AssertEquals(3, mspace_0.all_row_db_index.count);
+	if !count_equal return;
+
+	AssertEquals(mspace_0.render_music_pts.data, mspace_0.all_row_db_index[0].music_pts_in_row.data);
+	AssertEquals(1, mspace_0.all_row_db_index[0].music_pts_in_row.count);
+	AssertEquals(-5, mspace_0.all_row_db_index[0].row_index);
+	AssertEquals(mspace_0.render_music_pts.data+1, mspace_0.all_row_db_index[1].music_pts_in_row.data);
+	AssertEquals(1, mspace_0.all_row_db_index[1].music_pts_in_row.count);
+	AssertEquals(3, mspace_0.all_row_db_index[1].row_index);
+	AssertEquals(mspace_0.render_music_pts.data+2, mspace_0.all_row_db_index[2].music_pts_in_row.data);
+	AssertEquals(1, mspace_0.all_row_db_index[2].music_pts_in_row.count);
+	AssertEquals(4, mspace_0.all_row_db_index[2].row_index);
+
 
 } @UnitTest
 

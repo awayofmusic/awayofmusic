@@ -164,5 +164,5 @@ midi_input_callback :: (input: *MIDI_Input, message: MIDI_Message, timestamp: Ap
 
 	//Whenever adding/updating music points this needs to be called
 	//so that audio and rendering music_pts will display correctly.
-	DefaultSortNeumes(my_sld.all_mspace_data.*[0].all_music_pts);
+	SortAndIndexMusicPts(*shared_lib.all_mspace_data.*[0]);
 }

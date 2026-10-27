@@ -1743,6 +1743,7 @@ Test_AsmChordS2 :: (
 
 	SetupMusicAndRows(perm.all_data, TWO_ROWS);
 	CreateManyMusicPtsInMemory(float64.[0,4], 0, 0, 1, *perm.all_data.all_mspace_data[0].all_music_pts);
+	SortAndIndexMusicPts(*perm.all_data.all_mspace_data[0]);
 
 	cosd : CreateOpSpaceData;
 	cosd.op_space_external_type = OpSpaceExternalType.space_2d;
@@ -2279,6 +2280,7 @@ Test_AsmSpiral :: (
 
 	SetupMusicAndRows(perm.all_data, TWO_ROWS);
 	CreateManyMusicPtsInMemory(float64.[0,4,7], 0, 0, 1, *perm.all_data.all_mspace_data[0].all_music_pts);
+	SortAndIndexMusicPts(*perm.all_data.all_mspace_data[0]);
 
 	cosd : CreateOpSpaceData;
 	cosd.op_space_external_type = OpSpaceExternalType.space_2d;
@@ -2493,6 +2495,7 @@ Test_CreateNewCircle :: (
 
 	mem := float64.[0.5,4.5,7.5];
 	CreateManyMusicPtsInMemory(mem, 0, 0, 1, *perm.all_data.all_mspace_data[0].all_music_pts);
+	SortAndIndexMusicPts(*perm.all_data.all_mspace_data[0]);
 	mem_to_dspace : *MemoryUnitToDSpace = array_add(*perm.all_data.all_memory_unit_to_dspace);
 	mem_to_dspace.x_index = 0;
 	mem_to_dspace.row_index = 0;
@@ -2514,6 +2517,7 @@ Test_AsmCircle :: (
 	SetupMusicAndRows(perm.all_data, TWO_ROWS);
 	base_chord := float64.[0,4,7];
 	CreateManyMusicPtsInMemory(base_chord, 0, 0, 1, *perm.all_data.all_mspace_data[0].all_music_pts);
+	SortAndIndexMusicPts(*perm.all_data.all_mspace_data[0]);
 
 	// ts_name := "gamma";
 	// ts_name := "et12";
@@ -2640,6 +2644,7 @@ Test_AsmCircleShape :: (
 	SetupMusicAndRows(perm.all_data, TWO_ROWS);
 	base_chord := float64.[0,4,7];
 	CreateManyMusicPtsInMemory(base_chord, 0, 0, 1, *perm.all_data.all_mspace_data[0].all_music_pts);
+	SortAndIndexMusicPts(*perm.all_data.all_mspace_data[0]);
 
 	// ts_name := "gamma";
 	ts_name := "et12";
@@ -3089,6 +3094,8 @@ Test_MusicRows :: (
 	c3 := float64.[0,2];
 	CreateManyMusicPtsInMemory(c3, 0, 4, 6, *perm.all_data.all_mspace_data[0].all_music_pts);
 
+	SortAndIndexMusicPts(*perm.all_data.all_mspace_data[0]);
+
 } @ITest
 
 #if 0 {
@@ -3428,6 +3435,7 @@ Test_CreateOpRowsMSpace :: (
 		CreateManyMusicPtsInMemory(float64.[0,2], 1, 2, 3, *mspace_1.all_music_pts);
 		CreateManyMusicPtsInMemory(float64.[2,7], 1, 3, 4, *mspace_1.all_music_pts);
 		CreateManyMusicPtsInMemory(float64.[8,10,12], 1, 6., 8.5, *mspace_1.all_music_pts);
+		SortAndIndexMusicPts(*perm.all_data.all_mspace_data[0]);
 
 		cosd : CreateOpSpaceData;
 		cosd.op_space_external_type = OpSpaceExternalType.space_2d;
@@ -3621,6 +3629,7 @@ Test_HoverRows :: (
 		CreateMusicPtInMemory(mp_8, *mspace_0.all_music_pts);
 		CreateMusicPtInMemory(mp_9, *mspace_0.all_music_pts);
 		CreateMusicPtInMemory(mp_10, *mspace_0.all_music_pts);
+		SortAndIndexMusicPts(mspace_0);
 
 		cosd : CreateOpSpaceData;
 		cosd.op_space_external_type = OpSpaceExternalType.space_2d;
@@ -3709,11 +3718,8 @@ Test_HoverRows :: (
 
 		count_equals := AssertEquals(2, row_0.row_hover_rects.count);
 		if count_equals {
-			AssertEquals(world_rect_0.min, row_0.row_hover_rects[0].min);
-			AssertEquals(world_rect_0.max, row_0.row_hover_rects[0].max);
-
-			AssertEquals(world_rect_1.min, row_0.row_hover_rects[1].min);
-			AssertEquals(world_rect_1.max, row_0.row_hover_rects[1].max);
+			AssertEquals(true, ArrayFindByValue(row_0.row_hover_rects, world_rect_0, RectEquals));
+			AssertEquals(true, ArrayFindByValue(row_0.row_hover_rects, world_rect_1, RectEquals));
 		}
 
 		count_equals = AssertEquals(2, row_0.extra_hover_synth.simple_waves.count);
@@ -3750,11 +3756,8 @@ Test_HoverRows :: (
 
 		count_equals := AssertEquals(2, row_0.row_hover_rects.count);
 		if count_equals {
-			AssertEquals(world_rect_0.min, row_0.row_hover_rects[0].min);
-			AssertEquals(world_rect_0.max, row_0.row_hover_rects[0].max);
-
-			AssertEquals(world_rect_1.min, row_0.row_hover_rects[1].min);
-			AssertEquals(world_rect_1.max, row_0.row_hover_rects[1].max);
+			AssertEquals(true, ArrayFindByValue(row_0.row_hover_rects, world_rect_0, RectEquals));
+			AssertEquals(true, ArrayFindByValue(row_0.row_hover_rects, world_rect_1, RectEquals));
 		}
 
 		count_equals = AssertEquals(2, row_0.extra_hover_synth.simple_waves.count);
@@ -3787,11 +3790,8 @@ Test_HoverRows :: (
 
 		count_equals := AssertEquals(2, row_0.row_hover_rects.count);
 		if count_equals {
-			AssertEquals(world_rect_2.min, row_0.row_hover_rects[0].min);
-			AssertEquals(world_rect_2.max, row_0.row_hover_rects[0].max);
-
-			AssertEquals(world_rect_3.min, row_0.row_hover_rects[1].min);
-			AssertEquals(world_rect_3.max, row_0.row_hover_rects[1].max);
+			AssertEquals(true, ArrayFindByValue(row_0.row_hover_rects, world_rect_2, RectEquals));
+			AssertEquals(true, ArrayFindByValue(row_0.row_hover_rects, world_rect_3, RectEquals));
 		}
 
 		count_equals = AssertEquals(2, row_0.extra_hover_synth.simple_waves.count);
@@ -3952,14 +3952,9 @@ Test_HoverRows :: (
 		AssertEquals(0, mspace_0.all_music_lane_rows[0].row_hover_rects.count);
 		count_equals := AssertEquals(3, row_1.row_hover_rects.count);
 		if count_equals {
-			AssertEquals(world_rect_4.min, row_1.row_hover_rects[0].min);
-			AssertEquals(world_rect_4.max, row_1.row_hover_rects[0].max);
-
-			AssertEquals(world_rect_5.min, row_1.row_hover_rects[1].min);
-			AssertEquals(world_rect_5.max, row_1.row_hover_rects[1].max);
-
-			AssertEquals(world_rect_6.min, row_1.row_hover_rects[2].min);
-			AssertEquals(world_rect_6.max, row_1.row_hover_rects[2].max);
+			AssertEquals(true, ArrayFindByValue(row_1.row_hover_rects, world_rect_4, RectEquals));
+			AssertEquals(true, ArrayFindByValue(row_1.row_hover_rects, world_rect_5, RectEquals));
+			AssertEquals(true, ArrayFindByValue(row_1.row_hover_rects, world_rect_6, RectEquals));
 		}
 
 		AssertEquals(1, mspace_0.all_music_lane_rows[0].extra_hover_synth.simple_waves.count);
@@ -4012,11 +4007,8 @@ Test_HoverRows :: (
 
 		count_equals := AssertEquals(2, row_0.row_hover_rects.count);
 		if count_equals {
-			AssertEquals(world_rect_0.min, row_0.row_hover_rects[0].min);
-			AssertEquals(world_rect_0.max, row_0.row_hover_rects[0].max);
-
-			AssertEquals(world_rect_1.min, row_0.row_hover_rects[1].min);
-			AssertEquals(world_rect_1.max, row_0.row_hover_rects[1].max);
+			AssertEquals(true, ArrayFindByValue(row_0.row_hover_rects, world_rect_0, RectEquals));
+			AssertEquals(true, ArrayFindByValue(row_0.row_hover_rects, world_rect_1, RectEquals));
 		}
 
 		count_equals = AssertEquals(2, row_0.extra_hover_synth.simple_waves.count);
@@ -4055,11 +4047,8 @@ Test_HoverRows :: (
 
 		count_equals := AssertEquals(2, row_0.row_hover_rects.count);
 		if count_equals {
-			AssertEquals(world_rect_0.min, row_0.row_hover_rects[0].min);
-			AssertEquals(world_rect_0.max, row_0.row_hover_rects[0].max);
-
-			AssertEquals(world_rect_1.min, row_0.row_hover_rects[1].min);
-			AssertEquals(world_rect_1.max, row_0.row_hover_rects[1].max);
+			AssertEquals(true, ArrayFindByValue(row_0.row_hover_rects, world_rect_0, RectEquals));
+			AssertEquals(true, ArrayFindByValue(row_0.row_hover_rects, world_rect_1, RectEquals));
 		}
 
 		count_equals = AssertEquals(2, row_0.extra_hover_synth.simple_waves.count);
@@ -4092,11 +4081,8 @@ Test_HoverRows :: (
 
 		count_equals := AssertEquals(2, row_0.row_hover_rects.count);
 		if count_equals {
-			AssertEquals(world_rect_2.min, row_0.row_hover_rects[0].min);
-			AssertEquals(world_rect_2.max, row_0.row_hover_rects[0].max);
-
-			AssertEquals(world_rect_3.min, row_0.row_hover_rects[1].min);
-			AssertEquals(world_rect_3.max, row_0.row_hover_rects[1].max);
+			AssertEquals(true, ArrayFindByValue(row_0.row_hover_rects, world_rect_2, RectEquals));
+			AssertEquals(true, ArrayFindByValue(row_0.row_hover_rects, world_rect_3, RectEquals));
 		}
 
 		count_equals = AssertEquals(2, row_0.extra_hover_synth.simple_waves.count);
@@ -4129,8 +4115,7 @@ Test_HoverRows :: (
 
 		count_equals := AssertEquals(1, row_0.row_hover_rects.count);
 		if count_equals {
-			AssertEquals(world_rect_2.min, row_0.row_hover_rects[0].min);
-			AssertEquals(world_rect_2.max, row_0.row_hover_rects[0].max);
+			AssertEquals(true, ArrayFindByValue(row_0.row_hover_rects, world_rect_2, RectEquals));
 		}
 
 		count_equals = AssertEquals(1, row_0.extra_hover_synth.simple_waves.count);
@@ -4166,8 +4151,7 @@ Test_HoverRows :: (
 
 		count_equals := AssertEquals(1, row_0.row_hover_rects.count);
 		if count_equals {
-			AssertEquals(world_rect_1.min, row_0.row_hover_rects[0].min);
-			AssertEquals(world_rect_1.max, row_0.row_hover_rects[0].max);
+			AssertEquals(true, ArrayFindByValue(row_0.row_hover_rects, world_rect_1, RectEquals));
 		}
 
 		count_equals = AssertEquals(1, row_0.extra_hover_synth.simple_waves.count);
@@ -4198,8 +4182,7 @@ Test_HoverRows :: (
 
 		count_equals := AssertEquals(1, row_0.row_hover_rects.count);
 		if count_equals {
-			AssertEquals(world_rect_1.min, row_0.row_hover_rects[0].min);
-			AssertEquals(world_rect_1.max, row_0.row_hover_rects[0].max);
+			AssertEquals(true, ArrayFindByValue(row_0.row_hover_rects, world_rect_1, RectEquals));
 		}
 
 		count_equals = AssertEquals(1, row_0.extra_hover_synth.simple_waves.count);
@@ -4260,11 +4243,8 @@ Test_HoverRows :: (
 
 		count_equals := AssertEquals(2, row_1.row_hover_rects.count);
 		if count_equals {
-			AssertEquals(world_rect_7.min, row_1.row_hover_rects[0].min);
-			AssertEquals(world_rect_7.max, row_1.row_hover_rects[0].max);
-
-			AssertEquals(world_rect_8.min, row_1.row_hover_rects[1].min);
-			AssertEquals(world_rect_8.max, row_1.row_hover_rects[1].max);
+			AssertEquals(true, ArrayFindByValue(row_1.row_hover_rects, world_rect_7, RectEquals));
+			AssertEquals(true, ArrayFindByValue(row_1.row_hover_rects, world_rect_8, RectEquals));
 		}
 
 		count_equals = AssertEquals(2, row_1.extra_hover_synth.simple_waves.count);
@@ -4300,11 +4280,8 @@ Test_HoverRows :: (
 
 		count_equals := AssertEquals(2, row_1.row_hover_rects.count);
 		if count_equals {
-			AssertEquals(world_rect_7.min, row_1.row_hover_rects[0].min);
-			AssertEquals(world_rect_7.max, row_1.row_hover_rects[0].max);
-
-			AssertEquals(world_rect_8.min, row_1.row_hover_rects[1].min);
-			AssertEquals(world_rect_8.max, row_1.row_hover_rects[1].max);
+			AssertEquals(true, ArrayFindByValue(row_1.row_hover_rects, world_rect_7, RectEquals));
+			AssertEquals(true, ArrayFindByValue(row_1.row_hover_rects, world_rect_8, RectEquals));
 		}
 
 		count_equals = AssertEquals(2, row_1.extra_hover_synth.simple_waves.count);
@@ -4339,8 +4316,7 @@ Test_HoverRows :: (
 
 		count_equals := AssertEquals(1, row_1.row_hover_rects.count);
 		if count_equals {
-			AssertEquals(world_rect_7.min, row_1.row_hover_rects[0].min);
-			AssertEquals(world_rect_7.max, row_1.row_hover_rects[0].max);
+			AssertEquals(true, ArrayFindByValue(row_1.row_hover_rects, world_rect_7, RectEquals));
 		}
 
 		count_equals = AssertEquals(1, row_1.extra_hover_synth.simple_waves.count);
@@ -4370,8 +4346,7 @@ Test_HoverRows :: (
 
 		count_equals := AssertEquals(1, row_1.row_hover_rects.count);
 		if count_equals {
-			AssertEquals(world_rect_7.min, row_1.row_hover_rects[0].min);
-			AssertEquals(world_rect_7.max, row_1.row_hover_rects[0].max);
+			AssertEquals(true, ArrayFindByValue(row_1.row_hover_rects, world_rect_7, RectEquals));
 		}
 
 		count_equals = AssertEquals(1, row_1.extra_hover_synth.simple_waves.count);
@@ -4408,11 +4383,8 @@ Test_HoverRows :: (
 
 		count_equals := AssertEquals(2, row_1.row_hover_rects.count);
 		if count_equals {
-			AssertEquals(world_rect_9.min, row_1.row_hover_rects[0].min);
-			AssertEquals(world_rect_9.max, row_1.row_hover_rects[0].max);
-
-			AssertEquals(world_rect_10.min, row_1.row_hover_rects[1].min);
-			AssertEquals(world_rect_10.max, row_1.row_hover_rects[1].max);
+			AssertEquals(true, ArrayFindByValue(row_1.row_hover_rects, world_rect_9, RectEquals));
+			AssertEquals(true, ArrayFindByValue(row_1.row_hover_rects, world_rect_10, RectEquals));
 		}
 
 		count_equals = AssertEquals(2, row_1.extra_hover_synth.simple_waves.count);
@@ -4528,6 +4500,7 @@ Test_AsmOpRows :: (
 
 	SetupMusicAndRows(perm.all_data, TWO_ROWS);
 	CreateManyMusicPtsInMemory(float64.[0,4,7], 0, 0, 1, *perm.all_data.all_mspace_data[0].all_music_pts);
+	SortAndIndexMusicPts(*perm.all_data.all_mspace_data[0]);
 
 	section_ram_loc : int = DEFAULT_RAM_DATA + size_of(OldAsmOpRowData);
 	et12 := RowSectionData.{0,0,6};
@@ -4624,6 +4597,7 @@ Test_AsmOpLinearRange :: (
 	SetupMusicAndRows(perm.all_data, TWO_ROWS);
 	CreateManyMusicPtsInMemory(float64.[0,4,7], 0, 1, 2, *perm.all_data.all_mspace_data[0].all_music_pts);
 	CreateManyMusicPtsInMemory(float64.[0,3,7], 0, 7.5, 8.5, *perm.all_data.all_mspace_data[0].all_music_pts);
+	SortAndIndexMusicPts(*perm.all_data.all_mspace_data[0]);
 
 	section_ram_loc : int = DEFAULT_RAM_DATA + size_of(OldAsmOpRowData);
 	et12 := RowSectionData.{0,0,6};
@@ -4709,6 +4683,7 @@ Test_AsmOpCopyRow :: (
 	SetupMusicAndRows(perm.all_data, TWO_ROWS);
 	CreateManyMusicPtsInMemory(float64.[0,4,7], 1, 0, 1, *perm.all_data.all_mspace_data[0].all_music_pts);
 	CreateManyMusicPtsInMemory(float64.[0,3,7,10], 1, 2.5, 4.25, *perm.all_data.all_mspace_data[0].all_music_pts);
+	SortAndIndexMusicPts(*perm.all_data.all_mspace_data[0]);
 
 	asm_row : OldAsmOpRowData;
 	asm_row.octave_height = 12;
@@ -4827,6 +4802,8 @@ Test_OLDOpLinearRow :: (
 	// c3 := float64.[0,2];
 	// CreateManyMusicPtsInMemory(c3, 0, 4, 6, *perm.all_data.all_mspace_data[0].all_music_pts);
 
+	SortAndIndexMusicPts(*perm.all_data.all_mspace_data[0]);
+
 	mem_to_dspace : *MemoryUnitToDSpace = array_add(*perm.all_data.all_memory_unit_to_dspace);
 	mem_to_dspace.x_index = 0;
 	mem_to_dspace.row_index = 0;
@@ -4869,7 +4846,7 @@ Test_OpLinearRow :: (
 	rows : [2] CreateRowData;
 	rows[0].muted_row = false;
 	rows[0].remove_row_hover_text = false;
-	rows[0].external_hover_row = true;
+	rows[0].external_hover_row = false;
 	rows[0].octave_height = 12;
 	rows[0].row_height = 19;
 	rows[0].op_world_pos = Vector2F.{0,5};
@@ -4894,7 +4871,7 @@ Test_OpLinearRow :: (
 	// rows[1].tuning_system_count = 12;
 	rows[1].muted_row = false;
 	rows[1].remove_row_hover_text = false;
-	rows[1].external_hover_row = true;
+	rows[1].external_hover_row = false;
 	rows[1].octave_height = 16;
 	rows[1].row_height = 12;
 	rows[1].x_point_width = 1.5;
@@ -4935,6 +4912,8 @@ Test_OpLinearRow :: (
 	CreateMusicPtInMemory(1.24, 0, 4.0, 5.5, *perm.all_data.all_mspace_data[0].all_music_pts);
 	CreateMusicPtInMemory(4.5, 0, 4.0, 6.0, *perm.all_data.all_mspace_data[0].all_music_pts);
 	CreateMusicPtInMemory(2.4, 0, 5.0, 6.0, *perm.all_data.all_mspace_data[0].all_music_pts);
+
+	SortAndIndexMusicPts(*perm.all_data.all_mspace_data[0]);
 
 	// c3 := float64.[0,2];
 	// CreateManyMusicPtsInMemory(c3, 0, 4, 6, *perm.all_data.all_mspace_data[0].all_music_pts);
@@ -11856,10 +11835,12 @@ Test_CreateMSpace :: (
 	CreateManyMusicPtsInMemory(float64.[0,4], 0, 0, 1, *perm.all_data.all_mspace_data[0].all_music_pts);
 	CreateManyMusicPtsInMemory(float64.[0,7], 0, 1, 3, *perm.all_data.all_mspace_data[0].all_music_pts);
 	CreateManyMusicPtsInMemory(float64.[0,9], 0, 3, 6, *perm.all_data.all_mspace_data[0].all_music_pts);
+	SortAndIndexMusicPts(*perm.all_data.all_mspace_data[0]);
 
 	CreateManyMusicPtsInMemory(float64.[0,1], 0, 0, 1, *perm.all_data.all_mspace_data[1].all_music_pts);
 	CreateManyMusicPtsInMemory(float64.[0,2], 0, 1, 3, *perm.all_data.all_mspace_data[1].all_music_pts);
 	CreateManyMusicPtsInMemory(float64.[0,3], 0, 3, 6, *perm.all_data.all_mspace_data[1].all_music_pts);
+	SortAndIndexMusicPts(*perm.all_data.all_mspace_data[1]);
 
 } @ITest
 
@@ -11908,10 +11889,12 @@ Test_MSpaceAudio :: (
 		CreateManyMusicPtsInMemory(float64.[0,4], 0, 0, 1, *perm.all_data.all_mspace_data[0].all_music_pts);
 		CreateManyMusicPtsInMemory(float64.[0,7], 0, 1, 3, *perm.all_data.all_mspace_data[0].all_music_pts);
 		CreateManyMusicPtsInMemory(float64.[0,9], 0, 3, 6, *perm.all_data.all_mspace_data[0].all_music_pts);
+		SortAndIndexMusicPts(*perm.all_data.all_mspace_data[0]);
 
 		CreateManyMusicPtsInMemory(float64.[0,1], 0, 0, 1, *perm.all_data.all_mspace_data[1].all_music_pts);
 		CreateManyMusicPtsInMemory(float64.[0,2], 0, 1, 3, *perm.all_data.all_mspace_data[1].all_music_pts);
 		CreateManyMusicPtsInMemory(float64.[0,3], 0, 3, 6, *perm.all_data.all_mspace_data[1].all_music_pts);
+		SortAndIndexMusicPts(*perm.all_data.all_mspace_data[1]);
 
 		array_resize(*perm.test_data.all_sub_tests, 21+1);
 	}
@@ -12223,6 +12206,8 @@ Test_MSpaceAudioStart :: (
 		CreateManyMusicPtsInMemory(float64.[0,1], 0, 0, 1, *perm.all_data.all_mspace_data[1].all_music_pts);
 		CreateManyMusicPtsInMemory(float64.[0,2], 0, 1, 3, *perm.all_data.all_mspace_data[1].all_music_pts);
 		CreateManyMusicPtsInMemory(float64.[0,3], 0, 3, 6, *perm.all_data.all_mspace_data[1].all_music_pts);
+
+		SortAndIndexMusicPts(*perm.all_data.all_mspace_data[1]);
 
 		array_resize(*perm.test_data.all_sub_tests, 17+1);
 	}
@@ -15533,7 +15518,7 @@ DONE);
 	case 5; {
 		count_equal := AssertEquals(6, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			DefaultSortNeumes(perm.all_data.all_mspace_data[0].all_music_pts);
+			SortAndIndexMusicPts(*perm.all_data.all_mspace_data[0]);
 			n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[4];
 			AssertFloat64Equals(8., n0.music_pt_float);
 			AssertFloat64Equals(4., n0.x_start_float);
@@ -15552,7 +15537,7 @@ DONE);
 	case 6; {
 		count_equal := AssertEquals(8, perm.all_data.all_mspace_data[0].all_music_pts.count);
 		if count_equal {
-			DefaultSortNeumes(perm.all_data.all_mspace_data[0].all_music_pts);
+			SortAndIndexMusicPts(*perm.all_data.all_mspace_data[0]);
 			n0 : MusicPoint = perm.all_data.all_mspace_data[0].all_music_pts[6];
 			AssertFloat64Equals(12-8., n0.music_pt_float);
 			AssertFloat64Equals(6., n0.x_start_float);

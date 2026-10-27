@@ -8034,6 +8034,7 @@ MakeOldMusicPoint :: inline (
 	return music_pt;
 }
 
+#if 0 {
 ReplaceMusicPtsInMemory :: inline (
 	input_music_pt_poses : [] $T,
 	x_pos : int,
@@ -8050,6 +8051,7 @@ ReplaceMusicPtsInMemory :: inline (
 
 	CreateManyMusicPtsInMemory(result_music_pts, all_music_pts);
 	return result_music_pts;
+}
 }
 
 CreateMusicPtByIType :: inline (
@@ -8134,24 +8136,6 @@ CreateManyMusicPtsInMemory :: inline (
 
 //Leaving old method just in case but can remove if we never use
 #if 1 {
-CreateManyMusicPtsInMemory :: inline (
-	input_music_pts : [] MusicPoint,
-	all_music_pts : *[..] MusicPoint,
-	$with_return : bool = false)
--> [] *MusicPoint
-{
-	#if with_return {
-	result : [..] *MusicPoint;
-	result.allocator = temp;
-	}
-	for music_pt : input_music_pts {
-		//TODO could replace this with a memcpy
-		mp : *MusicPoint = CreateMusicPtInMemory(music_pt, all_music_pts);
-		#if with_return array_add(*result, mp);
-	}
-	#if with_return return result;
-	return .[];
-}
 } else {
 CreateManyMusicPtsInMemory :: inline (
 	input_music_pts : [] MusicPoint,

@@ -86,7 +86,7 @@ ExternalRunOnce :: (shared_lib : *SharedLibraryData) {
 	
 	//Whenever adding/updating music points this needs to be called
 	//so that audio and rendering music_pts will display correctly.
-	DefaultSortNeumes(shared_lib.all_mspace_data.*[0].all_music_pts);
+	SortAndIndexMusicPts(*shared_lib.all_mspace_data.*[0]);
 
 	//Opening other op spaces can be found in guides_dl/circle.
 	//See guides_dl/circle/circle_dl.jai for an important note on creating op space and allocating data from a dl.

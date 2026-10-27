@@ -479,6 +479,7 @@ DeleteAllSynths :: (
 /*Synth Data creation end
 */
 
+
 //TODO rename all_base_collision_entities -> mspace_collision_entities
 //TODO I think the ids for these arrays should be stored in here so we can reset them
 //OR we keep ids unique all throughout, the problem is if we reset large things, then we 
@@ -513,6 +514,13 @@ MusicSpaceData :: struct {
 	//We also may want to fetch notes by row_index so let's see.
 	//We could either double sort OR make 2 arrays one sorted by x and one by row.
 	all_music_pts : [..] MusicPoint;
+	//NOTE : These arrays should only be used for rendering NOT during instruction execution.
+	//We sort one time at the end of instruction execution every frame so this is only for efficiency
+	//to render music pts and also for mouse hovering since we have to go over all pts multiple times every frame
+	//This references the render_music_pts and as an array view for all music pts for each row index for efficient access
+	all_row_db_index : [..] RowDBIndexMP;
+	//This is sorted by row index
+	render_music_pts : [..] MusicPoint;
 
 	//TODO Could have a different struct for this without the
 	//op_space_id and maybe just rect if that's the only shape in the base.
@@ -1243,7 +1251,62 @@ MakeMusicPoint :: inline (
 DefaultSortNeumes :: inline (all_music_pts : [] MusicPoint) {
 	quick_sort(all_music_pts, (m1,m2) => m1.x_start_float - m2.x_start_float);
 }
+RowDBIndexMP :: struct {
+	//we don't really need this since the rows are indexed by array indices anyways
+	row_index : int;
+	music_pts_in_row : [] MusicPoint;
+}
+GetRowDBIndexMP :: inline (row_index : int, all_row_db_index : [] RowDBIndexMP) -> RowDBIndexMP, found : bool {
+	for all_row_db_index if it.row_index == row_index {
+		return it, true;
+	}
+	//This will return an empty array if we don't have any pts in this row
+	return .{}, false;
+}
+SortAndIndexMusicPts :: inline (mspace : *MusicSpaceData) {
+	//always add everything to all_music_pts and then sort and index here
+	array_copy(*mspace.render_music_pts, mspace.all_music_pts);
 
+	//all_music_pts is sorted by x_start_float for audio processing
+	DefaultSortNeumes(mspace.all_music_pts);
+
+	//render_music_pts is sorted by row for rendering and getting by row index below
+	quick_sort(mspace.render_music_pts, (m1,m2) => m1.row_index - m2.row_index);
+
+	/*NOTE : we only store the row indices that actually have points.
+	this way if we have negative rows it still works
+	and we generally avoid direct array indexing issues by instead just looping through all indices
+	which is still much faster than going through all the music pts
+	*/
+	//build row db index
+	array_reset_keeping_memory(*mspace.all_row_db_index);
+	if mspace.render_music_pts.count > 0 {
+		current_row_index : int = mspace.render_music_pts[0].row_index;
+		array_start_index : int = 0;
+		array_count : int = 0;
+		for mp, mp_index : mspace.render_music_pts {
+			if mp.row_index > current_row_index {
+				rdi : *RowDBIndexMP = array_add(*mspace.all_row_db_index);
+				rdi.row_index = current_row_index;
+				rdi.music_pts_in_row = array_view(mspace.render_music_pts, array_start_index, array_count);
+				
+				current_row_index = mp.row_index;
+				array_start_index = mp_index;
+				array_count = 1;
+			} else {
+				array_count += 1;
+			}
+			//Add the last index here since we won't have a next row
+			if mp_index == mspace.render_music_pts.count-1 {
+				rdi : *RowDBIndexMP = array_add(*mspace.all_row_db_index);
+				rdi.row_index = current_row_index;
+				rdi.music_pts_in_row = array_view(mspace.render_music_pts, array_start_index, array_count);
+			}
+		}
+	}
+}
+
+//TODO Need to cleanup MusicPoint struct to remove the unnecessary int values and then we don't need this anymore
 SetMemoryMusicPoint :: inline (
 	mp : *MusicPoint,
 	music_pt_pos : $T,
@@ -1290,7 +1353,7 @@ RemoveAllMusicPtsAtMemoryX :: inline (
 	row_start : int,
 	row_end : int,
 	x_pos : float64,
-	all_music_pts : *[..] MusicPoint,
+	mspace : *MusicSpaceData,
 	$return_pts : bool = false)
 -> [] MusicPoint
 {
@@ -1300,16 +1363,16 @@ RemoveAllMusicPtsAtMemoryX :: inline (
 	}
 
 	mpi : int;
-	while mpi < all_music_pts.count {
-		mp := all_music_pts.*[mpi];
+	while mpi < mspace.all_music_pts.count {
+		mp := mspace.all_music_pts[mpi];
 		if ValueInMusicPt(x_pos, mp) && MusicPtInRowRange(row_start, mp, row_end) {
     		#if return_pts array_add(*music_pts, mp);
-			array_unordered_remove_by_index(all_music_pts, mpi);
+			array_unordered_remove_by_index(*mspace.all_music_pts, mpi);
 	   } else {
 	   	mpi += 1;
 	   }
 	}
-	DefaultSortNeumes(all_music_pts.*);
+	SortAndIndexMusicPts(mspace);
 
 	#if return_pts return music_pts;
 	else return .[];
@@ -1353,6 +1416,47 @@ CreateManyMusicPtsInMemory :: inline (
 		result_music_pts[it_index] = mp.*;
 	}
 	return result_music_pts;
+}
+//Convenience function maybe for testing but not efficient since we are always sorting and generating the index
+CreateMusicPtsInMspaceAndSort :: inline (
+	input_music_pt_poses : [] $T,
+	row_index : int,
+	//R is checked in SetMemoryMusicPoint. (float, float64 and int for convenience)
+	x_start : $R, x_end : R,
+	mspace : *MusicSpaceData)
+-> [] MusicPoint
+{
+	result := CreateManyMusicPtsInMemory(input_music_pt_poses, row_index, x_start, x_end, *mspace.all_music_pts);
+	SortAndIndexMusicPts(mspace);
+	return result;
+}
+CreateManyMusicPtsInMemory :: inline (
+	input_music_pts : [] MusicPoint,
+	all_music_pts : *[..] MusicPoint,
+	$with_return : bool = false)
+-> [] *MusicPoint
+{
+	#if with_return {
+	result : [..] *MusicPoint;
+	result.allocator = temp;
+	}
+	for music_pt : input_music_pts {
+		//TODO could replace this with a memcpy
+		mp : *MusicPoint = CreateMusicPtInMemory(music_pt, all_music_pts);
+		#if with_return array_add(*result, mp);
+	}
+	#if with_return return result;
+	return .[];
+}
+//This is a convenient way to make many music pts in any array and then create them all with sorting and indexing
+//TODO However we need to call SetMemoryMusicPoint on each music point until we cleanup the MusicPoint struct
+CreateMusicPtsInMspaceAndSort :: inline (input_music_pts : [] MusicPoint, mspace : *MusicSpaceData, $with_return : bool = false) 
+-> [] *MusicPoint
+{
+	result := CreateManyMusicPtsInMemory(input_music_pts, *mspace.all_music_pts, with_return);
+	SortAndIndexMusicPts(mspace);
+	#if with_return return result;
+	return .[];
 }
 
 
@@ -1661,6 +1765,18 @@ GetAllMusicPtPosByPosition :: inline (
 
 	return music_pt_poses;
 }
+/*If we are getting by position for rendering, then we assume we already have a the row db index and so
+we can more efficiently get the points here which is currently used for rendering music pts and also for mouse hovering input.
+DO NOT USE THIS for general getting since this assumes we have an index.
+We prevent issues by returning a default empty arrays.
+*/
+GetAllRenderMusicPtPosByPosition :: inline (row_index : int, x_pos : $T, mspace : MusicSpaceData, $type : Type = int) -> [] type {
+#assert(AllOrEquals(type, .[int,float64,MusicPoint,*MusicPoint]));
+	row_db_index_mps : RowDBIndexMP = GetRowDBIndexMP(row_index, mspace.all_row_db_index);
+	music_pt_poses := GetAllMusicPtPosByPosition(row_index, x_pos, row_db_index_mps.music_pts_in_row, type);
+	return music_pt_poses;
+}
+
 
 MusicPtInRowSection :: inline (mp : MusicPoint, row_index : int, section : SectionToRow, EPSILON : float64 = DEFAULT_MP_EPSILON) -> bool {
 	in_row_section : bool = MusicPtInRowSection(mp, row_index, section.start_x, section.end_x, EPSILON);
@@ -1815,7 +1931,7 @@ GetTanoNumOfPoints :: inline (t : tano, all_music_pts : [] MusicPoint) -> int {
 	}
 	return dim;
 }
-RemoveAllMusicPtsInTano :: inline (t : tano, all_music_pts : *[..] MusicPoint, $return_pts : bool = false) -> [] MusicPoint {
+RemoveAllMusicPtsInTano :: inline (t : tano, mspace : *MusicSpaceData, $return_pts : bool = false) -> [] MusicPoint {
 	#if return_pts {
 	music_pts : [..] MusicPoint;
 	music_pts.allocator = context.allocator;
@@ -1823,19 +1939,19 @@ RemoveAllMusicPtsInTano :: inline (t : tano, all_music_pts : *[..] MusicPoint, $
 
 	t_norm : tano = NormalizeTano(t);
 	mpi : int = 0;
-	while mpi < all_music_pts.count {
-		mp : MusicPoint = all_music_pts.*[mpi];
+	while mpi < mspace.all_music_pts.count {
+		mp : MusicPoint = mspace.all_music_pts[mpi];
 		in_tano : bool = InTanoAssumeNorm(mp, t_norm);
 		if in_tano {
     		#if return_pts array_add(*music_pts, mp);
     		//We don't need ordered delete since we sort after the removal anyways. 
-			array_unordered_remove_by_index(all_music_pts, mpi);
+			array_unordered_remove_by_index(*mspace.all_music_pts, mpi);
 	   } else {
 		   mpi += 1;
 		}
 	}
 
-	DefaultSortNeumes(all_music_pts.*);
+	SortAndIndexMusicPts(mspace);
 
 	#if return_pts return music_pts;
 	else return .[];
@@ -1855,6 +1971,8 @@ GetAllMemoryMusicPtsInRange :: inline (
 {
 	return GetAllMemoryMusicPtsInRange(x_start, x_end, row_index, row_index, all_music_pts, type);
 }
+//TODO We could optimize this with RowDBIndexMP now as well since the row_db_index_mps arrays are sequential
+//so we would just have to build 1 array of music pts from the sequential row music pts arrays
 GetAllMemoryMusicPtsInRange :: inline (
 	x_start : float64, x_end : float64,
 	row_start : int, row_end : int,
@@ -5794,6 +5912,7 @@ AsmCreateSpiral :: struct {
 	//TODO Do this with a Vector4F64
 	// point_color : Vector4F = LIGHT_BROWN;
 	osc_wave_type : OscWaveType;
+	//TODO Could add volume here to adjust for more points
 
 	spiral_audio : SpiralAudioType;
 	midi_data : AsmRowMidiData;

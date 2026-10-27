@@ -13220,7 +13220,7 @@ ExecuteManyInstructions :: inline (exec : *ExecutionInfo, ad : *AllData) -> CPUE
 	//I'll leave this setting here as a reminder but I am removing it since this should always happen to ensure correct
 	//music placement and tests should be written around it as well.
 	// if ad.runtime_settings.update_music_while_running {
-	for ad.all_mspace_data DefaultSortNeumes(it.all_music_pts);
+	for * ad.all_mspace_data SortAndIndexMusicPts(it);
 	//Only need to update if playing. Otherwise we are stopped and will update this index when we start playing 
 	//either at RESET_AUDIO_TO_MEMORY_UNIT or PLAY_NOTES_AT_CURRENT_MEMORY.
 	if ad.game_audio_play.play_state == .PLAY {
@@ -13413,10 +13413,10 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 			if rx_err.is_error return rx_err;
 
 			if FloatBothEqual(x_range, 0) {
-				RemoveAllMusicPtsAtMemoryX(row_index, row_index+row_range, x_index, *rm_mspace.all_music_pts);
+				RemoveAllMusicPtsAtMemoryX(row_index, row_index+row_range, x_index, rm_mspace);
 			} else {
 				t : tano = MakeTanoRange(row_index, row_range, x_index, x_range);
-				RemoveAllMusicPtsInTano(t, *rm_mspace.all_music_pts);
+				RemoveAllMusicPtsInTano(t, rm_mspace);
 			}
 		}
 		case .NONE; {
@@ -13430,10 +13430,12 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 			mem_address : int = ComputeRAMLocation(ci.operands[0], ad.all_register_memory, ad.ram_memory);
 			rm_tano, err := GetMemValue(mem_address, tano, ad.ram_memory);
 			if err.is_error return err;
-			mspace_neumes, mspace_err := GetMSpaceNeumes(rm_tano.mspace_start, ad);
+			// mspace_neumes, mspace_err := GetMSpaceNeumes(rm_tano.mspace_start, ad);
+			rm_mspace, mspace_err := FindMSpace(rm_tano.mspace_start, ad.all_mspace_data); 
+			if mspace_err.is_error return mspace_err;
 			//TODO We could use RemoveAllMusicPtsInTano if mspace_start == mspace_end but can also use music memory for that...
 			//TECHNICALLY if x_start == x_end then nothing is in this tano since the width is 0... so i think this is correct
-			RemoveAllMusicPtsInTano(rm_tano, mspace_neumes);
+			RemoveAllMusicPtsInTano(rm_tano, rm_mspace);
 		} 
 		//TODO If we pass in integer or register that could be clearing a specific mspace_index
 		//so then we can just reset that specific array if we implements neumes with separate arrays.
@@ -13460,7 +13462,7 @@ ExecMInstr :: (ci : MusicInstruction, ad : *AllData) -> CPUError {
 					break;
 				}
 				//TODO Eventually we may not need to do this since we might have a separate array for audio neumes.
-				DefaultSortNeumes(mspace_neumes.*);
+				// DefaultSortNeumes(mspace_neumes.*);
 			} 
 			else {
 				//Reset the entire mspace neume array

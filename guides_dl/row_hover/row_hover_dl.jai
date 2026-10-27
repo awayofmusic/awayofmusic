@@ -101,8 +101,8 @@ HoverBaseRow :: inline (row_hover : HoverEntity, sld : *SharedLibraryData) {
 	mp_tuning_systems : [..] TuningSystem;
 	mp_tuning_systems.allocator = temp;
 	play_row_audio : bool = false;
-	hover_chord : [] MusicPoint = GetAllMusicPtPosByPosition(row.total_row_index, mouse_x_float, 
-		mspace_for_input.all_music_pts, type=MusicPoint,,temp);
+	hover_chord : [] MusicPoint = GetAllRenderMusicPtPosByPosition(row.total_row_index, mouse_x_float, 
+		mspace_for_input, type=MusicPoint,,temp);
 	for mp : hover_chord {
 		mp_start_rsrl : RowSectionRectsData = mouse_rsrl;
 		if !InEpsilonRangeLeft(mp.x_start_float, cast(float64) mouse_rsrl.section.start_x, cast(float64) mouse_rsrl.section.end_x) {
@@ -341,8 +341,8 @@ HoverOpRow :: inline (op_row_hover : HoverEntity, sld : *SharedLibraryData) {
 		op_row.op_ref_row_id, "id");
 	if found_base_row {
 		total_x_float : float = mouse_x_float + op_row.op_ref_start_x;
-		hover_chord : [] MusicPoint = GetAllMusicPtPosByPosition(base_row.total_row_index, total_x_float, 
-			mspace_data.all_music_pts, type=MusicPoint,,temp);
+		hover_chord : [] MusicPoint = GetAllRenderMusicPtPosByPosition(base_row.total_row_index, total_x_float, 
+			mspace_data, type=MusicPoint,,temp);
 
 		for mp : hover_chord {
 			mp_start_rsrl : RowSectionRectsData = mouse_rsrl;

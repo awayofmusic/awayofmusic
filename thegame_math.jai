@@ -741,6 +741,11 @@ RectTopOutline :: inline (rect : Rectangle2, R : float) -> Rectangle2 {
 	return RectMinMax(MakeV2F(rect.min.x - R/2.0, rect.max.y - R/2.0), MakeV2F(rect.max.x + R/2.0, rect.max.y + R/2.0));
 }
 
+RectEquals :: inline (r1 : Rectangle2, r2 : Rectangle2) -> bool {
+	rect_equals : bool = r1.min == r2.min && r1.max == r2.max;
+	return rect_equals;
+}
+
 Circle2 :: struct {
 	pos : Vector2F;
 	radius : float;

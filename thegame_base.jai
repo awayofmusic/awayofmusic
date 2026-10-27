@@ -1538,6 +1538,8 @@ if frame_hover_entities.count > 0 {
 				audio_float_poses : [..] float64;
 				audio_float_poses.allocator = temp;
 				play_row_audio : bool = false;
+				// hover_chord : [] MusicPoint = GetAllRenderMusicPtPosByPosition(row.total_row_index, mouse_x_float, 
+				// 	mspace_for_input, type=MusicPoint,,temp);
 				hover_chord : [] MusicPoint = GetAllMusicPtPosByPosition(row.total_row_index, mouse_x_float, 
 					mspace_for_input.all_music_pts, type=MusicPoint,,temp);
 				for mp : hover_chord {
@@ -1720,6 +1722,8 @@ if frame_hover_entities.count > 0 {
 					op_row.op_ref_row_id, "id");
 				if found_base_row {
 					total_x_float : float = mouse_x_float + op_row.op_ref_start_x;
+					// hover_chord : [] MusicPoint = GetAllRenderMusicPtPosByPosition(base_row.total_row_index, total_x_float, 
+					// 	mspace_data, type=MusicPoint,,temp);
 					hover_chord : [] MusicPoint = GetAllMusicPtPosByPosition(base_row.total_row_index, total_x_float, 
 						mspace_data.all_music_pts, type=MusicPoint,,temp);
 
@@ -7067,6 +7071,10 @@ for * row, row_index : render_mspace.all_music_lane_rows {
 	//TODO Should we do this fetch by index or row_id
 	section_to_row : [] SectionToRow = 
 		ArrayFindAllVarName(render_mspace.all_section_to_row, row.id, "row_id",, temp);
+	//TODO I will put this back after releasing or people can also try it out, just in case.
+	//This is a lot more efficient but I want people to understand the basis before adding it in cases theres issues.
+	//People who use lots of music pts could try to build it themselves with it and see how it helps.
+	// row_db_index_mps : RowDBIndexMP = GetRowDBIndexMP(row_index, render_mspace.all_row_db_index);
 	for section : section_to_row {
 		//TODO If section to row is not on screen then we could just continue here. Just need to check the x overlap not the rectangle
 		rsrl : RowSectionRectsData = BuildRSRData(section, row, perm.all_data.all_tuning_systems, 
@@ -7083,8 +7091,11 @@ for * row, row_index : render_mspace.all_music_lane_rows {
 		//TODO We should be pre-processing these whenever we finish an instruction pass and sort the neumes.
 		//So make a render_music_pts array and sort that by row and start_x and then just go through 
 		//each row and section only once. Then build an rsrl like above for each section
+		//Will leave this here so we can check if we have issues with the row db index if needed
 		for mp : render_mspace.all_music_pts {
 			if MusicPtInRowSection(mp, row_index, section) {
+		// for mp : row_db_index_mps.music_pts_in_row {
+		// 	if MusicPtStartInRange(section.start_x, mp, section.end_x) {
 				world_rect : Rectangle2 = MusicPtRowSectionRect(mp, rsrl.octave_mult, cast(float) mp.x_start_float, 
 					perm.all_data.global_rules.memory_unit_width, row, rsrl.section_points);
 				cam_rect : Rectangle2 = WorldRectToCamRect(world_rect, default_base_cam);
@@ -7408,12 +7419,16 @@ if IsViewableOpSpace(op_space.*, perm.all_data.render_mspace_id, renderer_data.*
 				all_music_pts is sorted by x_start so we could binary search for x_start here and the grab the music pts
 				in range after that which would be O(logn + m) instead of O(n) where m is the size of the range and n is all music pts.
 				*/
+				// row_db_index_mps : RowDBIndexMP = GetRowDBIndexMP(base_row.total_row_index, render_mspace.all_row_db_index);
 				if op_row.op_row_type == {
 				case OpRowType.MULTI_SECTION; {
 					row_base_start_x := op_row.op_ref_start_x + section.start_x;
 					row_base_end_x := op_row.op_ref_start_x + section.end_x;
+					//Will leave this here so we can check if we have issues with the row db index if needed
 					for mp : mspace_data.all_music_pts {
 						if MusicPtInRowSection(mp, base_row.total_row_index, row_base_start_x, row_base_end_x) {
+					// for mp : row_db_index_mps.music_pts_in_row {
+					// 	if MusicPtStartInRange(row_base_start_x, mp, row_base_end_x) {
 							//TODO Can bring MusicPtRowSectionRect code back in here if needed later if it's different or something.
 							x_offset := cast(float) (mp.x_start_float - op_row.op_ref_start_x);
 							world_rect := MusicPtRowSectionRect(mp, rsrl.octave_mult, x_offset, 
@@ -7427,6 +7442,8 @@ if IsViewableOpSpace(op_space.*, perm.all_data.render_mspace_id, renderer_data.*
 				case OpRowType.COPY_MUSIC_ROW; {
 					for mp : mspace_data.all_music_pts {
 						if MusicPtInRowSection(mp, base_row.total_row_index, section) {
+					// for mp : row_db_index_mps.music_pts_in_row {
+					// 	if MusicPtStartInRange(section.start_x, mp, section.end_x) {
 							//TODO Can bring MusicPtRowSectionRect code back in here if needed later if it's different or something.
 							world_rect := MusicPtRowSectionRect(mp, rsrl.octave_mult, cast(float) mp.x_start_float, 
 								op_row.x_point_width, op_row, rsrl.section_points);
