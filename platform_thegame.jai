@@ -28,7 +28,7 @@ Old miniaudio-jai - https://github.com/kooparse/miniaudio-jai commit ae583218563
 miniaudio's version : v0.11.18
 Jai's version : 0.1.090
 */
-#import,dir "../miniaudio-jai";
+#import "miniaudio-jai";
 }
 #import "Thread";
 // #import "Atomics";
@@ -52,7 +52,7 @@ Input :: #import "Input";
 //https://github.com/arjenwitteveen/jai-midi commit f206ab8a74449c860878579d76acf15d6a35676a
 #import "jai-midi";
 //https://github.com/rluba/jaison commit 9a407e903d64437ee34d0b0ee6fe7a06095a44d6
-#import,dir "jaison";
+#import "jaison";
 
 //TODO these should be moved into thegame_renderer?
 //TODO Should we call thegame_mode.jai directly?
