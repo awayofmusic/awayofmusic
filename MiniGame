@@ -1,0 +1,15 @@
+//TODO ExSample or MiniGame?
+#load "c_load/Library";
+main :: () {
+  //Testing Library. Can remove later
+  v2 : Vector2;
+  
+  #asm{tclear;}
+  ia := int.[0,4,7];
+  tano(0,0:1) ~= ia;
+  tano(0,1:2) ~= ia;
+  tano(0,1) += 8;
+  tano(0,3) ~= ia;
+
+  tano(0,4) ~= tano(0,0..4);
+}
